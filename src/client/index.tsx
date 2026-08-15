@@ -194,8 +194,12 @@ function buildRuntimeCss(value: ResolvedTweaks): string {
   rules.push(buildFontCss(value.fontSize))
   // User-sent messages use their own fixed font-size (not the markdown tokens);
   // route them through the same base so they follow the fontSize setting too.
-  // `steering` messages are the ones sent while the agent is busy (busyEnter: steer).
-  rules.push(`[data-chat-flow-kind="user"] [class^="_text_"],[data-chat-flow-kind="steering"] [class^="_text_"]{font-size:var(--dsw-font-markdown-base-font-size) !important}`)
+  // `steering` messages are sent while the agent is busy (busyEnter: steer);
+  // `[data-pending-steering]` is their in-flight bubble before it becomes durable.
+  rules.push(`[data-chat-flow-kind="user"] [class^="_text_"],[data-chat-flow-kind="steering"] [class^="_text_"],[data-pending-steering] [class^="_text_"]{font-size:var(--dsw-font-markdown-base-font-size) !important}`)
+  // Composer input and its placeholder follow the same base size.
+  rules.push(`[data-composer-card="true"] textarea{font-size:var(--dsw-font-markdown-base-font-size) !important;line-height:calc(var(--dsw-font-markdown-base-font-size) * 1.5) !important}`)
+  rules.push(`[data-composer-card="true"] textarea::placeholder{font-size:var(--dsw-font-markdown-base-font-size) !important}`)
   // Markdown table cells are pinned by DSH (15px); let every table style follow
   // the fontSize setting as well.
   rules.push(`div[data-slot="conversation.chat.node"] table th,div[data-slot="conversation.chat.node"] table td{font-size:var(--dsw-font-markdown-base-font-size) !important}`)
