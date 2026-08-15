@@ -2,10 +2,20 @@
   "name": "dsh-ui-tweaks",
   "version": "0.1.0",
   "description": "DSH web plugin: live-tune the conversation UI — message font size (px input), markdown table style (Claude Desktop look), and dialog width (default / wide) — from the Settings panel.",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "deepseek",
+    "deepseek-ai",
+    "cordis",
+    "plugin",
+    "ui-tweaks",
+    "chat-ui"
+  ],
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-name/dsh-ui-tweaks"
+    "url": "https://github.com/wlj521/dsh-ui-tweaks"
   },
   "publishConfig": {
     "access": "public"
