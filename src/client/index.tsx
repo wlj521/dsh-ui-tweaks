@@ -197,10 +197,13 @@ function buildRuntimeCss(value: ResolvedTweaks): string {
   // `steering` messages are sent while the agent is busy (busyEnter: steer);
   // `[data-pending-steering]` is their in-flight bubble before it becomes durable.
   rules.push(`[data-chat-flow-kind="user"] [class^="_text_"],[data-chat-flow-kind="steering"] [class^="_text_"],[data-pending-steering] [class^="_text_"]{font-size:var(--dsw-font-markdown-base-font-size) !important}`)
-  // Composer input and its placeholder follow the same base size. Only the
-  // font-size is touched: the textarea's line-height is part of its
-  // auto-grow/caret metrics, so overriding it misplaces the caret.
-  rules.push(`[data-composer-card="true"] textarea{font-size:var(--dsw-font-markdown-base-font-size) !important}`)
+  // Composer input follows the same base size. The visible text is rendered by
+  // the hidden-textarea + backdrop/mirror pattern: the textarea is transparent,
+  // the `data-input-backdrop` paints the text you see, and `data-input-mirror`
+  // drives auto-grow. All three (plus the placeholder) must share the size.
+  // Only font-size is touched: line-height is part of the auto-grow/caret
+  // metrics, so overriding it misplaces the caret.
+  rules.push(`[data-composer-card="true"] textarea,[data-composer-card="true"] [data-input-backdrop],[data-composer-card="true"] [data-input-mirror]{font-size:var(--dsw-font-markdown-base-font-size) !important}`)
   rules.push(`[data-composer-card="true"] textarea::placeholder{font-size:var(--dsw-font-markdown-base-font-size) !important}`)
   // Markdown table cells are pinned by DSH (15px); let every table style follow
   // the fontSize setting as well.
