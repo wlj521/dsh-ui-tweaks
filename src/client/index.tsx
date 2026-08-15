@@ -151,8 +151,9 @@ function buildFontCss(fontSize: number): string {
 
 /**
  * Claude Desktop-ish markdown table look: light-gray rounded cell cards with
- * small gaps, no borders. Backgrounds are theme-aware (label-primary tinted),
- * so light and dark modes both stay legible.
+ * small gaps, no borders. Cells share the theme's inline-code background, and
+ * code rendered inside cells keeps no background of its own, so everything
+ * blends harmoniously in light and dark modes alike.
  */
 const CLAUDE_TABLE_CSS = `
 div[data-slot="conversation.chat.node"] table{
@@ -162,7 +163,7 @@ div[data-slot="conversation.chat.node"] table{
   border:none !important;
 }
 div[data-slot="conversation.chat.node"] table thead th{
-  background:color-mix(in srgb,var(--dsw-alias-label-primary) 6%,transparent) !important;
+  background:var(--dsw-alias-markdown-inline-code) !important;
   color:inherit !important;
   font-weight:600 !important;
   text-align:left !important;
@@ -171,12 +172,18 @@ div[data-slot="conversation.chat.node"] table thead th{
   border-radius:6px !important;
 }
 div[data-slot="conversation.chat.node"] table tbody td{
-  background:color-mix(in srgb,var(--dsw-alias-label-primary) 4%,transparent) !important;
+  background:var(--dsw-alias-markdown-inline-code) !important;
   color:inherit !important;
   padding:7px 10px !important;
   vertical-align:top !important;
   border:none !important;
   border-radius:6px !important;
+}
+div[data-slot="conversation.chat.node"] table code,
+div[data-slot="conversation.chat.node"] table pre{
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
 }
 `
 
