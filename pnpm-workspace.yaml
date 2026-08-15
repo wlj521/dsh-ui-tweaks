@@ -1,0 +1,4 @@
+# Flat (hoisted) node_modules — avoids Windows symlink/junction issues in
+# sandboxed or permission-restricted environments. Matches how DSH profiles
+# install their plugin bundles.
+nodeLinker: hoisted

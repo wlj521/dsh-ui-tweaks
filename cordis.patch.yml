@@ -1,0 +1,12 @@
+# dsh-ui-tweaks bundle patch
+#
+# Declared by `dsh.bundle.patch` in package.json: when the plugin is installed
+# through the official CLI —
+#
+#   dsh plugin --profile <name> add dsh-ui-tweaks
+#
+# — the command appends `dsh-ui-tweaks` to the profile's bundle stack and this
+# patch mounts the server-side plugin row.
+- insert:
+    - id: ui-tweaks
+      name: 'dsh-ui-tweaks'
