@@ -165,7 +165,7 @@ div[data-slot="conversation.chat.node"] table{
 div[data-slot="conversation.chat.node"] table thead th{
   background:var(--dsw-alias-markdown-inline-code) !important;
   color:inherit !important;
-  font-weight:600 !important;
+  font-weight:400 !important;
   text-align:left !important;
   padding:7px 10px !important;
   border:none !important;
