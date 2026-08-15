@@ -192,6 +192,9 @@ div[data-slot="conversation.chat.node"] table pre{
 function buildRuntimeCss(value: ResolvedTweaks): string {
   const rules: string[] = []
   rules.push(buildFontCss(value.fontSize))
+  // User-sent messages use their own fixed font-size (not the markdown tokens);
+  // route them through the same base so they follow the fontSize setting too.
+  rules.push(`[data-chat-flow-kind="user"] [class^="_text_"]{font-size:var(--dsw-font-markdown-base-font-size) !important}`)
   if (value.dialogWidth !== DEFAULT_DIALOG_WIDTH) {
     const width = value.dialogWidth
     rules.push(`[data-chat-flow]{max-width:${width}px !important}`)
