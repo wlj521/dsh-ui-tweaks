@@ -151,9 +151,9 @@ function buildFontCss(fontSize: number): string {
 
 /**
  * Claude Desktop-ish markdown table look: light-gray rounded cell cards with
- * small gaps, no borders. Cells share the theme's inline-code background, and
- * code rendered inside cells keeps no background of its own, so everything
- * blends harmoniously in light and dark modes alike.
+ * small gaps, no borders. Cells share the theme's inline-code background and
+ * follow the message font-size setting. Alignment is left to the markdown
+ * renderer, so headers and cells always match.
  */
 const CLAUDE_TABLE_CSS = `
 div[data-slot="conversation.chat.node"] table{
@@ -161,12 +161,13 @@ div[data-slot="conversation.chat.node"] table{
   border-spacing:3px !important;
   width:100% !important;
   border:none !important;
+  font-size:var(--dsw-font-markdown-base-font-size) !important;
 }
 div[data-slot="conversation.chat.node"] table thead th{
   background:var(--dsw-alias-markdown-inline-code) !important;
   color:inherit !important;
   font-weight:400 !important;
-  text-align:left !important;
+  font-size:inherit !important;
   padding:7px 10px !important;
   border:none !important;
   border-radius:6px !important;
@@ -174,6 +175,7 @@ div[data-slot="conversation.chat.node"] table thead th{
 div[data-slot="conversation.chat.node"] table tbody td{
   background:var(--dsw-alias-markdown-inline-code) !important;
   color:inherit !important;
+  font-size:inherit !important;
   padding:7px 10px !important;
   vertical-align:top !important;
   border:none !important;
