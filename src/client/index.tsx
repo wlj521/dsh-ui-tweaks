@@ -195,6 +195,9 @@ function buildRuntimeCss(value: ResolvedTweaks): string {
   // User-sent messages use their own fixed font-size (not the markdown tokens);
   // route them through the same base so they follow the fontSize setting too.
   rules.push(`[data-chat-flow-kind="user"] [class^="_text_"]{font-size:var(--dsw-font-markdown-base-font-size) !important}`)
+  // Markdown table cells are pinned by DSH (15px); let every table style follow
+  // the fontSize setting as well.
+  rules.push(`div[data-slot="conversation.chat.node"] table th,div[data-slot="conversation.chat.node"] table td{font-size:var(--dsw-font-markdown-base-font-size) !important}`)
   if (value.dialogWidth !== DEFAULT_DIALOG_WIDTH) {
     const width = value.dialogWidth
     rules.push(`[data-chat-flow]{max-width:${width}px !important}`)
