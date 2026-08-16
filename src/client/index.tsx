@@ -13,7 +13,11 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only import activates the dsh-client-ui-settings slot declarations
 // (`settings.section`) and the client-side settings scope contract.
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+// Type-only import activates the dsh-client-ui-conversation slot declarations
+// (`conversation.input.dock`) that host the timeline rail.
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import { TimelineRail, installTimelineStyles } from './timeline.tsx'
 
 const NS = 'ui-tweaks'
 const SETTINGS_ROUTE = '/_dsh/ui-tweaks/settings'
@@ -31,12 +35,15 @@ interface TweaksValue {
   tableStyle?: 'default' | 'claude'
   /** px width; legacy 'default' | 'wide' strings accepted. */
   dialogWidth?: number | 'default' | 'wide'
+  /** Whether the conversation timeline rail is shown. */
+  timelineEnabled?: boolean
 }
 
 interface ResolvedTweaks {
   fontSize: number
   tableStyle: 'default' | 'claude'
   dialogWidth: number
+  timelineEnabled: boolean
 }
 
 interface UITweaksSnapshot {
@@ -51,14 +58,28 @@ interface ApiFailure { ok: false; error: { code: string; message: string } }
 const en = {
   nav: 'UI Tweaks',
   settingsTitle: 'UI Tweaks',
-  settingsIntro: 'Tune the conversation UI: message font size (px), markdown table style, and dialog width. Changes apply live.',
-  fontSize: 'Message font size (px)',
+  settingsIntro: 'Tune the conversation UI: message font size, markdown table style, dialog width and the timeline rail. Changes apply live.',
+  sectionText: 'Text',
+  sectionContent: 'Content',
+  sectionLayout: 'Layout',
+  fontSize: 'Message font size',
   fontSizeHint: `Number between ${MIN_FONT_SIZE} and ${MAX_FONT_SIZE}; applies to message text, headings, tables and code.`,
   tableStyle: 'Table style',
   tableStyleDefault: 'Default',
   tableStyleClaude: 'Claude Desktop',
-  dialogWidth: 'Dialog width (px)',
+  dialogWidth: 'Dialog width',
   dialogWidthHint: `Number between ${MIN_DIALOG_WIDTH} and ${MAX_DIALOG_WIDTH}px; 748 is DSH's default column width, larger values widen it.`,
+  presetDefault: 'Default',
+  presetWide: 'Wide',
+  presetWideXl: 'Extra wide',
+  timeline: 'Timeline',
+  timelineHint: 'Show a navigation rail on the right of the message area: hover to preview user messages, click to jump to them. Off by default; automatically hidden in short conversations.',
+  timelineOn: 'On',
+  timelineDefault: 'Default',
+  railLabel: 'Chat timeline',
+  roleUser: 'User',
+  noText: '(no text)',
+  defaultAction: 'Default',
   reset: 'Reset',
   resetDone: 'Reset to default.',
   applied: 'Applied',
@@ -73,14 +94,28 @@ type LocaleKey = keyof typeof en
 const zh: Record<LocaleKey, string> = {
   nav: '界面调整',
   settingsTitle: '界面调整',
-  settingsIntro: '调整对话界面：消息字体大小（像素）、Markdown 表格样式、对话框宽度。修改即时生效。',
-  fontSize: '消息字体大小（px）',
+  settingsIntro: '调整对话界面——消息字体、表格样式、对话框宽度与时间线，修改即时生效。',
+  sectionText: '文本',
+  sectionContent: '内容',
+  sectionLayout: '布局',
+  fontSize: '消息字体大小',
   fontSizeHint: `取值 ${MIN_FONT_SIZE}–${MAX_FONT_SIZE}，作用于消息正文、标题、表格与代码。`,
   tableStyle: '表格样式',
   tableStyleDefault: '默认',
   tableStyleClaude: 'Claude Desktop',
-  dialogWidth: '对话框宽度（px）',
+  dialogWidth: '对话框宽度',
   dialogWidthHint: `取值 ${MIN_DIALOG_WIDTH}–${MAX_DIALOG_WIDTH}px；748 为 DSH 默认列宽，数字越大越宽。`,
+  presetDefault: '默认',
+  presetWide: '稍宽',
+  presetWideXl: '更宽',
+  timeline: '时间线',
+  timelineHint: '在消息区右侧显示导航轨：悬停预览用户消息、点击跳转。默认关闭，会话较短时自动隐藏。',
+  timelineOn: '开启',
+  timelineDefault: '默认',
+  railLabel: '对话时间线',
+  roleUser: '用户',
+  noText: '（无文本内容）',
+  defaultAction: '默认',
   reset: '重置',
   resetDone: '已重置为默认。',
   applied: '已应用',
@@ -110,6 +145,7 @@ function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
     fontSize: typeof value?.fontSize === 'number' ? value.fontSize : DEFAULT_FONT_SIZE,
     tableStyle: value?.tableStyle === 'claude' ? 'claude' : 'default',
     dialogWidth: resolveDialogWidth(value?.dialogWidth),
+    timelineEnabled: value?.timelineEnabled ?? false,
   }
 }
 
@@ -238,23 +274,43 @@ function runtimeStyleElement(): HTMLStyleElement {
 }
 
 const BASE_CSS = `
-.dut-settings{display:grid;gap:14px;max-width:720px;padding:8px 2px 32px;color:var(--dsw-alias-label-primary)}
-.dut-settings-header{padding:8px 2px}
-.dut-settings-header h2{font-size:22px;letter-spacing:-.02em;margin:3px 0 6px}
-.dut-settings-header p{max-width:620px;margin:0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1.55}
-.dut-panel{display:grid;gap:14px;padding:15px;border:1px solid var(--dsw-alias-border-l1);border-radius:14px;background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-shadow-lv1)}
-.dut-field{display:grid;gap:7px}
-.dut-field>span{font-size:13px;font-weight:600}
-.dut-field small{font-size:11px;line-height:1.45;color:var(--dsw-alias-label-secondary)}
-.dut-row{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.dut-settings{display:grid;gap:12px;max-width:680px;padding:6px 2px 36px;color:var(--dsw-alias-label-primary)}
+.dut-settings-header{display:flex;align-items:flex-start;gap:12px;padding:6px 2px 2px}
+.dut-logo{flex:none;display:grid;place-items:center;width:38px;height:38px;border-radius:11px;border:1px solid var(--dsw-alias-border-l1);background:linear-gradient(135deg,color-mix(in srgb,var(--dsw-alias-state-business-primary) 16%,transparent),transparent);font-size:18px;line-height:1}
+.dut-settings-header h2{font-size:19px;letter-spacing:-.01em;margin:2px 0 4px}
+.dut-settings-header p{max-width:600px;margin:0;color:var(--dsw-alias-label-secondary);font-size:12.5px;line-height:1.55}
+.dut-panel{display:grid;gap:0;border:1px solid var(--dsw-alias-border-l1);border-radius:14px;background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-shadow-lv1);overflow:hidden}
+.dut-section-label{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--dsw-alias-label-tertiary);padding:14px 16px 6px}
+.dut-field{display:grid;gap:8px;padding:8px 16px 14px}
+.dut-field+.dut-field{border-top:1px solid var(--dsw-alias-border-l1)}
+.dut-field-top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.dut-field-top>span{font-size:13.5px;font-weight:600}
+.dut-field small{font-size:11.5px;line-height:1.5;color:var(--dsw-alias-label-secondary)}
 .dut-controls{display:flex;align-items:center;gap:8px}
-.dut-input{box-sizing:border-box;height:32px;padding:0 10px;border-radius:8px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-2);color:inherit;font:inherit;font-size:13px;width:110px}
-.dut-input:focus{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}
-.dut-select{box-sizing:border-box;height:32px;padding:0 8px;border-radius:8px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-2);color:inherit;font:inherit;font-size:13px}
-.dut-btn{display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:8px;border:1px solid var(--dsw-alias-border-l1);background:transparent;color:inherit;font:inherit;font-size:12px;cursor:pointer}
-.dut-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.dut-btn:disabled{opacity:.45;cursor:default}
-.dut-status{font-size:11px;color:var(--dsw-alias-state-success-primary)}
+.dut-stepper{display:inline-flex;align-items:center;border:1px solid var(--dsw-alias-border-l1);border-radius:9px;background:var(--dsw-alias-bg-layer-2);overflow:hidden}
+.dut-stepper button{width:30px;height:32px;border:none;background:transparent;color:inherit;font-size:15px;font-weight:500;line-height:1;cursor:pointer;display:grid;place-items:center;transition:background .15s ease}
+.dut-stepper button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.dut-stepper button:disabled{opacity:.35;cursor:default}
+.dut-stepper input{box-sizing:border-box;width:64px;height:32px;border:none;border-left:1px solid var(--dsw-alias-border-l1);border-right:1px solid var(--dsw-alias-border-l1);background:transparent;color:inherit;font:inherit;font-size:13px;text-align:center;-moz-appearance:textfield}
+.dut-stepper input::-webkit-outer-spin-button,.dut-stepper input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.dut-stepper input:focus{outline:none}
+.dut-seg{display:inline-flex;padding:3px;gap:3px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}
+.dut-seg button{border:none;border-radius:7px;padding:5px 12px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12.5px;cursor:pointer;transition:background .15s ease,color .15s ease}
+.dut-seg button:hover:not(:disabled){color:var(--dsw-alias-label-primary)}
+.dut-seg button.dut-seg-active{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);color:var(--dsw-alias-state-business-primary);font-weight:600;box-shadow:none}
+.dut-seg button.dut-seg-active:hover:not(:disabled){color:var(--dsw-alias-state-business-primary)}
+.dut-seg button:disabled{opacity:.45;cursor:default}
+/* The selected Settings-section tab — the stock shell paints a barely-there
+   grey; brand-tint it so the selection reads clearly (and in the README shot). */
+[role="dialog"] nav button[aria-selected="true"],[role="dialog"] nav button[aria-current="true"]{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);color:var(--dsw-alias-state-business-primary);font-weight:600}
+.dut-presets{display:inline-flex;flex-wrap:wrap;margin-top:2px}
+.dut-btn{display:inline-flex;align-items:center;height:26px;padding:0 12px;border-radius:999px;border:1px solid var(--dsw-alias-border-l1);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11.5px;cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease}
+.dut-btn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dut-btn.dut-btn-active{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 45%,transparent);color:var(--dsw-alias-state-business-primary)}
+.dut-btn.dut-btn-active:hover{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 18%,transparent);color:var(--dsw-alias-state-business-primary)}
+.dut-btn:disabled{opacity:.4;cursor:default}
+.dut-status{justify-self:start;font-size:11.5px;padding:3px 10px;border-radius:999px;background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 12%,transparent);color:var(--dsw-alias-state-success-primary);animation:dut-fadein .18s ease}
+@keyframes dut-fadein{from{opacity:0;transform:translateY(-2px)}to{opacity:1;transform:none}}
 .dut-loading{padding:24px;border-radius:12px;background:var(--dsw-alias-bg-layer-2);font-size:12px;color:var(--dsw-alias-label-secondary)}
 .dut-alert{padding:10px 12px;border-radius:10px;font-size:12px;line-height:1.5}
 .dut-alert.warning{background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 12%,transparent);color:var(--dsw-alias-state-warn-label)}
@@ -293,7 +349,7 @@ interface SettingsState {
 }
 
 /** Small external store shared by the Settings route and the CSS engine. */
-class SettingsClient {
+export class SettingsClient {
   private state: SettingsState = { status: 'loading', writable: false, value: undefined, revision: undefined }
   private listeners = new Set<() => void>()
   private generation = 0
@@ -353,8 +409,8 @@ class SettingsClient {
   }
 }
 
-/** Required client services: slots (settings.section) and locale. */
-export const inject = ['slots', 'locale']
+/** Required client services: slots (settings.section), locale, and sessions (timeline rail). */
+export const inject = ['slots', 'locale', 'sessions']
 
 type SettingsSectionProps = PropsRuntime<'settings.section'> & {
   controller: SettingsClient
@@ -400,7 +456,28 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     void controller.set('dialogWidth', clamped).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
-  const reset = (field: 'fontSize' | 'tableStyle' | 'dialogWidth'): void => {
+  const stepFontSize = (delta: number): void => {
+    const next = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, resolved.fontSize + delta))
+    setDraft(String(next))
+    void controller.set('fontSize', next).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
+  }
+
+  const stepDialogWidth = (delta: number): void => {
+    const next = Math.min(MAX_DIALOG_WIDTH, Math.max(MIN_DIALOG_WIDTH, resolved.dialogWidth + delta))
+    setWidthDraft(String(next))
+    void controller.set('dialogWidth', next).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
+  }
+
+  const applyWidthPreset = (width: number): void => {
+    setWidthDraft(String(width))
+    void controller.set('dialogWidth', width).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
+  }
+
+  const setTimeline = (value: boolean): void => {
+    void controller.set('timelineEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
+  }
+
+  const reset = (field: 'fontSize' | 'tableStyle' | 'dialogWidth' | 'timelineEnabled'): void => {
     void controller.unset(field).then(() => { setStatus('resetDone') }).catch(() => { setStatus('unavailable') })
   }
 
@@ -414,72 +491,101 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
   return (
     <div className="dut-settings">
       <header className="dut-settings-header">
-        <h2>{t('settingsTitle')}</h2>
-        <p>{t('settingsIntro')}</p>
+        <div className="dut-logo">🎨</div>
+        <div>
+          <h2>{t('settingsTitle')}</h2>
+          <p>{t('settingsIntro')}</p>
+        </div>
       </header>
       {!writable ? <div className="dut-alert warning">{t('readOnly')}</div> : null}
       {status === undefined ? null : <div className="dut-status">{t(status)}</div>}
 
       <section className="dut-panel">
+        <div className="dut-section-label">{t('sectionText')}</div>
         <div className="dut-field">
-          <span>{t('fontSize')}</span>
-          <div className="dut-row">
-            <small>{t('fontSizeHint')}</small>
+          <div className="dut-field-top">
+            <span>{t('fontSize')}</span>
             <div className="dut-controls">
-              <input
-                className="dut-input"
-                type="number"
-                min={MIN_FONT_SIZE}
-                max={MAX_FONT_SIZE}
-                step={1}
-                value={draft}
-                disabled={!writable}
-                onChange={(event) => { setDraft(event.target.value) }}
-                onBlur={(event) => { commitFontSize(event.target.value) }}
-                onKeyDown={(event) => { if (event.key === 'Enter') commitFontSize((event.target as HTMLInputElement).value) }}
-              />
-              <button type="button" className="dut-btn" disabled={!writable} onClick={() => { reset('fontSize') }}>{t('reset')}</button>
+              <div className="dut-stepper">
+                <button type="button" aria-label="−" disabled={!writable || resolved.fontSize <= MIN_FONT_SIZE} onClick={() => { stepFontSize(-1) }}>−</button>
+                <input
+                  type="number"
+                  min={MIN_FONT_SIZE}
+                  max={MAX_FONT_SIZE}
+                  step={1}
+                  value={draft}
+                  disabled={!writable}
+                  onChange={(event) => { setDraft(event.target.value) }}
+                  onBlur={(event) => { commitFontSize(event.target.value) }}
+                  onKeyDown={(event) => { if (event.key === 'Enter') commitFontSize((event.target as HTMLInputElement).value) }}
+                />
+                <button type="button" aria-label="+" disabled={!writable || resolved.fontSize >= MAX_FONT_SIZE} onClick={() => { stepFontSize(1) }}>+</button>
+              </div>
+              <button type="button" className={'dut-btn' + (resolved.fontSize === DEFAULT_FONT_SIZE ? ' dut-btn-active' : '')} disabled={!writable} onClick={() => { reset('fontSize') }}>{t('defaultAction')}</button>
+            </div>
+          </div>
+          <small>{t('fontSizeHint')}</small>
+        </div>
+      </section>
+
+      <section className="dut-panel">
+        <div className="dut-section-label">{t('sectionContent')}</div>
+        <div className="dut-field">
+          <div className="dut-field-top">
+            <span>{t('tableStyle')}</span>
+            <div className="dut-controls">
+              <div className="dut-seg">
+                <button type="button" className={resolved.tableStyle === 'claude' ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { pickTableStyle('claude') }}>{t('tableStyleClaude')}</button>
+                <button type="button" className={resolved.tableStyle === 'default' ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { pickTableStyle('default') }}>{t('tableStyleDefault')}</button>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
       <section className="dut-panel">
+        <div className="dut-section-label">{t('sectionLayout')}</div>
         <div className="dut-field">
-          <span>{t('tableStyle')}</span>
-          <div className="dut-row">
+          <div className="dut-field-top">
+            <span>{t('dialogWidth')}</span>
             <div className="dut-controls">
-              <select className="dut-select" value={resolved.tableStyle} disabled={!writable} onChange={(event) => { pickTableStyle(event.target.value) }}>
-                <option value="default">{t('tableStyleDefault')}</option>
-                <option value="claude">{t('tableStyleClaude')}</option>
-              </select>
-              <button type="button" className="dut-btn" disabled={!writable} onClick={() => { reset('tableStyle') }}>{t('reset')}</button>
+              <div className="dut-stepper">
+                <button type="button" aria-label="−" disabled={!writable || resolved.dialogWidth <= MIN_DIALOG_WIDTH} onClick={() => { stepDialogWidth(-20) }}>−</button>
+                <input
+                  type="number"
+                  min={MIN_DIALOG_WIDTH}
+                  max={MAX_DIALOG_WIDTH}
+                  step={20}
+                  value={widthDraft}
+                  disabled={!writable}
+                  onChange={(event) => { setWidthDraft(event.target.value) }}
+                  onBlur={(event) => { commitDialogWidth(event.target.value) }}
+                  onKeyDown={(event) => { if (event.key === 'Enter') commitDialogWidth((event.target as HTMLInputElement).value) }}
+                />
+                <button type="button" aria-label="+" disabled={!writable || resolved.dialogWidth >= MAX_DIALOG_WIDTH} onClick={() => { stepDialogWidth(20) }}>+</button>
+              </div>
             </div>
           </div>
+          <div className="dut-presets">
+            <div className="dut-seg">
+              <button type="button" className={resolved.dialogWidth === 880 ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { applyWidthPreset(880) }}>{t('presetWide')} · 880</button>
+              <button type="button" className={resolved.dialogWidth === 1024 ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { applyWidthPreset(1024) }}>{t('presetWideXl')} · 1024</button>
+              <button type="button" className={resolved.dialogWidth === 748 ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { applyWidthPreset(748) }}>{t('presetDefault')} · 748</button>
+            </div>
+          </div>
+          <small>{t('dialogWidthHint')}</small>
         </div>
-      </section>
-
-      <section className="dut-panel">
         <div className="dut-field">
-          <span>{t('dialogWidth')}</span>
-          <div className="dut-row">
-            <small>{t('dialogWidthHint')}</small>
+          <div className="dut-field-top">
+            <span>{t('timeline')}</span>
             <div className="dut-controls">
-              <input
-                className="dut-input"
-                type="number"
-                min={MIN_DIALOG_WIDTH}
-                max={MAX_DIALOG_WIDTH}
-                step={1}
-                value={widthDraft}
-                disabled={!writable}
-                onChange={(event) => { setWidthDraft(event.target.value) }}
-                onBlur={(event) => { commitDialogWidth(event.target.value) }}
-                onKeyDown={(event) => { if (event.key === 'Enter') commitDialogWidth((event.target as HTMLInputElement).value) }}
-              />
-              <button type="button" className="dut-btn" disabled={!writable} onClick={() => { reset('dialogWidth') }}>{t('reset')}</button>
+              <div className="dut-seg">
+                <button type="button" className={resolved.timelineEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setTimeline(true) }}>{t('timelineOn')}</button>
+                <button type="button" className={!resolved.timelineEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setTimeline(false) }}>{t('timelineDefault')}</button>
+              </div>
             </div>
           </div>
+          <small>{t('timelineHint')}</small>
         </div>
       </section>
     </div>
@@ -488,6 +594,7 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
 
 export function apply(ctx: ClientContext): void {
   ctx.effect(installBaseStyles, 'dsh-ui-tweaks: base styles')
+  ctx.effect(installTimelineStyles, 'dsh-ui-tweaks: timeline styles')
   ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'dsh-ui-tweaks: locale')
   const t = ctx.locale.bind(NS)
 
@@ -513,4 +620,14 @@ export function apply(ctx: ClientContext): void {
     label: () => t('nav'),
     inject: () => ({ controller, t }),
   }, SettingsSection))
+
+  // Conversation timeline rail: mounted per session, reads `timelineEnabled`
+  // off the same settings store so toggling the switch applies live.
+  ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+    name: 'conversation.input.dock',
+    id: NS,
+    order: 40,
+    locale: NS,
+    inject: () => ({ controller, sessionsService: ctx.sessions }),
+  }, TimelineRail))
 }

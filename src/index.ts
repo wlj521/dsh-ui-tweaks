@@ -16,6 +16,7 @@ import {
   UI_TWEAKS_SETTINGS_NAMESPACE,
   Config,
 } from './config.ts'
+import { installTimelineProjection } from './timeline.ts'
 import { UITweaksWebBackend, installUITweaksWeb } from './web.ts'
 
 export const name = 'dsh-ui-tweaks'
@@ -27,6 +28,10 @@ export function apply(ctx: Context): void {
   ctx.settings.register(UI_TWEAKS_SETTINGS_NAMESPACE, Config, {
     applies: 'live',
   })
+
+  // The conversation timeline rail enumerates user messages through this
+  // session projection (registered when the projection service is present).
+  installTimelineProjection(ctx)
 
   // The browser Settings panel talks to the namespace through this same-origin
   // route (the Web settings RPC only exposes a fixed allowlist in rc.6).
