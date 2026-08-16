@@ -154,8 +154,14 @@ export class GitWebHandler {
       if (path === `${GIT_ROUTE}/commit`) {
         const fields = requireFields(body, ['message'])
         const push = isRecord(body) && body.push === true
+        const exclude = isRecord(body) && Array.isArray(body.exclude)
+          ? body.exclude.filter((entry): entry is string => typeof entry === 'string' && entry !== '')
+          : undefined
         const cwd = this.requireCwd(session)
-        ok(res, await this.backend.commit(cwd, fields.message, { push }))
+        ok(res, await this.backend.commit(cwd, fields.message, {
+          push,
+          ...(exclude !== undefined && exclude.length > 0 ? { exclude } : {}),
+        }))
         return
       }
       if (path === `${GIT_ROUTE}/push`) {
