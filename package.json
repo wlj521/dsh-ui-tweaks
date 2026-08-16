@@ -1,7 +1,7 @@
 {
   "name": "dsh-ui-tweaks",
-  "version": "0.2.0",
-  "description": "DSH web plugin: live-tune the conversation UI — message font size (px input), markdown table style (Claude Desktop look), dialog width (default / wide), and an optional conversation timeline rail (right-side navigation to user messages, theme-aware, sidebar-aware) — from the Settings panel.",
+  "version": "0.3.0",
+  "description": "DSH web plugin: live-tune the conversation UI — message font size (px input), markdown table style (Claude Desktop look), dialog width (default / wide), an optional conversation timeline rail, and a GitBar (branch / diff / commit-message pills above the input, with branch management, per-file diff, and commit & push) — from the Settings panel.",
   "keywords": [
     "dsh",
     "deepseek-harness",

@@ -15,9 +15,12 @@ import type { Context } from '@deepseek-ai/cordis'
 import {
   UI_TWEAKS_SETTINGS_NAMESPACE,
   Config,
+  type UITweaksConfig,
 } from './config.ts'
 import { installTimelineProjection } from './timeline.ts'
 import { UITweaksWebBackend, installUITweaksWeb } from './web.ts'
+import { GitBackend } from './git.ts'
+import { installGitWeb } from './git-web.ts'
 
 export const name = 'dsh-ui-tweaks'
 
@@ -37,5 +40,10 @@ export function apply(ctx: Context): void {
   // route (the Web settings RPC only exposes a fixed allowlist in rc.6).
   installUITweaksWeb(ctx, new UITweaksWebBackend(ctx))
 
-  ctx.logger.info('[dsh-ui-tweaks] settings namespace registered and Web route mounted')
+  // The GitBar runs git in the session's working directory through these
+  // same-origin routes (sessions/llm are optional services, duck-typed).
+  const readConfig = (): UITweaksConfig => ctx.settings.get(UI_TWEAKS_SETTINGS_NAMESPACE) as UITweaksConfig
+  installGitWeb(ctx, new GitBackend(ctx, readConfig))
+
+  ctx.logger.info('[dsh-ui-tweaks] settings namespace registered and Web routes mounted')
 }

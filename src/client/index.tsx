@@ -18,6 +18,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { TimelineRail, installTimelineStyles } from './timeline.tsx'
+import { GitBar, installGitBarStyles } from './gitbar.tsx'
 
 const NS = 'ui-tweaks'
 const SETTINGS_ROUTE = '/_dsh/ui-tweaks/settings'
@@ -37,6 +38,8 @@ interface TweaksValue {
   dialogWidth?: number | 'default' | 'wide'
   /** Whether the conversation timeline rail is shown. */
   timelineEnabled?: boolean
+  /** Whether the GitBar (branch / diff / commit pills) is shown. */
+  gitBarEnabled?: boolean
 }
 
 interface ResolvedTweaks {
@@ -44,6 +47,7 @@ interface ResolvedTweaks {
   tableStyle: 'default' | 'claude'
   dialogWidth: number
   timelineEnabled: boolean
+  gitBarEnabled: boolean
 }
 
 interface UITweaksSnapshot {
@@ -58,7 +62,7 @@ interface ApiFailure { ok: false; error: { code: string; message: string } }
 const en = {
   nav: 'UI Tweaks',
   settingsTitle: 'UI Tweaks',
-  settingsIntro: 'Tune the conversation UI: message font size, markdown table style, dialog width and the timeline rail. Changes apply live.',
+  settingsIntro: 'Tune the conversation UI: message font size, markdown table style, dialog width, the timeline rail and the git bar. Changes apply live.',
   sectionText: 'Text',
   sectionContent: 'Content',
   sectionLayout: 'Layout',
@@ -76,6 +80,10 @@ const en = {
   timelineHint: 'Show a navigation rail on the right of the message area: hover to preview user messages, click to jump to them. Off by default; automatically hidden in short conversations.',
   timelineOn: 'On',
   timelineDefault: 'Default',
+  gitBar: 'Git bar',
+  gitBarHint: 'Show branch / diff / commit-message pills above the input when the session is inside a git repository. On by default; the bar auto-hides outside git repos.',
+  gitBarOn: 'On',
+  gitBarOff: 'Off',
   railLabel: 'Chat timeline',
   roleUser: 'User',
   noText: '(no text)',
@@ -87,6 +95,33 @@ const en = {
   loading: 'Loading…',
   readOnly: 'The active Settings provider is read-only.',
   saved: 'Saved.',
+  commitMessage: 'commit message',
+  diffFiles: 'files',
+  branchLocal: 'Local branches',
+  branchRemote: 'Remote branches',
+  branchNew: 'New branch',
+  branchNewPlaceholder: 'Branch name, e.g. fix/typo',
+  branchCreate: 'Create',
+  diffTitle: 'Changes',
+  diffOnly: 'Hunks',
+  diffFull: 'Full file',
+  commitTitle: 'Commit changes',
+  commitPlaceholder: 'Describe your changes…\nLeave empty to auto-generate',
+  commitHint: 'Committing stages the checked files (untracked included) and commits; unchecked files are excluded from this commit. “Commit & push” also pushes; a new branch gets an -u upstream.',
+  commitWillCommit: 'To commit',
+  commitViewDiff: 'View',
+  commitGenerate: '✨ Generate',
+  commitCancel: 'Cancel',
+  commitSubmit: 'Commit',
+  commitSubmitPush: 'Commit & push',
+  dirty: 'Uncommitted changes',
+  clean: 'Working tree clean',
+  noChanges: 'No changes here.',
+  branchDelete: 'Delete branch',
+  branchDeleteConfirm: 'Confirm?',
+  branchPushRemote: 'Push to remote',
+  includeFile: 'Include in commit',
+  excludeFile: 'Exclude from commit',
 } as const
 
 type LocaleKey = keyof typeof en
@@ -94,7 +129,7 @@ type LocaleKey = keyof typeof en
 const zh: Record<LocaleKey, string> = {
   nav: '界面调整',
   settingsTitle: '界面调整',
-  settingsIntro: '调整对话界面——消息字体、表格样式、对话框宽度与时间线，修改即时生效。',
+  settingsIntro: '调整对话界面——消息字体、表格样式、对话框宽度、时间线与 Git 状态栏，修改即时生效。',
   sectionText: '文本',
   sectionContent: '内容',
   sectionLayout: '布局',
@@ -112,6 +147,10 @@ const zh: Record<LocaleKey, string> = {
   timelineHint: '在消息区右侧显示导航轨：悬停预览用户消息、点击跳转。默认关闭，会话较短时自动隐藏。',
   timelineOn: '开启',
   timelineDefault: '默认',
+  gitBar: 'Git 状态栏',
+  gitBarHint: '会话在 git 仓库内时，在输入框上方显示 分支 / 差异 / 提交说明 胶囊。默认开启；非 git 仓库时自动隐藏。',
+  gitBarOn: '开启',
+  gitBarOff: '关闭',
   railLabel: '对话时间线',
   roleUser: '用户',
   noText: '（无文本内容）',
@@ -123,6 +162,33 @@ const zh: Record<LocaleKey, string> = {
   loading: '加载中…',
   readOnly: '当前设置提供方为只读。',
   saved: '已保存。',
+  commitMessage: 'commit message',
+  diffFiles: '个文件',
+  branchLocal: '本地分支',
+  branchRemote: '远程分支',
+  branchNew: '新建分支',
+  branchNewPlaceholder: '分支名，如 fix/typo',
+  branchCreate: '创建',
+  diffTitle: '变更',
+  diffOnly: '仅差异',
+  diffFull: '完整文件',
+  commitTitle: '提交变更',
+  commitPlaceholder: '描述你的改动…\n留空点「提交」将根据改动内容自动生成',
+  commitHint: '提交会暂存勾选的文件（含未跟踪新文件）；取消勾选的文件将不包含在本次提交中。「提交并推送」提交后自动 push，新分支自动 -u 设上游。',
+  commitWillCommit: '将提交',
+  commitViewDiff: '查看',
+  commitGenerate: '✨ 生成',
+  commitCancel: '取消',
+  commitSubmit: '提交',
+  commitSubmitPush: '提交并推送',
+  dirty: '有未提交改动',
+  clean: '工作区干净',
+  noChanges: '这里没有差异。',
+  branchDelete: '删除分支',
+  branchDeleteConfirm: '确认删除?',
+  branchPushRemote: '推送到远程',
+  includeFile: '提交包含此文件',
+  excludeFile: '提交排除此文件',
 }
 
 type Translate = (key: LocaleKey) => string
@@ -146,6 +212,7 @@ function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
     tableStyle: value?.tableStyle === 'claude' ? 'claude' : 'default',
     dialogWidth: resolveDialogWidth(value?.dialogWidth),
     timelineEnabled: value?.timelineEnabled ?? false,
+    gitBarEnabled: value?.gitBarEnabled ?? true,
   }
 }
 
@@ -253,6 +320,10 @@ function buildRuntimeCss(value: ResolvedTweaks): string {
     // The conversation stats line under the composer (conversation.composer.dock)
     // keeps its own 748px column; widen it together with the dialog.
     rules.push(`[data-slot="conversation.composer.dock"] > div{max-width:${width + 32}px !important}`)
+    // The GitBar pill row (conversation.input.dock) sits inside the composer's
+    // tool row (roughly between the "+" button's right and the send button's
+    // left): composer +32px padding minus ~74px of tool-row chrome each side.
+    rules.push(`[data-slot-plugin="dsh-ui-tweaks-gitbar"]{max-width:${width - 42}px !important}`)
     rules.push(`:root{--dsh-composer-card-max-width:${width + 32}px}`)
   }
   if (value.tableStyle === 'claude') {
@@ -477,7 +548,11 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     void controller.set('timelineEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
-  const reset = (field: 'fontSize' | 'tableStyle' | 'dialogWidth' | 'timelineEnabled'): void => {
+  const setGitBar = (value: boolean): void => {
+    void controller.set('gitBarEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
+  }
+
+  const reset = (field: 'fontSize' | 'tableStyle' | 'dialogWidth' | 'timelineEnabled' | 'gitBarEnabled'): void => {
     void controller.unset(field).then(() => { setStatus('resetDone') }).catch(() => { setStatus('unavailable') })
   }
 
@@ -587,6 +662,18 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
           </div>
           <small>{t('timelineHint')}</small>
         </div>
+        <div className="dut-field">
+          <div className="dut-field-top">
+            <span>{t('gitBar')}</span>
+            <div className="dut-controls">
+              <div className="dut-seg">
+                <button type="button" className={resolved.gitBarEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setGitBar(true) }}>{t('gitBarOn')}</button>
+                <button type="button" className={!resolved.gitBarEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setGitBar(false) }}>{t('gitBarOff')}</button>
+              </div>
+            </div>
+          </div>
+          <small>{t('gitBarHint')}</small>
+        </div>
       </section>
     </div>
   )
@@ -595,6 +682,7 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
 export function apply(ctx: ClientContext): void {
   ctx.effect(installBaseStyles, 'dsh-ui-tweaks: base styles')
   ctx.effect(installTimelineStyles, 'dsh-ui-tweaks: timeline styles')
+  ctx.effect(installGitBarStyles, 'dsh-ui-tweaks: gitbar styles')
   ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'dsh-ui-tweaks: locale')
   const t = ctx.locale.bind(NS)
 
@@ -630,4 +718,14 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: () => ({ controller, sessionsService: ctx.sessions }),
   }, TimelineRail))
+
+  // GitBar: branch / diff / commit-message pills above the composer, mounted
+  // in the same dock row (renders null for non-git sessions).
+  ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+    name: 'conversation.input.dock',
+    id: 'gitbar',
+    order: 30,
+    locale: NS,
+    inject: () => ({ controller }),
+  }, GitBar))
 }

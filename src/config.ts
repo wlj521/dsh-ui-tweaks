@@ -31,6 +31,19 @@ export interface UITweaksConfig {
    * messages.
    */
   timelineEnabled?: boolean
+  /**
+   * Whether the GitBar (branch / diff / commit-message pills above the input)
+   * is shown. On by default; the bar hides itself when the session has no
+   * cwd or the directory is not a git repository.
+   */
+  gitBarEnabled?: boolean
+  /**
+   * Optional explicit `provider:model` for generating commit messages with the
+   * LLM (e.g. `jiyuanlvdong:deepseek-v4-flash-0731`). When unset, the first
+   * registered provider/model is used; when the LLM service is unavailable or
+   * the call fails, a heuristic commit message is generated instead.
+   */
+  suggestModel?: string
 }
 
 export const MIN_DIALOG_WIDTH = 600
@@ -44,12 +57,17 @@ export const DEFAULT_FONT_SIZE = 16
 /** Timeline defaults to off; the Settings segmented control turns it on. */
 export const DEFAULT_TIMELINE_ENABLED = false
 
+/** GitBar defaults to on; it self-hides without a git session. */
+export const DEFAULT_GITBAR_ENABLED = true
+
 /** Configuration schema with documented defaults. */
 export const Config: Schema<UITweaksConfig> = z.object({
   fontSize: z.number().min(10).max(32).default(16),
   tableStyle: z.union(['default', 'claude'] as const).default('default'),
   dialogWidth: z.union([z.number().min(MIN_DIALOG_WIDTH).max(MAX_DIALOG_WIDTH), z.const('default'), z.const('wide')]).default(DEFAULT_DIALOG_WIDTH),
   timelineEnabled: z.boolean().default(DEFAULT_TIMELINE_ENABLED),
+  gitBarEnabled: z.boolean().default(DEFAULT_GITBAR_ENABLED),
+  suggestModel: z.string(),
 })
 
 /** Configuration after static validation, with every default materialized. */
@@ -60,6 +78,10 @@ export interface ResolvedUITweaksConfig {
   dialogWidth: number
   /** Whether the conversation timeline rail is shown. */
   timelineEnabled: boolean
+  /** Whether the GitBar pills above the input are shown. */
+  gitBarEnabled: boolean
+  /** Optional `provider:model` override for LLM commit-message generation. */
+  suggestModel?: string
 }
 
 /** Normalize a dialog width value (legacy strings included) to px. */
@@ -75,5 +97,10 @@ export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConf
   const tableStyle = config.tableStyle ?? 'default'
   const dialogWidth = resolveDialogWidth(config.dialogWidth)
   const timelineEnabled = config.timelineEnabled ?? DEFAULT_TIMELINE_ENABLED
-  return { fontSize, tableStyle, dialogWidth, timelineEnabled }
+  const gitBarEnabled = config.gitBarEnabled ?? DEFAULT_GITBAR_ENABLED
+  const resolved: ResolvedUITweaksConfig = { fontSize, tableStyle, dialogWidth, timelineEnabled, gitBarEnabled }
+  if (typeof config.suggestModel === 'string' && config.suggestModel !== '') {
+    resolved.suggestModel = config.suggestModel
+  }
+  return resolved
 }
