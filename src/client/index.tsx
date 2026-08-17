@@ -726,6 +726,6 @@ export function apply(ctx: ClientContext): void {
     id: 'gitbar',
     order: 30,
     locale: NS,
-    inject: () => ({ controller }),
+    inject: () => ({ controller, sessionsService: ctx.sessions }),
   }, GitBar))
 }

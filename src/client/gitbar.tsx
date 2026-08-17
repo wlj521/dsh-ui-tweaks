@@ -18,9 +18,9 @@
  * @module dsh-ui-tweaks/client/gitbar
  */
 
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ConversationSnapshot, ISessions, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { SettingsClient } from './index.tsx'
 
 /** Route prefix matching the host half (src/git-web.ts). */
@@ -31,12 +31,25 @@ const POLL_MS = 10000
 
 /** Default cap of the file list while its height is still automatic, in px. */
 const FILES_AUTO_MAX = 150
+/** Default cap of the commit dialog's file list, in px. */
+const MODAL_FILES_AUTO_MAX = 132
 /** Floors for the three resizable diff-panel sections, in px. */
 const MIN_FILES_H = 30
 const MIN_DIFF_H = 60
 const MIN_COMMIT_H = 62
 /** Share of the panel a dragged section may never exceed, so the diff survives. */
 const SECTION_MAX = '45%'
+
+/** Snapshot source shared by the live Session and the no-session no-op. */
+interface SnapshotSource {
+  getSnapshot(): ConversationSnapshot | undefined
+  subscribe(fn: () => void): () => void
+}
+
+const NOOP_STORE: SnapshotSource = {
+  getSnapshot: () => undefined,
+  subscribe: () => () => {},
+}
 
 /** Locale keys the GitBar reads off the `ui-tweaks` dictionary. */
 type GitBarLabelKey =
@@ -443,11 +456,13 @@ export interface GitBarProps {
   sessionId: SessionId | undefined
   /** Injected: the ui-tweaks settings store (reads `gitBarEnabled`). */
   controller: SettingsClient
+  /** Injected: the client sessions service (live Session handles, run state). */
+  sessionsService: ISessions
   /** Locale-bound translator for the GitBar labels. */
   t: Translate
 }
 
-export function GitBar({ sessionId, controller, t }: GitBarProps) {
+export function GitBar({ sessionId, controller, sessionsService, t }: GitBarProps) {
   const settingsState = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
   const enabled = settingsState.value?.gitBarEnabled ?? true
 
@@ -462,6 +477,16 @@ export function GitBar({ sessionId, controller, t }: GitBarProps) {
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
   const commitInputRef = useRef<HTMLTextAreaElement | null>(null)
+
+  // Whether this session's agent is mid-turn. Committing while the model is
+  // still editing files would capture a half-written tree, so every commit
+  // entry point goes inert until the turn settles. `running` rides the same
+  // ConversationSnapshot the composer reads, so it flips without polling.
+  const liveSession = sessionId === undefined ? undefined : sessionsService.binding(sessionId)?.session
+  const runStore: SnapshotSource = liveSession ?? NOOP_STORE
+  const subscribeRun = useMemo(() => (fn: () => void) => runStore.subscribe(fn), [runStore])
+  const readRun = useMemo(() => () => runStore.getSnapshot(), [runStore])
+  const agentRunning = useSyncExternalStore(subscribeRun, readRun, readRun)?.running === true
 
   // Auto-grow the commit message textarea so it never shows a scrollbar
   // (capped at 220px; beyond that the scrollbar is hidden entirely).
@@ -649,6 +674,8 @@ export function GitBar({ sessionId, controller, t }: GitBarProps) {
   const [filesHeight, setFilesHeight] = useState<number | null>(null)
   const [commitHeight, setCommitHeight] = useState<number | null>(null)
   const [dragging, setDragging] = useState<'files' | 'commit' | null>(null)
+  const [modalFilesHeight, setModalFilesHeight] = useState<number | null>(null)
+  const [draggingModal, setDraggingModal] = useState(false)
   const branchRef = useRef<HTMLButtonElement | null>(null)
   const branchPopRef = useRef<HTMLDivElement | null>(null)
 
@@ -764,6 +791,32 @@ export function GitBar({ sessionId, controller, t }: GitBarProps) {
     window.addEventListener('pointerup', onUp)
   }
 
+  // Drag the file list header in the commit modal to reveal more files without
+  // scrolling. The modal is portal-rendered, so this targets `.gbar-modal`
+  // directly; double-click snaps back to the default cap.
+  const startModalVResize = (
+    event: { clientY: number; preventDefault: () => void },
+  ): void => {
+    event.preventDefault()
+    const modal = document.querySelector('.gbar-modal')
+    const files = modal?.querySelector('.gbar-modal .gbar-files') ?? null
+    const startY = event.clientY
+    const startH = files === null ? MODAL_FILES_AUTO_MAX : files.getBoundingClientRect().height
+    setModalFilesHeight(startH)
+    setDraggingModal(true)
+    const onMove = (move: PointerEvent): void => {
+      const next = Math.max(48, Math.min(360, startH + (move.clientY - startY)))
+      setModalFilesHeight(Math.round(next))
+    }
+    const onUp = (): void => {
+      setDraggingModal(false)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
   // Push the conversation column left while the panel is open, so the user's
   // timeline rail (anchored to the message-area right edge) stays visible.
   useEffect(() => {
@@ -775,6 +828,9 @@ export function GitBar({ sessionId, controller, t }: GitBarProps) {
 
 
   const openCommit = (): void => {
+    // Inert while the agent is mid-turn (the pill is disabled too; this guards
+    // a turn that starts between render and click).
+    if (agentRunning) return
     setCommitOpen(true)
     void refresh()
   }
@@ -788,7 +844,7 @@ export function GitBar({ sessionId, controller, t }: GitBarProps) {
   }
 
   const doCommit = (push: boolean): void => {
-    if (session === undefined) return
+    if (session === undefined || agentRunning) return
     void run(push ? 'commit-push' : 'commit', async () => {
       let msg = message.trim()
       if (msg === '') {
@@ -857,7 +913,14 @@ export function GitBar({ sessionId, controller, t }: GitBarProps) {
           )}
         </button>
 
-        <button type="button" className="gbar-pill" onClick={openCommit} title={t('commitTitle')}>
+        <button
+          type="button"
+          className="gbar-pill"
+          onClick={openCommit}
+          disabled={agentRunning}
+          aria-disabled={agentRunning}
+          title={agentRunning ? '模型正在工作，暂不能提交' : t('commitTitle')}
+        >
           <svg className="gbar-ico" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
             <path d="M11.4 1.6a2.12 2.12 0 0 1 3 3l-8 8-3.4.8.8-3.4 7.6-8.4zM12.1 2.3l.9.9-7.6 8.3-.8.2.2-.8 7.3-8.6z" />
           </svg>
@@ -1042,13 +1105,13 @@ export function GitBar({ sessionId, controller, t }: GitBarProps) {
                 />
               </div>
               <div className="gbar-actions">
-                <button type="button" className="gbar-btn gbar-ghost" onClick={generateMessage} disabled={busy !== null}>
+                <button type="button" className="gbar-btn gbar-ghost" onClick={generateMessage} disabled={busy !== null || agentRunning}>
                   {busy === 'suggest' ? <span className="gbar-spin" /> : null}{t('commitGenerate')}
                 </button>
-                <button type="button" className="gbar-btn gbar-soft" onClick={() => { doCommit(false) }} disabled={busy !== null}>
+                <button type="button" className="gbar-btn gbar-soft" onClick={() => { doCommit(false) }} disabled={busy !== null || agentRunning}>
                   {t('commitSubmit')}
                 </button>
-                <button type="button" className="gbar-btn gbar-primary" onClick={() => { doCommit(true) }} disabled={busy !== null}>
+                <button type="button" className="gbar-btn gbar-primary" onClick={() => { doCommit(true) }} disabled={busy !== null || agentRunning}>
                   {t('commitSubmitPush')}
                 </button>
               </div>
@@ -1078,7 +1141,10 @@ export function GitBar({ sessionId, controller, t }: GitBarProps) {
               {t('commitWillCommit')}
               <span className="gbar-hint">· {snapshot.files.length - excluded.size} {t('diffFiles')}</span>
             </div>
-            <div className="gbar-files">
+            <div
+              className="gbar-files"
+              style={modalFilesHeight === null ? undefined : { height: modalFilesHeight, maxHeight: 'none' }}
+            >
               {snapshot.files.map(file => {
                 const isExcluded = excluded.has(file.path)
                 return (
@@ -1112,16 +1178,24 @@ export function GitBar({ sessionId, controller, t }: GitBarProps) {
                 )
               })}
             </div>
+            <div
+              className={"gbar-vsplit" + (draggingModal ? " gbar-dragging" : "")}
+              role="separator"
+              aria-orientation="horizontal"
+              title="拖动调整文件列表高度"
+              onPointerDown={startModalVResize}
+              onDoubleClick={() => { setModalFilesHeight(null) }}
+            />
             <div className="gbar-hint">{t('commitHint')}</div>
             <div className="gbar-foot">
               <button type="button" className="gbar-btn gbar-ghost" onClick={() => { setCommitOpen(false) }}>{t('commitCancel')}</button>
-              <button type="button" className="gbar-btn gbar-ghost" onClick={generateMessage} disabled={busy !== null}>
+              <button type="button" className="gbar-btn gbar-ghost" onClick={generateMessage} disabled={busy !== null || agentRunning}>
                 {busy === 'suggest' ? <span className="gbar-spin" /> : null}{t('commitGenerate')}
               </button>
-              <button type="button" className="gbar-btn gbar-soft" onClick={() => { doCommit(false) }} disabled={busy !== null}>
+              <button type="button" className="gbar-btn gbar-soft" onClick={() => { doCommit(false) }} disabled={busy !== null || agentRunning}>
                 {busy === 'commit' ? <span className="gbar-spin" /> : null} {t('commitSubmit')}
               </button>
-              <button type="button" className="gbar-btn gbar-primary" onClick={() => { doCommit(true) }} disabled={busy !== null}>
+              <button type="button" className="gbar-btn gbar-primary" onClick={() => { doCommit(true) }} disabled={busy !== null || agentRunning}>
                 {busy === 'commit-push' ? <span className="gbar-spin" /> : null} {t('commitSubmitPush')}
               </button>
             </div>
