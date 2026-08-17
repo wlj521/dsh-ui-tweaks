@@ -59,6 +59,9 @@ type GitBarLabelKey =
   | 'commitGenerate' | 'commitCancel' | 'commitSubmit' | 'commitSubmitPush'
   | 'dirty' | 'clean' | 'noChanges' | 'loading' | 'branchDelete' | 'branchDeleteConfirm'
   | 'includeFile' | 'excludeFile' | 'branchPushRemote'
+  | 'branchRemoteDelete' | 'branchFrom' | 'branchFromHead' | 'branchGraph'
+  | 'branchRefresh' | 'branchCancel' | 'graphTitle'
+  | 'graphColGraph' | 'graphColCommit' | 'graphColSubject' | 'graphColAuthor' | 'graphColDate'
 
 type Translate = (key: GitBarLabelKey) => string
 
@@ -92,6 +95,24 @@ interface GitBranches {
   current: string | null
   local: string[]
   remote: string[]
+}
+
+/** One commit row of the graph dialog. */
+interface GitGraphCommit {
+  graph: string
+  fullHash: string
+  hash: string
+  subject: string
+  author: string
+  date: string
+  dateRelative: string
+  refs: string
+}
+
+/** Git commit graph table returned by the `git/graph` endpoint. */
+interface GitGraph {
+  commits: GitGraphCommit[]
+  truncated: boolean
 }
 
 interface DiffLine {
@@ -229,6 +250,58 @@ export const GITBAR_CSS = `
 }
 .gbar-mini:hover{opacity:.92}
 .gbar-mini:disabled{opacity:.5;cursor:default}
+
+/* branch popup action entries (new branch / graph) */
+.gbar-actions{display:flex;gap:6px;padding:8px 6px 4px;border-top:1px solid var(--dsw-alias-border-l1);margin-top:4px}
+.gbar-act{
+  flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  height:34px;border:none;border-radius:10px;
+  background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-primary);
+  font:inherit;font-size:12.5px;font-weight:500;cursor:pointer;
+}
+.gbar-act:hover{background:var(--dsw-alias-interactive-bg-hover-solid)}
+.gbar-act svg{width:14px;height:14px;opacity:.9;flex:none}
+/* base-branch selector (new-branch dialog) */
+.gbar-baserow{display:flex;align-items:center;gap:7px;padding:0}
+.gbar-baselabel{font-size:12px;color:var(--dsw-alias-label-secondary);flex:none}
+.gbar-base{
+  flex:1;min-width:0;height:32px;padding:0 10px;
+  border:1px solid var(--dsw-alias-border-l2);border-radius:9px;
+  background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);
+  font:inherit;font-size:12.5px;outline:none;cursor:pointer;
+}
+.gbar-base:focus{border-color:var(--dsw-alias-state-business-primary)}
+.gbar-modal input{
+  width:100%;height:38px;padding:0 13px;
+  border:1px solid var(--dsw-alias-border-l2);border-radius:10px;
+  background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);
+  font:inherit;font-size:13.5px;outline:none;
+}
+.gbar-modal input:focus{border-color:var(--dsw-alias-state-business-primary)}
+.gbar-modal input::placeholder{color:var(--dsw-alias-label-tertiary)}
+.gbar-modal .gbar-pushrow{padding:0}
+.gbar-x:disabled{opacity:.5;cursor:default}
+/* commit-graph dialog */
+.gbar-modal.gbar-graph-modal{width:min(760px,calc(100vw - 40px));gap:10px}
+/* Refresh sits immediately left of close, both pinned to the right edge: the
+   refresh takes the auto margin (specificity .gbar-x.gbar-refresh beats the
+   .gbar-x override below), close drops it so they stay adjacent. */
+.gbar-modal.gbar-graph-modal .gbar-head .gbar-x.gbar-refresh{margin-left:auto}
+.gbar-modal.gbar-graph-modal .gbar-head .gbar-x{margin-left:0}
+.gbar-modal.gbar-graph-modal .gbar-x svg{width:15px;height:15px;display:block}
+.gbar-graph-empty{padding:28px 12px;text-align:center;font-size:13px;color:var(--dsw-alias-label-tertiary)}
+.gbar-graph-table{display:flex;flex-direction:column;max-height:min(60vh,540px);overflow:auto;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-bg-layer-2)}
+.gbar-graph-row{display:grid;grid-template-columns:62px 1fr 96px 90px;align-items:center;gap:8px;padding:5px 12px;border-bottom:1px solid var(--dsw-alias-border-l1)}
+.gbar-graph-row:last-child{border-bottom:none}
+.gbar-graph-row:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.gbar-graph-head{position:sticky;top:0;background:var(--dsw-alias-bg-module-platform);font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--dsw-alias-label-tertiary);z-index:1}
+.gbar-graph-head:hover{background:var(--dsw-alias-bg-module-platform)}
+.gbar-c-hash code{font-family:var(--dsw-font-markdown-code-font-family,"SF Mono",Consolas,monospace);font-size:11px;color:var(--dsw-alias-label-secondary)}
+.gbar-c-subject{min-width:0;display:flex;align-items:center;gap:8px}
+.gbar-subject{font-size:12.5px;color:var(--dsw-alias-label-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gbar-refs{flex:none;font-size:10.5px;color:var(--dsw-alias-state-business-primary);background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);border-radius:999px;padding:1px 8px;white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis}
+.gbar-c-author{font-size:12px;color:var(--dsw-alias-label-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gbar-c-date{font-size:11.5px;color:var(--dsw-alias-label-tertiary);text-align:right;white-space:nowrap}
 
 /* diff side panel — fixed on the right; the conversation is pushed left via
    #root { margin-right } so the timeline rail stays visible. */
@@ -434,6 +507,11 @@ function shortBranch(name: string): string {
   return idx >= 0 && name.startsWith('origin/') ? name.slice(idx + 1) : name
 }
 
+/** Branch names that must never be deletable (main/master). */
+function isProtectedBranch(name: string): boolean {
+  return name === 'main' || name === 'master'
+}
+
 function statusLetter(status: string): string {
   if (status === 'U') return 'U'
   return status.length > 1 ? status[0] ?? 'M' : status
@@ -586,10 +664,17 @@ export function GitBar({ sessionId, controller, sessionsService, t }: GitBarProp
   const createBranch = (): void => {
     if (session === undefined || newBranchName.trim() === '') return
     void run(pushToRemote ? 'create-push' : 'create', async () => {
-      await apiPost(`${GIT_ROUTE}/create`, { session, name: newBranchName.trim(), push: pushToRemote })
+      await apiPost(`${GIT_ROUTE}/create`, {
+        session,
+        name: newBranchName.trim(),
+        base: baseBranch === '' ? undefined : baseBranch,
+        push: pushToRemote,
+      })
       setBranchOpen(false)
+      setNewBranchOpen(false)
       setNewBranchName('')
       setPushToRemote(false)
+      setBaseBranch('')
       await refresh()
       if (pushToRemote) showNotice('ok', `☁ ${newBranchName.trim()}`)
     })
@@ -598,6 +683,16 @@ export function GitBar({ sessionId, controller, sessionsService, t }: GitBarProp
   const [newBranchName, setNewBranchName] = useState('')
   const [pushToRemote, setPushToRemote] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  /** Base ref for the new-branch dialog: '' = current HEAD, otherwise a branch name. */
+  const [baseBranch, setBaseBranch] = useState('')
+  const [newBranchOpen, setNewBranchOpen] = useState(false)
+
+  const openNewBranch = (): void => {
+    setNewBranchName('')
+    setBaseBranch('')
+    setPushToRemote(false)
+    setNewBranchOpen(true)
+  }
 
   // Two-step branch deletion: first click arms a confirm, second click deletes.
   const deleteBranch = (name: string): void => {
@@ -616,6 +711,44 @@ export function GitBar({ sessionId, controller, sessionsService, t }: GitBarProp
         setConfirmDelete(current => (current === name ? null : current))
       }, 3000)
     }
+  }
+
+  // Two-step remote-branch deletion (`git push origin --delete <branch>`).
+  const deleteRemoteBranch = (name: string): void => {
+    if (session === undefined) return
+    if (confirmDelete === name) {
+      setConfirmDelete(null)
+      void run('remote-delete', async () => {
+        await apiPost(`${GIT_ROUTE}/remote-delete`, { session, name })
+        loadBranches()
+        await refresh()
+        showNotice('ok', `🗑 ${name}`)
+      })
+    } else {
+      setConfirmDelete(name)
+      window.setTimeout(() => {
+        setConfirmDelete(current => (current === name ? null : current))
+      }, 3000)
+    }
+  }
+
+  // --- git commit graph dialog ------------------------------------------------
+  const [graphOpen, setGraphOpen] = useState(false)
+  const [graph, setGraph] = useState<GitGraph | null>(null)
+  const [graphBusy, setGraphBusy] = useState(false)
+
+  const fetchGraph = (): void => {
+    if (session === undefined) return
+    setGraphBusy(true)
+    void apiGet<GitGraph>(`${GIT_ROUTE}/graph?session=${encodeURIComponent(session)}&limit=150`)
+      .then(setGraph)
+      .catch(cause => { showNotice('err', cause instanceof Error ? cause.message : String(cause)) })
+      .finally(() => { setGraphBusy(false) })
+  }
+
+  const openGraph = (): void => {
+    setGraphOpen(true)
+    fetchGraph()
   }
 
   // --- commit exclusions ----------------------------------------------------
@@ -887,7 +1020,6 @@ export function GitBar({ sessionId, controller, sessionsService, t }: GitBarProp
           <path d="M7.4 2.6a1.2 1.2 0 1 1 2.2 0l3.2 1.6a1.2 1.2 0 1 1-1.1 2.1l-2.3-1.2a2.6 2.6 0 0 1-1.1.8l.6 4.2a1.2 1.2 0 1 1-1.7.2l-.6-4.2a2.6 2.6 0 0 1-1.2-.7l-2.9 1.5a1.2 1.2 0 1 1-1.1-2.1l2.9-1.5a2.6 2.6 0 0 1 .2-1.5l-3.2-1.6a1.2 1.2 0 1 1 1.1-2.1z" />
         </svg>
         <span>{snapshot.branch ?? snapshot.detachedHead ?? '—'}</span>
-        {dirty ? <span className="gbar-dot" aria-hidden /> : null}
         <span className="gbar-caret" aria-hidden>▾</span>
       </button>
 
@@ -925,10 +1057,11 @@ export function GitBar({ sessionId, controller, sessionsService, t }: GitBarProp
             <path d="M11.4 1.6a2.12 2.12 0 0 1 3 3l-8 8-3.4.8.8-3.4 7.6-8.4zM12.1 2.3l.9.9-7.6 8.3-.8.2.2-.8 7.3-8.6z" />
           </svg>
           <span className="gbar-hint">{t('commitMessage')}</span>
+          {dirty ? <span className="gbar-dot" aria-hidden /> : null}
         </button>
       </span>
 
-      {/* Branch popup */}
+      {/* Branch popup — branch list + action entries (new branch / graph) */}
       {branchOpen ? (
         <div className="gbar-pop" role="menu" aria-label={snapshot.branch ?? 'git'} ref={branchPopRef}>
           <div className="gbar-sec">{t('branchLocal')}</div>
@@ -942,7 +1075,7 @@ export function GitBar({ sessionId, controller, sessionsService, t }: GitBarProp
                 <span>{name}</span>
                 {name === branches.current ? <span className="gbar-check" aria-hidden>✓</span> : null}
               </button>
-              {name !== branches.current ? (
+              {name !== branches.current && !isProtectedBranch(name) ? (
                 <button
                   type="button"
                   className={'gbar-del' + (confirmDelete === name ? ' gbar-arm' : '')}
@@ -956,39 +1089,43 @@ export function GitBar({ sessionId, controller, sessionsService, t }: GitBarProp
           ))}
           <div className="gbar-sec">{t('branchRemote')}</div>
           {branches?.remote.map(name => (
-            <button
-              key={name}
-              type="button"
-              className={'gbar-row' + (name === branches.current ? ' gbar-cur' : '')}
-              onClick={() => { pickBranch(name) }}
-            >
-              <span>{shortBranch(name)}</span>
-              <span className="gbar-rm">{name.split('/')[0]}</span>
-            </button>
+            <div key={name} className="gbar-rowwrap">
+              <button
+                type="button"
+                className={'gbar-row' + (name === branches.current ? ' gbar-cur' : '')}
+                onClick={() => { pickBranch(name) }}
+              >
+                <span>{shortBranch(name)}</span>
+                <span className="gbar-rm">{name.split('/')[0]}</span>
+              </button>
+              {!isProtectedBranch(shortBranch(name)) ? (
+                <button
+                  type="button"
+                  className={'gbar-del' + (confirmDelete === name ? ' gbar-arm' : '')}
+                  onClick={() => { deleteRemoteBranch(name) }}
+                  title={t('branchRemoteDelete')}
+                >
+                  {confirmDelete === name ? t('branchDeleteConfirm') : '🗑'}
+                </button>
+              ) : null}
+            </div>
           ))}
-          <div className="gbar-sec">{t('branchNew')}</div>
-          <div className="gbar-newrow">
-            <input
-              value={newBranchName}
-              onChange={event => { setNewBranchName(event.target.value) }}
-              onKeyDown={event => { if (event.key === 'Enter') createBranch() }}
-              placeholder={t('branchNewPlaceholder')}
-              aria-label={t('branchNew')}
-            />
-            <button type="button" className="gbar-mini" onClick={createBranch} disabled={busy !== null || newBranchName.trim() === ''}>
-              {t('branchCreate')}
+          <div className="gbar-actions">
+            <button type="button" className="gbar-act" onClick={openNewBranch}>
+              <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+                <path d="M7.4 2.6a1.2 1.2 0 1 1 2.2 0l3.2 1.6a1.2 1.2 0 1 1-1.1 2.1l-2.3-1.2a2.6 2.6 0 0 1-1.1.8l.6 4.2a1.2 1.2 0 1 1-1.7.2l-.6-4.2a2.6 2.6 0 0 1-1.2-.7l-2.9 1.5a1.2 1.2 0 1 1-1.1-2.1l2.9-1.5a2.6 2.6 0 0 1 .2-1.5l-3.2-1.6a1.2 1.2 0 1 1 1.1-2.1z" />
+              </svg>
+              {t('branchNew')}
             </button>
-          </div>
-          <div className="gbar-pushrow">
-            <button
-              type="button"
-              className={'gbar-chk' + (pushToRemote ? '' : ' gbar-off')}
-              onClick={() => { setPushToRemote(value => !value) }}
-              aria-label={t('branchPushRemote')}
-            >
-              {pushToRemote ? '✓' : '✕'}
+            <button type="button" className="gbar-act" onClick={openGraph}>
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
+                <path d="M3 1.5v3.4a4.4 4.4 0 0 0 4.4 4.4h5.1" />
+                <path d="M13 1.5v4.9a3.2 3.2 0 0 1-3.2 3.2H3" />
+                <circle cx="3" cy="1.5" r="1.2" fill="currentColor" stroke="none" />
+                <circle cx="13" cy="12" r="1.2" fill="currentColor" stroke="none" />
+              </svg>
+              {t('branchGraph')}
             </button>
-            <span className="gbar-pushlabel">{t('branchPushRemote')}</span>
           </div>
         </div>
       ) : null}
@@ -1199,6 +1336,107 @@ export function GitBar({ sessionId, controller, sessionsService, t }: GitBarProp
                 {busy === 'commit-push' ? <span className="gbar-spin" /> : null} {t('commitSubmitPush')}
               </button>
             </div>
+          </div>
+        </div>,
+        document.body,
+      ) : null}
+
+      {/* New-branch dialog */}
+      {newBranchOpen ? createPortal(
+        <div className="gbar-modal-wrap" onMouseDown={event => { if (event.target === event.currentTarget) setNewBranchOpen(false) }}>
+          <div className="gbar-modal" role="dialog" aria-label={t('branchNew')}>
+            <div className="gbar-head">
+              <span className="gbar-title">{t('branchNew')}</span>
+              <span className="gbar-branch">{snapshot.branch ?? snapshot.detachedHead ?? '—'}</span>
+              <button type="button" className="gbar-x" onClick={() => { setNewBranchOpen(false) }} aria-label="✕">✕</button>
+            </div>
+            <input
+              value={newBranchName}
+              onChange={event => { setNewBranchName(event.target.value) }}
+              onKeyDown={event => { if (event.key === 'Enter') createBranch() }}
+              placeholder={t('branchNewPlaceholder')}
+              aria-label={t('branchNew')}
+              autoFocus
+            />
+            <div className="gbar-baserow">
+              <label className="gbar-baselabel" htmlFor="gbar-base-dlg">{t('branchFrom')}</label>
+              <select
+                id="gbar-base-dlg"
+                className="gbar-base"
+                value={baseBranch}
+                onChange={event => { setBaseBranch(event.target.value) }}
+                aria-label={t('branchFrom')}
+              >
+                <option value="">{t('branchFromHead')}</option>
+                {branches?.local.map(name => <option key={name} value={name}>{name}</option>)}
+                {branches?.remote.map(name => <option key={name} value={name}>{name}</option>)}
+              </select>
+            </div>
+            <div className="gbar-pushrow">
+              <button
+                type="button"
+                className={'gbar-chk' + (pushToRemote ? '' : ' gbar-off')}
+                onClick={() => { setPushToRemote(value => !value) }}
+                aria-label={t('branchPushRemote')}
+              >
+                {pushToRemote ? '✓' : '✕'}
+              </button>
+              <span className="gbar-pushlabel">{t('branchPushRemote')}</span>
+            </div>
+            <div className="gbar-foot">
+              <button type="button" className="gbar-btn gbar-ghost" onClick={() => { setNewBranchOpen(false) }}>{t('branchCancel')}</button>
+              <button type="button" className="gbar-btn gbar-primary" onClick={createBranch} disabled={busy !== null || newBranchName.trim() === ''}>
+                {busy === 'create' || busy === 'create-push' ? <span className="gbar-spin" /> : null} {t('branchCreate')}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      ) : null}
+
+      {/* Commit-graph dialog */}
+      {graphOpen ? createPortal(
+        <div className="gbar-modal-wrap" onMouseDown={event => { if (event.target === event.currentTarget) setGraphOpen(false) }}>
+          <div className="gbar-modal gbar-graph-modal" role="dialog" aria-label={t('graphTitle')}>
+            <div className="gbar-head">
+              <span className="gbar-title">{t('graphTitle')}</span>
+              <span className="gbar-branch">{snapshot.branch ?? snapshot.detachedHead ?? '—'}</span>
+              <span className="gbar-spacer" />
+              <button type="button" className="gbar-x gbar-refresh" onClick={fetchGraph} aria-label={t('branchRefresh')} title={t('branchRefresh')} disabled={graphBusy}>
+                {graphBusy ? <span className="gbar-spin" /> : (
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M13.4 8a5.4 5.4 0 1 1-1.6-3.8" />
+                    <path d="M13.4 1.5v3h-3" />
+                  </svg>
+                )}
+              </button>
+              <button type="button" className="gbar-x" onClick={() => { setGraphOpen(false) }} aria-label="✕">✕</button>
+            </div>
+            {graph === null ? (
+              <div className="gbar-graph-empty">{graphBusy ? t('loading') : t('noChanges')}</div>
+            ) : graph.commits.length === 0 ? (
+              <div className="gbar-graph-empty">{t('noChanges')}</div>
+            ) : (
+              <div className="gbar-graph-table" role="table" aria-label={t('graphTitle')}>
+                <div className="gbar-graph-row gbar-graph-head" role="row">
+                  <span className="gbar-c-hash" role="columnheader">{t('graphColCommit')}</span>
+                  <span className="gbar-c-subject" role="columnheader">{t('graphColSubject')}</span>
+                  <span className="gbar-c-author" role="columnheader">{t('graphColAuthor')}</span>
+                  <span className="gbar-c-date" role="columnheader">{t('graphColDate')}</span>
+                </div>
+                {graph.commits.map(commit => (
+                  <div key={commit.fullHash} className="gbar-graph-row" role="row">
+                    <span className="gbar-c-hash" role="cell"><code className="gbar-hash">{commit.hash}</code></span>
+                    <span className="gbar-c-subject" role="cell">
+                      <span className="gbar-subject">{commit.subject}</span>
+                      {commit.refs !== '' ? <span className="gbar-refs">{commit.refs}</span> : null}
+                    </span>
+                    <span className="gbar-c-author" role="cell">{commit.author}</span>
+                    <span className="gbar-c-date" role="cell" title={commit.date}>{commit.dateRelative}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>,
         document.body,

@@ -123,6 +123,12 @@ export class GitWebHandler {
           ok(res, await this.backend.diff(cwd, file, mode))
           return
         }
+        if (path === `${GIT_ROUTE}/graph`) {
+          const raw = url.searchParams.get('limit')
+          const limit = raw === null ? undefined : Number(raw)
+          ok(res, await this.backend.graph(cwd, limit))
+          return
+        }
       } catch (error) {
         fail(res, 400, 'git-request-failed', messageOf(error))
         return
@@ -190,6 +196,13 @@ export class GitWebHandler {
         const fields = requireFields(body, ['name'])
         const cwd = this.requireCwd(session)
         await this.backend.deleteBranch(cwd, fields.name)
+        ok(res, { branch: fields.name })
+        return
+      }
+      if (path === `${GIT_ROUTE}/remote-delete`) {
+        const fields = requireFields(body, ['name'])
+        const cwd = this.requireCwd(session)
+        await this.backend.deleteRemoteBranch(cwd, fields.name)
         ok(res, { branch: fields.name })
         return
       }

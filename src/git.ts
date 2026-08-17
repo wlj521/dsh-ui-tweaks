@@ -61,6 +61,33 @@ export interface GitBranches {
   remote: string[]
 }
 
+/** One commit row of the graph table. */
+export interface GitGraphCommit {
+  /** ASCII graph edge prefix (monospace drawing column). */
+  graph: string
+  /** Full commit hash. */
+  fullHash: string
+  /** Short hash (7 chars). */
+  hash: string
+  /** Subject line. */
+  subject: string
+  /** Author name. */
+  author: string
+  /** ISO-8601 commit date. */
+  date: string
+  /** Relative date, e.g. "3 days ago". */
+  dateRelative: string
+  /** Ref decorations, e.g. `HEAD -> main, origin/main` (outer parens stripped). */
+  refs: string
+}
+
+/** Git commit graph table (`git log --graph`, structured rows). */
+export interface GitGraph {
+  commits: GitGraphCommit[]
+  /** Whether the requested commit window was cut off by the limit. */
+  truncated: boolean
+}
+
 /** One rendered line of a per-file diff view. */
 export interface DiffLine {
   type: 'hunk' | 'add' | 'del' | 'ctx'
@@ -751,12 +778,66 @@ export class GitBackend {
     return hash === undefined ? { pushed } : { hash, pushed }
   }
 
-  /** Delete a local branch (force; the UI confirms first). */
+  /** Delete a local branch (force; the UI confirms first). Protected branches cannot be deleted. */
   async deleteBranch(cwd: string, name: string, signal?: AbortSignal): Promise<void> {
     if (!isValidBranchName(name)) throw new Error('invalid branch name')
+    if (isProtectedBranchName(name)) throw new Error(`cannot delete protected branch: ${name}`)
     const { stdout } = await runGit(cwd, ['branch', '--show-current'], { signal })
     if (stdout.trim() === name) throw new Error(`cannot delete the current branch: ${name}`)
     await runGit(cwd, ['branch', '-D', name], { signal })
+  }
+
+  /**
+   * Delete a remote branch (`origin/foo` → `git push origin --delete foo`).
+   * Protected branches cannot be deleted. The local remote-tracking ref is
+   * pruned afterwards so the branch list refreshes without waiting for a fetch.
+   */
+  async deleteRemoteBranch(cwd: string, name: string, signal?: AbortSignal): Promise<void> {
+    const idx = name.indexOf('/')
+    if (idx <= 0 || idx === name.length - 1) throw new Error('invalid remote branch name')
+    const remote = name.slice(0, idx)
+    const branch = name.slice(idx + 1)
+    if (remote.includes('/') || !isValidBranchName(remote) || !isValidBranchName(branch)) {
+      throw new Error('invalid remote branch name')
+    }
+    if (isProtectedBranchName(branch)) throw new Error(`cannot delete protected branch: ${branch}`)
+    await runGit(cwd, ['push', remote, '--delete', branch], { signal })
+    // Best-effort prune of the stale remote-tracking ref.
+    await runGit(cwd, ['branch', '-dr', name], { signal }).catch(() => {})
+  }
+
+  /**
+   * Recent commit graph as structured rows (`git log --graph --all --no-color`
+   * with a machine-readable format), bounded by `limit` commits. The graph edge
+   * prefix is kept verbatim for the monospace drawing column.
+   */
+  async graph(cwd: string, limit: number | undefined, signal?: AbortSignal): Promise<GitGraph> {
+    const n = Math.max(1, Math.min(500, Number.isFinite(limit) ? Math.floor(limit as number) : 150))
+    const sep = '\u001f'
+    const { stdout } = await runGit(cwd, [
+      'log', '--graph', '--all', '--no-color',
+      `--format=${sep}%H${sep}%h${sep}%an${sep}%aI${sep}%cr${sep}%d${sep}%s`,
+      '-n', String(n),
+    ], { signal })
+    const commits: GitGraphCommit[] = []
+    for (const line of stdout.split('\n')) {
+      // Pure graph continuation lines (`|`, `/`, `\`) carry no commit data.
+      const parts = line.split(sep)
+      if (parts.length < 8) continue
+      const [graph, fullHash, hash, author, date, dateRelative, refs, subject] = parts
+      if (fullHash === undefined || fullHash === '' || subject === undefined) continue
+      commits.push({
+        graph: graph ?? '',
+        fullHash,
+        hash: hash ?? fullHash.slice(0, 7),
+        author: (author ?? '').trim(),
+        date: (date ?? '').trim(),
+        dateRelative: (dateRelative ?? '').trim(),
+        refs: (refs ?? '').trim().replace(/^\(|\)$/g, ''),
+        subject: subject.trim(),
+      })
+    }
+    return { commits, truncated: commits.length >= n }
   }
 
   /** Push the current branch; a branch without upstream gets `-u origin <branch>`. */
@@ -830,4 +911,9 @@ function isAbortError(error: unknown): boolean {
 /** Git branch names: no leading `-`, no spaces, no control chars. */
 function isValidBranchName(name: string): boolean {
   return /^[A-Za-z0-9._\/-]+$/.test(name) && !name.startsWith('-') && !name.includes('..')
+}
+
+/** Branch names that must never be deletable (main/master). */
+function isProtectedBranchName(name: string): boolean {
+  return name === 'main' || name === 'master'
 }
