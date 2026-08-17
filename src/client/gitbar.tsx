@@ -29,6 +29,15 @@ const GIT_ROUTE = '/_dsh/ui-tweaks/git'
 /** Poll interval for the status snapshot, in ms. */
 const POLL_MS = 10000
 
+/** Default cap of the file list while its height is still automatic, in px. */
+const FILES_AUTO_MAX = 150
+/** Floors for the three resizable diff-panel sections, in px. */
+const MIN_FILES_H = 30
+const MIN_DIFF_H = 60
+const MIN_COMMIT_H = 62
+/** Share of the panel a dragged section may never exceed, so the diff survives. */
+const SECTION_MAX = '45%'
+
 /** Locale keys the GitBar reads off the `ui-tweaks` dictionary. */
 type GitBarLabelKey =
   | 'commitMessage' | 'diffFiles' | 'branchLocal' | 'branchRemote' | 'branchNew'
@@ -128,21 +137,22 @@ export const GITBAR_CSS = `
      here. buildRuntimeCss overrides the cap (!important) when the dialog
      width changes. */
   width:calc(100% - 120px);max-width:706px;margin-inline:auto;
-  /* Solid background: messages scroll behind the sticky composer seat, and a
-     transparent row would let text show through the pills. */
-  background:var(--dsw-alias-bg-layer-1);
+  /* The row itself paints nothing: only the pills are visible, so the composer
+     seat below shows through instead of a floating opaque strip. Each pill
+     keeps its own solid background so scrolled text never bleeds through. */
+  background:transparent;
 }
 .gbar-right{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
 .gbar-pill{
   display:inline-flex;align-items:center;gap:6px;
   height:26px;padding:0 10px;
   background:var(--dsw-alias-bg-module-platform);
-  border:1px solid var(--dsw-alias-border-l2);
+  border:none;
   border-radius:8px;
   color:var(--dsw-alias-label-primary);
   font:inherit;font-size:12.5px;line-height:1;
   cursor:pointer;
-  transition:background .15s ease,border-color .15s ease;
+  transition:background .15s ease;
   white-space:nowrap;
   -webkit-user-select:none;user-select:none;
 }
@@ -211,7 +221,7 @@ export const GITBAR_CSS = `
    #root { margin-right } so the timeline rail stays visible. */
 .gbar-side{
   position:fixed;right:0;top:0;bottom:0;z-index:80;
-  display:flex;flex-direction:column;
+  display:flex;flex-direction:column;overflow:hidden;
   background:var(--dsw-alias-bg-layer-1);
   border-left:1px solid var(--dsw-alias-border-l2);
   box-shadow:var(--dsw-shadow-lv2);
@@ -239,7 +249,22 @@ export const GITBAR_CSS = `
 .gbar-side-x{border:none;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:15px;cursor:pointer;width:28px;height:28px;border-radius:8px;flex:none}
 .gbar-side-x:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .gbar-side-body{flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0}
-.gbar-files{overflow-y:auto;border-bottom:1px solid var(--dsw-alias-border-l1);max-height:150px}
+/* The three stacked sections (files / diff / commit) are sized by drag: the two
+   neighbours carry an explicit inline height and the diff pane absorbs whatever
+   is left, so a drag can never overflow the panel. The dividing hairlines are
+   painted by the splitters, not by the sections' own borders. */
+.gbar-files{flex:none;overflow-y:auto}
+/* horizontal drag splitters between the sections */
+.gbar-vsplit{
+  flex:none;position:relative;height:7px;
+  cursor:row-resize;touch-action:none;-webkit-user-select:none;user-select:none;
+}
+.gbar-vsplit::after{
+  content:"";position:absolute;left:0;right:0;top:3px;height:1px;
+  background:var(--dsw-alias-border-l1);transition:background .15s ease,height .15s ease;
+}
+.gbar-vsplit:hover::after{background:var(--dsw-alias-border-l2);height:2px}
+.gbar-vsplit.gbar-dragging::after{background:var(--dsw-alias-state-business-primary);height:2px}
 .gbar-file{
   display:flex;align-items:center;gap:6px;width:100%;
   padding:3px 14px;background:transparent;
@@ -269,7 +294,7 @@ export const GITBAR_CSS = `
 .gbar-file .gbar-nums{flex:none;font-variant-numeric:tabular-nums;font-size:11.5px}
 .gbar-file .gbar-nums .gbar-a{color:var(--dsw-alias-state-success-primary)}
 .gbar-file .gbar-nums .gbar-d{color:var(--dsw-alias-state-error-primary)}
-.gbar-diff{flex:1;overflow:auto;font-family:var(--dsw-font-markdown-code-font-family,"SF Mono",Consolas,monospace);font-size:12px;line-height:1.7;padding:8px 0}
+.gbar-diff{flex:1;min-height:0;overflow:auto;font-family:var(--dsw-font-markdown-code-font-family,"SF Mono",Consolas,monospace);font-size:12px;line-height:1.7;padding:8px 0}
 .gbar-diff .gbar-hunk{display:flex;align-items:center;height:24px;color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-markdown-inline-code);padding:0 14px;font-size:11.5px;white-space:nowrap}
 .gbar-diff .gbar-line{display:flex;align-items:center;min-height:21px;padding:0 14px 0 0;white-space:pre}
 .gbar-diff .gbar-line .gbar-ln{flex:none;width:46px;text-align:right;padding-right:12px;color:var(--dsw-alias-label-tertiary);font-size:11px;-webkit-user-select:none;user-select:none}
@@ -280,20 +305,22 @@ export const GITBAR_CSS = `
 .gbar-diff .gbar-line.gbar-del .gbar-ln{color:var(--dsw-alias-state-error-primary)}
 .gbar-diff .gbar-line.gbar-ctx .gbar-code{color:var(--dsw-alias-label-secondary)}
 .gbar-diff .gbar-empty{padding:18px 16px;font-size:12px;color:var(--dsw-alias-label-tertiary)}
-.gbar-side-foot{padding:8px 14px;border-top:1px solid var(--dsw-alias-border-l1);font-size:11.5px;color:var(--dsw-alias-label-tertiary);display:flex;gap:8px;align-items:center}
+/* The hairline above the foot is drawn by the commit splitter that precedes it. */
+.gbar-side-foot{flex:none;padding:8px 14px;font-size:11.5px;color:var(--dsw-alias-label-tertiary);display:flex;gap:8px;align-items:center}
 .gbar-side-foot .gbar-dot{width:6px;height:6px;border-radius:50%;background:var(--dsw-alias-state-warn-primary);flex:none}
-/* commit row inside the diff panel */
-.gbar-side-commit{display:flex;flex-direction:column;gap:7px;padding:9px 12px;border-top:1px solid var(--dsw-alias-border-l1)}
-.gbar-side-commit .gbar-crow{display:flex;align-items:center;gap:6px}
-.gbar-side-commit input{
-  flex:1;min-width:0;height:28px;padding:0 10px;
+/* commit row inside the diff panel — height is drag-adjustable, so the message
+   field stretches to fill whatever the user gives this section. */
+.gbar-side-commit{flex:none;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:7px;padding:9px 12px;border-top:1px solid var(--dsw-alias-border-l1)}
+.gbar-side-commit .gbar-crow{flex:1;min-height:0;display:flex;align-items:stretch;gap:6px}
+.gbar-side-commit textarea{
+  flex:1;min-width:0;min-height:30px;padding:6px 10px;resize:none;
   border:1px solid var(--dsw-alias-border-l2);border-radius:8px;
   background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);
-  font:inherit;font-size:12px;outline:none;
+  font:inherit;font-size:12px;line-height:1.6;outline:none;overflow-y:auto;
 }
-.gbar-side-commit input:focus{border-color:var(--dsw-alias-state-business-primary)}
-.gbar-side-commit input::placeholder{color:var(--dsw-alias-label-tertiary)}
-.gbar-side-commit .gbar-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px}
+.gbar-side-commit textarea:focus{border-color:var(--dsw-alias-state-business-primary)}
+.gbar-side-commit textarea::placeholder{color:var(--dsw-alias-label-tertiary)}
+.gbar-side-commit .gbar-actions{flex:none;display:flex;align-items:center;justify-content:flex-end;gap:6px}
 .gbar-side-commit .gbar-btn{height:28px;padding:0 12px;font-size:12px;border-radius:8px}
 
 /* commit modal */
@@ -616,6 +643,12 @@ export function GitBar({ sessionId, controller, t }: GitBarProps) {
   // --- resizable diff panel -------------------------------------------------
   const [diffWidth, setDiffWidth] = useState(440)
   const [panelTop, setPanelTop] = useState(0)
+  // Section heights: `null` keeps the automatic sizing this panel shipped with
+  // (file list capped at FILES_AUTO_MAX, commit band hugging its content); a
+  // number is the height the user dragged that section to.
+  const [filesHeight, setFilesHeight] = useState<number | null>(null)
+  const [commitHeight, setCommitHeight] = useState<number | null>(null)
+  const [dragging, setDragging] = useState<'files' | 'commit' | null>(null)
   const branchRef = useRef<HTMLButtonElement | null>(null)
   const branchPopRef = useRef<HTMLDivElement | null>(null)
 
@@ -684,6 +717,46 @@ export function GitBar({ sessionId, controller, t }: GitBarProps) {
       setDiffWidth(Math.min(900, Math.max(320, startWidth - (move.clientX - startX))))
     }
     const onUp = (): void => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
+  // Drag a horizontal splitter to redistribute height between the panel's three
+  // sections. Only the dragged section gets an explicit height; the diff pane is
+  // the flexible one, so every pixel a neighbour gains comes out of the diff and
+  // the total never exceeds the panel. Double-click restores automatic sizing.
+  const startVResize = (
+    target: 'files' | 'commit',
+    event: { clientY: number; preventDefault: () => void },
+  ): void => {
+    event.preventDefault()
+    const panel = document.querySelector('.gbar-side')
+    const measure = (selector: string): number => {
+      const el = panel?.querySelector(selector) ?? null
+      return el === null ? 0 : el.getBoundingClientRect().height
+    }
+    const startY = event.clientY
+    const startFiles = measure('.gbar-files')
+    const startCommit = measure('.gbar-side-commit')
+    const startDiff = measure('.gbar-diff')
+    setDragging(target)
+    const onMove = (move: PointerEvent): void => {
+      const delta = move.clientY - startY
+      if (target === 'files') {
+        // Dragging down grows the file list and shrinks the diff.
+        const ceiling = Math.max(MIN_FILES_H, startFiles + startDiff - MIN_DIFF_H)
+        setFilesHeight(Math.round(Math.min(ceiling, Math.max(MIN_FILES_H, startFiles + delta))))
+      } else {
+        // Dragging up grows the commit band and shrinks the diff.
+        const ceiling = Math.max(MIN_COMMIT_H, startCommit + startDiff - MIN_DIFF_H)
+        setCommitHeight(Math.round(Math.min(ceiling, Math.max(MIN_COMMIT_H, startCommit - delta))))
+      }
+    }
+    const onUp = (): void => {
+      setDragging(null)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
     }
@@ -874,7 +947,12 @@ export function GitBar({ sessionId, controller, t }: GitBarProps) {
             <button type="button" className="gbar-side-x" onClick={() => { setDiffOpen(false) }} aria-label="✕">✕</button>
           </div>
           <div className="gbar-side-body">
-            <div className="gbar-files">
+            <div
+              className="gbar-files"
+              style={filesHeight === null
+                ? { maxHeight: FILES_AUTO_MAX }
+                : { height: filesHeight, maxHeight: SECTION_MAX }}
+            >
               {snapshot.files.map(file => {
                 const isExcluded = excluded.has(file.path)
                 return (
@@ -902,6 +980,14 @@ export function GitBar({ sessionId, controller, t }: GitBarProps) {
                 )
               })}
             </div>
+            <div
+              className={'gbar-vsplit' + (dragging === 'files' ? ' gbar-dragging' : '')}
+              role="separator"
+              aria-orientation="horizontal"
+              title="拖动调整文件列表高度（双击复位）"
+              onPointerDown={event => { startVResize('files', event) }}
+              onDoubleClick={() => { setFilesHeight(null) }}
+            />
             {diff === null ? (
               <div className="gbar-diff"><div className="gbar-empty">{t('loading')}</div></div>
             ) : diff.lines.length === 0 ? (
@@ -918,20 +1004,41 @@ export function GitBar({ sessionId, controller, t }: GitBarProps) {
                 {diff.truncated ? <div className="gbar-empty">…</div> : null}
               </div>
             )}
+            {dirty ? (
+              <div
+                className={'gbar-vsplit' + (dragging === 'commit' ? ' gbar-dragging' : '')}
+                role="separator"
+                aria-orientation="horizontal"
+                title="拖动调整提交区高度（双击复位）"
+                onPointerDown={event => { startVResize('commit', event) }}
+                onDoubleClick={() => { setCommitHeight(null) }}
+              />
+            ) : null}
           </div>
           <div className="gbar-side-foot">
             <span className="gbar-dot" />
             {snapshot.branch ?? '—'} · {dirty ? t('dirty') : t('clean')}
           </div>
           {dirty ? (
-            <div className="gbar-side-commit">
+            <div
+              className="gbar-side-commit"
+              style={commitHeight === null ? undefined : { height: commitHeight, maxHeight: SECTION_MAX }}
+            >
               <div className="gbar-crow">
-                <input
+                <textarea
                   value={message}
                   onChange={event => { setMessage(event.target.value) }}
-                  onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) doCommit(false) }}
+                  onKeyDown={event => {
+                    // Enter commits; Shift+Enter adds a line, now that this field
+                    // can be dragged tall enough for a multi-line message.
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                      event.preventDefault()
+                      doCommit(false)
+                    }
+                  }}
                   placeholder={t('commitPlaceholder')}
                   aria-label={t('commitMessage')}
+                  rows={1}
                 />
               </div>
               <div className="gbar-actions">

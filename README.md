@@ -21,7 +21,7 @@
 - **对话时间线（可开关，默认关闭）**：在消息区右侧显示细竖导航轨——每条用户消息一根指示线，悬停展开面板预览消息、随滚动高亮当前位置、点击平滑跳转到对应消息（自动加载更早历史）。**浅色/深色模式都正常显示**，且**始终贴在消息区右侧**：即使安装了右侧边栏（如 dsh-better-sidebar）并展开，时间线也会自动避让、不会与侧边栏重叠。会话中用户消息少于 2 条时自动隐藏。
 - **GitBar（默认开启，可在设置中关闭）**：当会话的工作目录是一个 git 仓库时，在输入框上方显示三颗 DSH 原生风格的紧凑胶囊（与输入框同宽、随“对话框宽度”设置联动）：
   - **分支胶囊（左）**：当前分支名（有未提交改动时带橙色圆点）；点击**向上**弹出分支面板——本地 / 远程分支列表（点击即 `git switch`），底部可**新建分支**（`git switch -c` 并自动切换）。
-  - **差异胶囊（右）**：`+N −M · K 个文件`；点击从右侧滑出**差异面板**：文件列表 + 逐文件 diff（默认**只显示有差异的 hunk**，右上可切“完整文件”视图）。面板**支持拖动拉伸宽度**，展开时**自动把对话区往左挤**（不影响右侧时间线），底部可直接**提交 / 提交并推送**。
+  - **差异胶囊（右）**：`+N −M · K 个文件`；点击从右侧滑出**差异面板**：文件列表 + 逐文件 diff（默认**只显示有差异的 hunk**，右上可切“完整文件”视图）。面板**支持拖动拉伸宽度**，展开时**自动把对话区往左挤**（不影响右侧时间线），底部可直接**提交 / 提交并推送**。面板内三段（文件列表 / diff 内容 / 提交区）之间的分隔线**可上下拖动调整高度**（双击复位；提交说明框随提交区高度拉伸，可写多行，Shift+Enter 换行）。
   - **commit message 胶囊（右）**：点击弹出提交对话框——输入说明（**留空点提交会自动生成**，LLM 优先、失败回退启发式规则）、待提交文件清单（只显示文件与 ±行数，**点击文件即打开差异面板定位到该文件**），按钮：取消 / ✨ 生成 / 提交 / 提交并推送（新分支自动 `-u` 设上游）。
   - 非 git 仓库或无会话 cwd 时整行自动隐藏；所有操作走服务端 `execFile('git', …)`（无 shell、带超时）。
 
@@ -81,7 +81,7 @@ npx -y @deepseek-ai/dsh plugin --profile web add .        # 从本目录作为 b
 - **Git 后端**（`src/git.ts` + `src/git-web.ts`）：通过 `ctx.get('sessions')`（可选服务）解析会话 header 的 `cwd` 作为“当前项目”，用 `child_process.execFile('git', …)`（无 shell、cwd 固定、超时 + 中止传播）执行只读/写操作；同源路由 `/_dsh/ui-tweaks/git/*` 提供 status / branches / diff（hunk 或完整文件，含绝对行号）/ suggest / commit / push / checkout / create。提交说明生成优先走 `ctx.get('llm')`（可选服务，收集 `text-delta` 流），不可用时回退到启发式规则（按文件类型推断 conventional commit 类型与 scope）。
 - **浏览器端**（`src/client/index.tsx`）：读写该路由、渲染设置页，并通过运行时 `<style>` 元素实时应用样式，覆盖稳定的 DSH 锚点（`[data-chat-flow]`、`[data-composer-card]`、`body` 上的 markdown 字体 token、`[data-slot="conversation.chat.node"]` 内的 markdown 表格）。
 - **时间线**（`src/client/timeline.tsx`）：挂在 `conversation.input.dock` 插槽、portal 到 `body`。数据按速度优先：会话投影 → 已加载聊天节点 → 后台 `loadOlder`。位置通过测量 `[data-conversation-scroll]`（消息区）右缘与垂直中线动态锚定，因此 DSH 原生列布局与右侧边栏（`#root` 的 margin-right 布局推挤）变化时都会自动跟随；颜色全部使用 DSH 主题变量（`--dsw-alias-*`），浅色/深色模式均正常。
-- **GitBar**（`src/client/gitbar.tsx`）：挂在同一个 `conversation.input.dock` 插槽。胶囊行以 `width:100%` + `max-width` 与 composer 卡片同宽（buildRuntimeCss 在“对话框宽度”变化时同步覆盖该宽度，实现联动）；差异面板展开时通过 `#root { margin-right }` 把对话区往左挤，时间线 rail（锚定消息区右缘）因此不被遮挡。
+- **GitBar**（`src/client/gitbar.tsx`）：挂在同一个 `conversation.input.dock` 插槽。胶囊行以 `width:100%` + `max-width` 与 composer 卡片同宽（buildRuntimeCss 在“对话框宽度”变化时同步覆盖该宽度，实现联动），胶囊行自身背景透明、只有胶囊可见；差异面板展开时通过 `#root { margin-right }` 把对话区往左挤，时间线 rail（锚定消息区右缘）因此不被遮挡。面板内的高度分配采用「只给被拖的那一段显式高度、diff 段 `flex:1` 吃掉余量」的方式，配合 45% 上限，拖动永远不会撑破面板。
 
 ## 协议
 
