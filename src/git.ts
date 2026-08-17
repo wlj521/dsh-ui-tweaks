@@ -20,6 +20,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { open } from 'node:fs/promises'
 import { resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
+import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { UITweaksConfig } from './config.ts'
 
 /** One changed file with its ±line counts. */
@@ -128,6 +129,28 @@ const MAX_FULL_LINES = 20000
 
 const GIT_TIMEOUT_MS = 10000
 const LLM_TIMEOUT_MS = 20000
+
+/**
+ * Settings namespace of dsh-agent-default-model — the model the user picked
+ * for this DSH's Agents. Read directly from settings (not only through the
+ * service) so the selection works even when the service is out of the
+ * plugin context's reach.
+ */
+const AGENT_DEFAULT_MODEL_NAMESPACE = settingsNamespace('agent-default-model')
+
+/**
+ * Budgets for the diff excerpt handed to the model when suggesting a commit
+ * message. A file list alone cannot describe intent, so the real patch text
+ * goes into the prompt — bounded, because the model context and the request
+ * latency both pay for it.
+ */
+const MAX_SUGGEST_DIFF_CHARS = 12000
+/** Per-file share, so one huge file cannot crowd every other file out. */
+const MAX_SUGGEST_FILE_CHARS = 2600
+/** New (untracked) files are described by their first lines only. */
+const MAX_SUGGEST_NEW_FILE_LINES = 40
+/** How many files contribute content at all (the list still shows the rest). */
+const MAX_SUGGEST_FILES = 24
 
 interface RunResult {
   stdout: string
@@ -396,20 +419,155 @@ interface LlmLike {
     temperature?: number
     maxTokens?: number
     signal?: AbortSignal
-  }): AsyncIterable<{ type: string; text?: string }>
+  }): AsyncIterable<{ type: string; text?: string; reason?: unknown }>
 }
 
-/** Compact, model-friendly summary of the pending changes. */
-function buildSuggestPrompt(snapshot: GitSnapshot): string {
+/**
+ * Structural view of the default-model service (dsh-agent-default-model), so
+ * a suggestion uses the model the user already chose for this DSH instead of
+ * whichever provider happened to register first.
+ */
+interface DefaultModelLike {
+  currentSelection(): { provider?: string; model?: string }
+}
+
+/** How a commit message was produced, and why the LLM path was skipped. */
+export interface GitSuggestResult {
+  message: string
+  /** `llm` = a model wrote it; `heuristic` = offline fallback from file names. */
+  via: 'llm' | 'heuristic'
+  /** Provider/model actually used (or attempted). */
+  provider?: string
+  model?: string
+  /** Why the LLM path did not produce a message (only when `via` is heuristic). */
+  reason?: string
+  /** Whether the diff excerpt handed to the model was cut short. */
+  truncated?: boolean
+}
+
+/** Error text for a diagnostic, without leaking a stack trace. */
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+/** Render a stream `finish` reason as a short diagnostic string. */
+function finishReasonText(reason: unknown): string {
+  if (typeof reason === 'string') return reason
+  if (typeof reason !== 'object' || reason === null) return 'unknown'
+  const record = reason as Record<string, unknown>
+  const kind = typeof record.kind === 'string' ? record.kind : 'unknown'
+  const failure = record.failure
+  if (typeof failure === 'object' && failure !== null) {
+    const inner = failure as Record<string, unknown>
+    const code = typeof inner.code === 'string' ? inner.code : undefined
+    const message = typeof inner.message === 'string' ? inner.message : undefined
+    const detail = [code, message].filter(Boolean).join(': ')
+    if (detail !== '') return `${kind} (${detail})`
+  }
+  return kind
+}
+
+/** Keep the head of a per-file patch, marking the cut. */
+function clampPatch(patch: string, max: number): { text: string; truncated: boolean } {
+  if (patch.length <= max) return { text: patch, truncated: false }
+  return { text: `${patch.slice(0, max)}\n… [patch truncated]\n`, truncated: true }
+}
+
+/**
+ * Collect the actual patch text for the pending changes, bounded by
+ * {@link MAX_SUGGEST_DIFF_CHARS}. Tracked changes come from one
+ * `git diff HEAD` (staged and unstaged together, renames detected); untracked
+ * files have no HEAD side, so their first lines are quoted instead.
+ */
+async function collectSuggestDiff(
+  cwd: string,
+  snapshot: GitSnapshot,
+  signal?: AbortSignal,
+): Promise<{ text: string; truncated: boolean }> {
+  const args = ['diff', '--no-ext-diff', '--no-color', '--unified=3', '-M']
+  let raw = ''
+  try {
+    // `HEAD` covers staged + unstaged in one pass; it fails before the first
+    // commit, where `--cached` is the only side that exists.
+    raw = (await runGit(cwd, [...args, 'HEAD'], { signal })).stdout
+  } catch {
+    try {
+      raw = (await runGit(cwd, [...args, '--cached'], { signal })).stdout
+    } catch {
+      raw = ''
+    }
+  }
+
+  let budget = MAX_SUGGEST_DIFF_CHARS
+  let truncated = false
+  const chunks: string[] = []
+  if (raw !== '') {
+    // Split on file boundaries so the budget is spent across files, not on the
+    // first enormous one.
+    const parts = raw.split(/^(?=diff --git )/m).filter(part => part.trim() !== '')
+    let files = 0
+    for (const part of parts) {
+      if (budget <= 0 || files >= MAX_SUGGEST_FILES) {
+        truncated = true
+        break
+      }
+      const clamped = clampPatch(part, Math.min(MAX_SUGGEST_FILE_CHARS, budget))
+      if (clamped.truncated) truncated = true
+      chunks.push(clamped.text)
+      budget -= clamped.text.length
+      files++
+    }
+  }
+
+  for (const file of snapshot.files) {
+    if (!file.untracked) continue
+    if (budget <= 0) {
+      truncated = true
+      break
+    }
+    let head = ''
+    try {
+      const { content } = await readFileContent(cwd, file.path, signal)
+      const lines = content.split('\n')
+      const kept = lines.slice(0, MAX_SUGGEST_NEW_FILE_LINES)
+      if (lines.length > kept.length) truncated = true
+      head = kept.map(line => `+${line}`).join('\n')
+    } catch {
+      // Binary or unreadable new file: the entry alone still informs the model.
+      head = '+[unreadable or binary content]'
+    }
+    const clamped = clampPatch(`new file: ${file.path}\n${head}\n`, Math.min(MAX_SUGGEST_FILE_CHARS, budget))
+    if (clamped.truncated) truncated = true
+    chunks.push(clamped.text)
+    budget -= clamped.text.length
+  }
+
+  return { text: chunks.join('\n'), truncated }
+}
+
+/**
+ * Model-facing description of the pending changes: the file list for shape,
+ * the patch text for intent. Without the patch a model can only paraphrase
+ * file names, which is what made earlier suggestions inaccurate.
+ */
+function buildSuggestPrompt(snapshot: GitSnapshot, diff: { text: string; truncated: boolean }): string {
   const lines: string[] = []
   lines.push(`Branch: ${snapshot.branch ?? 'detached'}`)
-  lines.push(`Changed files (${snapshot.files.length}):`)
+  lines.push(`Changed files (${snapshot.files.length}, +${snapshot.totalAdded} -${snapshot.totalDeleted}):`)
   for (const f of snapshot.files.slice(0, 40)) {
     lines.push(`- [${f.status}] ${f.path} (+${f.added} -${f.deleted})`)
   }
   if (snapshot.files.length > 40) lines.push(`- … and ${snapshot.files.length - 40} more`)
+  if (diff.text !== '') {
+    lines.push('')
+    lines.push(diff.truncated ? 'Patch (truncated):' : 'Patch:')
+    lines.push(diff.text)
+  }
   lines.push('')
-  lines.push('Write a conventional commit message: type(scope): summary. One line, under 72 chars. Reply with the message only.')
+  lines.push('Write one conventional commit message for these changes: type(scope): summary.')
+  lines.push('Describe what the change does, judged from the patch — never just restate file names.')
+  lines.push('Rules: one line, under 72 characters, imperative mood, lowercase summary, no trailing period.')
+  lines.push('Reply with the message only.')
   return lines.join('\n')
 }
 
@@ -669,70 +827,168 @@ export class GitBackend {
 
   /**
    * Suggest a commit message: LLM first (when the service and a model are
-   * available), heuristic fallback otherwise.
+   * available), heuristic fallback otherwise. Kept for callers that only want
+   * the text; {@link suggestDetailed} also reports which path produced it.
    */
   async suggest(cwd: string, signal?: AbortSignal): Promise<string> {
-    const snapshot = await this.snapshot(cwd, signal)
-    if (snapshot.files.length === 0) return 'chore: no changes'
-    const fromLlm = await this.llmSuggest(snapshot, signal).catch(() => null)
-    return fromLlm ?? heuristicSuggest(snapshot)
+    return (await this.suggestDetailed(cwd, signal)).message
   }
 
-  private async llmSuggest(snapshot: GitSnapshot, signal?: AbortSignal): Promise<string | null> {
-    // Optional-service read: the LLM service may not be composed in.
-    const llm = this.ctx.get('llm') as LlmLike | undefined
-    if (llm === undefined) return null
-    let provider: string | undefined
-    let model: string | undefined
+  /**
+   * Suggest a commit message and report how it was produced. A failing LLM
+   * path is no longer silent: the caller receives `via: 'heuristic'` plus the
+   * reason, and the failure is logged, because an offline fallback message
+   * looks exactly like a model-written one in the UI.
+   */
+  async suggestDetailed(cwd: string, signal?: AbortSignal): Promise<GitSuggestResult> {
+    const snapshot = await this.snapshot(cwd, signal)
+    if (snapshot.files.length === 0) return { message: 'chore: no changes', via: 'heuristic', reason: 'no changes' }
+    const attempt = await this.llmSuggest(snapshot, cwd, signal)
+    if (attempt.message !== null) {
+      return {
+        message: attempt.message,
+        via: 'llm',
+        ...(attempt.provider !== undefined ? { provider: attempt.provider } : {}),
+        ...(attempt.model !== undefined ? { model: attempt.model } : {}),
+        ...(attempt.truncated === true ? { truncated: true } : {}),
+      }
+    }
+    const reason = attempt.reason ?? 'llm unavailable'
+    this.ctx.logger.warn(
+      'dsh-ui-tweaks: commit-message model unavailable (%s%s); used the offline heuristic instead',
+      reason,
+      attempt.provider === undefined ? '' : ` — ${attempt.provider}:${attempt.model ?? '?'}`,
+    )
+    return {
+      message: heuristicSuggest(snapshot),
+      via: 'heuristic',
+      reason,
+      ...(attempt.provider !== undefined ? { provider: attempt.provider } : {}),
+      ...(attempt.model !== undefined ? { model: attempt.model } : {}),
+    }
+  }
+
+  /**
+   * Resolve which provider/model writes the commit message: the `suggestModel`
+   * override, else this DSH's default Agent model. No further fallback — if
+   * the default model is unavailable or fails, the suggestion fails (the
+   * caller reports the reason) rather than silently using another provider.
+   */
+  private async resolveSuggestModel(llm: LlmLike): Promise<{ provider?: string; model?: string; reason?: string }> {
+    // 1) Explicit per-plugin override wins.
     const configured = this.readConfig().suggestModel
     if (typeof configured === 'string' && configured.includes(':')) {
       const idx = configured.indexOf(':')
-      provider = configured.slice(0, idx)
-      model = configured.slice(idx + 1)
+      const provider = configured.slice(0, idx)
+      const model = configured.slice(idx + 1)
+      if (provider !== '' && model !== '') return { provider, model }
     }
-    if (provider === undefined) {
-      const providers = llm.listProviders()
-      if (providers.length === 0) return null
-      provider = providers[0]?.id
-    }
-    if (model === undefined && provider !== undefined) {
+
+    const registered = new Set(llm.listProviders().map(provider => provider.id))
+
+    // 2) The model the user picked for this DSH's Agents. Try the service
+    //    first; fall back to the settings document directly in case the
+    //    service is out of this plugin context's reach.
+    const defaults = this.ctx.get('agentDefaultModel') as DefaultModelLike | undefined
+    if (defaults !== undefined) {
       try {
-        const models = await llm.listModels(provider)
-        model = models[0]?.id
+        const selection = defaults.currentSelection()
+        const provider = selection.provider
+        const model = selection.model
+        if (typeof provider === 'string' && provider !== '' && typeof model === 'string' && model !== ''
+          && registered.has(provider)) {
+          return { provider, model }
+        }
       } catch {
-        return null
+        // Fall through to the settings read.
       }
     }
-    if (provider === undefined || model === undefined) return null
+    try {
+      const stored = this.ctx.settings?.get(AGENT_DEFAULT_MODEL_NAMESPACE) as { provider?: string; model?: string } | undefined
+      const provider = stored?.provider
+      const model = stored?.model
+      if (typeof provider === 'string' && provider !== '' && typeof model === 'string' && model !== ''
+        && registered.has(provider)) {
+        return { provider, model }
+      }
+    } catch {
+      // Ignore — reported as unresolvable below.
+    }
+
+    return { reason: 'no default model is configured (set ui-tweaks.suggestModel or the DSH agent-default-model)' }
+  }
+
+  private async llmSuggest(
+    snapshot: GitSnapshot,
+    cwd: string,
+    signal?: AbortSignal,
+  ): Promise<{ message: string | null; reason?: string; provider?: string; model?: string; truncated?: boolean }> {
+    // Optional-service read: the LLM service may not be composed in.
+    const llm = this.ctx.get('llm') as LlmLike | undefined
+    if (llm === undefined) return { message: null, reason: 'the LLM service is not available in this DSH' }
+
+    const target = await this.resolveSuggestModel(llm)
+    const { provider, model } = target
+    if (provider === undefined || model === undefined) {
+      return {
+        message: null,
+        reason: target.reason ?? 'no provider/model could be resolved',
+        ...(provider !== undefined ? { provider } : {}),
+      }
+    }
+
+    const diff = await collectSuggestDiff(cwd, snapshot, signal).catch(() => ({ text: '', truncated: false }))
 
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS)
     const onOuterAbort = (): void => { controller.abort() }
     signal?.addEventListener('abort', onOuterAbort, { once: true })
     const parts: string[] = []
+    let finish: string | undefined
+    let failure: string | undefined
     try {
       const stream = llm.stream({
         provider,
         model,
         messages: [{
           role: 'user',
-          content: [{ type: 'text', text: buildSuggestPrompt(snapshot) }],
+          content: [{ type: 'text', text: buildSuggestPrompt(snapshot, diff) }],
         }],
         system: 'You write concise git commit messages. Reply with ONLY the commit message — one line, conventional commits format (type(scope): summary), under 72 characters, no code fences, no extra text.',
         temperature: 0.2,
-        maxTokens: 120,
+        // No reasoningEffort is passed: models that do not declare the chosen
+        // effort would reject the call. The provider's default reasoning can
+        // consume tokens, so leave room above the ~120-token message itself;
+        // reasoning deltas are ignored when assembling the reply.
+        maxTokens: 1024,
         signal: controller.signal,
       })
       for await (const chunk of stream) {
         if (chunk.type === 'text-delta' && typeof chunk.text === 'string') parts.push(chunk.text)
-        if (chunk.type === 'finish') break
+        if (chunk.type === 'finish') {
+          finish = finishReasonText(chunk.reason)
+          break
+        }
       }
+    } catch (error) {
+      // A thrown stream (middleware, adapter construction) is a real failure —
+      // report it instead of pretending the model had nothing to say.
+      failure = messageOf(error)
     } finally {
       clearTimeout(timer)
       signal?.removeEventListener('abort', onOuterAbort)
     }
+    // Strip fences and collapse to one line; a leading "type(scope):" survives.
     const text = parts.join('').trim().replace(/^```|```$/g, '').replace(/\s+/g, ' ').slice(0, 120)
-    return text === '' ? null : text
+    if (text !== '') {
+      return { message: text, provider, model, ...(diff.truncated ? { truncated: true } : {}) }
+    }
+    const reason = failure !== undefined
+      ? `the model call failed: ${failure}`
+      : finish !== undefined
+        ? `the model returned no text (finish: ${finish})`
+        : 'the model returned no text'
+    return { message: null, reason, provider, model }
   }
 
   /**

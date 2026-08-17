@@ -56,7 +56,7 @@ type GitBarLabelKey =
   | 'commitMessage' | 'diffFiles' | 'branchLocal' | 'branchRemote' | 'branchNew'
   | 'branchNewPlaceholder' | 'branchCreate' | 'diffTitle' | 'diffOnly' | 'diffFull'
   | 'commitTitle' | 'commitPlaceholder' | 'commitHint' | 'commitWillCommit' | 'commitViewDiff'
-  | 'commitGenerate' | 'commitCancel' | 'commitSubmit' | 'commitSubmitPush'
+  | 'commitEmpty' | 'commitCancel' | 'commitSubmit' | 'commitSubmitPush'
   | 'dirty' | 'clean' | 'noChanges' | 'loading' | 'branchDelete' | 'branchDeleteConfirm'
   | 'includeFile' | 'excludeFile' | 'branchPushRemote'
   | 'branchRemoteDelete' | 'branchFrom' | 'branchFromHead' | 'branchGraph'
@@ -172,15 +172,15 @@ export const GITBAR_CSS = `
      width changes. */
   width:calc(100% - 120px);max-width:706px;margin-inline:auto;
   /* The row itself paints nothing: only the pills are visible, so the composer
-     seat below shows through instead of a floating opaque strip. Each pill
-     keeps its own solid background so scrolled text never bleeds through. */
+     seat below shows through instead of a floating opaque strip. The pills are
+     transparent at rest too and only fill in on hover / while open. */
   background:transparent;
 }
 .gbar-right{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
 .gbar-pill{
   display:inline-flex;align-items:center;gap:6px;
   height:26px;padding:0 10px;
-  background:var(--dsw-alias-bg-module-platform);
+  background:transparent;
   border:none;
   border-radius:8px;
   color:var(--dsw-alias-label-primary);
@@ -190,7 +190,8 @@ export const GITBAR_CSS = `
   white-space:nowrap;
   -webkit-user-select:none;user-select:none;
 }
-.gbar-pill:hover{background:var(--dsw-alias-interactive-bg-hover-solid)}
+.gbar-pill:hover{background:var(--dsw-alias-bg-module-platform)}
+.gbar-pill:focus-visible{background:var(--dsw-alias-bg-module-platform)}
 .gbar-pill .gbar-ico{width:13px;height:13px;flex:none;opacity:.85}
 .gbar-pill .gbar-caret{font-size:8px;color:var(--dsw-alias-label-tertiary);margin-left:1px}
 .gbar-pill .gbar-dot{width:6px;height:6px;border-radius:50%;background:var(--dsw-alias-state-warn-primary);flex:none}
@@ -968,21 +969,13 @@ export function GitBar({ sessionId, controller, sessionsService, t }: GitBarProp
     void refresh()
   }
 
-  const generateMessage = (): void => {
-    if (session === undefined || busy !== null) return
-    void run('suggest', async () => {
-      const result = await apiPost<{ message: string }>(`${GIT_ROUTE}/suggest`, { session })
-      setMessage(result.message)
-    })
-  }
-
   const doCommit = (push: boolean): void => {
     if (session === undefined || agentRunning) return
     void run(push ? 'commit-push' : 'commit', async () => {
-      let msg = message.trim()
+      const msg = message.trim()
       if (msg === '') {
-        const result = await apiPost<{ message: string }>(`${GIT_ROUTE}/suggest`, { session })
-        msg = result.message
+        showNotice('err', t('commitEmpty'))
+        return
       }
       const result = await apiPost<{ hash?: string; pushed: boolean }>(`${GIT_ROUTE}/commit`, {
         session,
@@ -1242,9 +1235,6 @@ export function GitBar({ sessionId, controller, sessionsService, t }: GitBarProp
                 />
               </div>
               <div className="gbar-actions">
-                <button type="button" className="gbar-btn gbar-ghost" onClick={generateMessage} disabled={busy !== null || agentRunning}>
-                  {busy === 'suggest' ? <span className="gbar-spin" /> : null}{t('commitGenerate')}
-                </button>
                 <button type="button" className="gbar-btn gbar-soft" onClick={() => { doCommit(false) }} disabled={busy !== null || agentRunning}>
                   {t('commitSubmit')}
                 </button>
@@ -1326,9 +1316,6 @@ export function GitBar({ sessionId, controller, sessionsService, t }: GitBarProp
             <div className="gbar-hint">{t('commitHint')}</div>
             <div className="gbar-foot">
               <button type="button" className="gbar-btn gbar-ghost" onClick={() => { setCommitOpen(false) }}>{t('commitCancel')}</button>
-              <button type="button" className="gbar-btn gbar-ghost" onClick={generateMessage} disabled={busy !== null || agentRunning}>
-                {busy === 'suggest' ? <span className="gbar-spin" /> : null}{t('commitGenerate')}
-              </button>
               <button type="button" className="gbar-btn gbar-soft" onClick={() => { doCommit(false) }} disabled={busy !== null || agentRunning}>
                 {busy === 'commit' ? <span className="gbar-spin" /> : null} {t('commitSubmit')}
               </button>
