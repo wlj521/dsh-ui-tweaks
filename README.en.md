@@ -10,6 +10,10 @@ A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH)
 | **Conversation timeline**: right-side rail — hover to preview messages, click to jump, scroll-highlighting, auto-dodges a right sidebar | **Table style**: the Claude Desktop look (light-gray rounded cards) |
 | ![Dialog width](assets/dialog_box.png) | ![Settings panel](assets/settings.png) |
 | **Dialog width**: message column, composer and stats line widen together | **Settings panel**: font size / table style / dialog width / timeline |
+| ![GitBar](assets/git.png) | |
+| **GitBar**: branch / diff / commit pills above the input, with branch management, per-file diff, and commit & push | |
+| ![Archive manager](assets/archive.png) | ![MCP manager](assets/mcp.png) |
+| **Archive manager**: an Archive page in the Settings dialog listing archived sessions (title / workspace / relative time) with Restore and Delete actions | **MCP manager**: an MCP page in the Settings dialog listing configured MCP servers with live status and full management (Add / Edit / Enable / Disable / Delete / Restart) |
 
 ## Features
 
