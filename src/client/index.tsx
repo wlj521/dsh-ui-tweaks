@@ -883,6 +883,41 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
   )
 }
 
+/**
+ * Register a Settings section only while its enable flag is on, so the
+ * Settings nav row appears / disappears live with the toggle in the UI Tweaks
+ * section. Waits for the `settings.section` declaration (like the static
+ * inject), then keeps the section registered exactly while
+ * `isEnabled(controller value)` holds: toggling the switch in the UI Tweaks
+ * section mounts or disposes the section, and the settings shell's nav
+ * (projected from the section ledger) updates in place.
+ */
+function installConditionalSection(
+  ctx: ClientContext,
+  controller: SettingsClient,
+  isEnabled: (value: TweaksValue | undefined) => boolean,
+  registerSection: () => () => void,
+): void {
+  ctx.slots.inject('settings.section', () => {
+    let dispose: (() => void) | undefined
+    const sync = (): void => {
+      const enabled = isEnabled(controller.getSnapshot().value)
+      if (enabled && dispose === undefined) {
+        dispose = registerSection()
+      } else if (!enabled && dispose !== undefined) {
+        dispose()
+        dispose = undefined
+      }
+    }
+    sync()
+    const unsubscribe = controller.subscribe(sync)
+    return () => {
+      unsubscribe()
+      dispose?.()
+    }
+  })
+}
+
 export function apply(ctx: ClientContext): void {
   ctx.effect(installBaseStyles, 'dsh-ui-tweaks: base styles')
   ctx.effect(installTimelineStyles, 'dsh-ui-tweaks: timeline styles')
@@ -936,10 +971,11 @@ export function apply(ctx: ClientContext): void {
   }, GitBar))
 
   // Archive manager: a Settings section ("归档") that lists archived sessions
-  // and can restore or permanently delete them through the same-origin archive
-  // route. Reads the archiveManagerEnabled setting off the same store, so
-  // toggling the switch in the UI Tweaks section applies live.
-  ctx.slots.inject('settings.section', () => ctx.slots.register({
+  // and can restore or permanently delete them. Registered only while the
+  // archiveManagerEnabled toggle in the UI Tweaks section is on, so the nav
+  // row appears / disappears live with the switch (the settings shell
+  // projects its nav from the section ledger).
+  installConditionalSection(ctx, controller, (value) => value?.archiveManagerEnabled === true, () => ctx.slots.register({
     name: 'settings.section',
     id: 'archive',
     order: 50,
@@ -949,10 +985,10 @@ export function apply(ctx: ClientContext): void {
   }, ArchiveSection))
 
   // MCP manager: a Settings section ("MCP 管理") that lists the configured MCP
-  // servers with their status and tools, and restarts them through the
-  // same-origin mcp route. Reads the mcpManagerEnabled setting off the same
-  // store, so toggling the switch applies live.
-  ctx.slots.inject('settings.section', () => ctx.slots.register({
+  // servers with their status and tools, and restarts them. Registered only
+  // while the mcpManagerEnabled toggle in the UI Tweaks section is on, so the
+  // nav row appears / disappears live with the switch.
+  installConditionalSection(ctx, controller, (value) => value?.mcpManagerEnabled === true, () => ctx.slots.register({
     name: 'settings.section',
     id: 'mcp',
     order: 60,
