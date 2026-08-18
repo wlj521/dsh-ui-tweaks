@@ -44,6 +44,12 @@ export interface UITweaksConfig {
    */
   archiveManagerEnabled?: boolean
   /**
+   * Whether the MCP manager is shown: the "MCP 管理" Settings page that lists
+   * the configured MCP servers (status, tool count) and can restart them. Off
+   * by default; users turn it on in Settings.
+   */
+  mcpManagerEnabled?: boolean
+  /**
    * Optional explicit `provider:model` for generating commit messages with the
    * LLM (e.g. `jiyuanlvdong:deepseek-v4-flash-0731`). When unset, the first
    * registered provider/model is used; when the LLM service is unavailable or
@@ -69,6 +75,9 @@ export const DEFAULT_GITBAR_ENABLED = false
 /** Archive manager defaults to off; users turn it on in Settings. */
 export const DEFAULT_ARCHIVE_MANAGER_ENABLED = false
 
+/** MCP manager defaults to off; users turn it on in Settings. */
+export const DEFAULT_MCP_MANAGER_ENABLED = false
+
 /** Configuration schema with documented defaults. */
 export const Config: Schema<UITweaksConfig> = z.object({
   fontSize: z.number().min(10).max(32).default(16),
@@ -77,6 +86,7 @@ export const Config: Schema<UITweaksConfig> = z.object({
   timelineEnabled: z.boolean().default(DEFAULT_TIMELINE_ENABLED),
   gitBarEnabled: z.boolean().default(DEFAULT_GITBAR_ENABLED),
   archiveManagerEnabled: z.boolean().default(DEFAULT_ARCHIVE_MANAGER_ENABLED),
+  mcpManagerEnabled: z.boolean().default(DEFAULT_MCP_MANAGER_ENABLED),
   suggestModel: z.string(),
 })
 
@@ -92,6 +102,8 @@ export interface ResolvedUITweaksConfig {
   gitBarEnabled: boolean
   /** Whether the Archive manager sidebar entry is shown. */
   archiveManagerEnabled: boolean
+  /** Whether the MCP manager Settings page is shown. */
+  mcpManagerEnabled: boolean
   /** Optional `provider:model` override for LLM commit-message generation. */
   suggestModel?: string
 }
@@ -111,7 +123,8 @@ export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConf
   const timelineEnabled = config.timelineEnabled ?? DEFAULT_TIMELINE_ENABLED
   const gitBarEnabled = config.gitBarEnabled ?? DEFAULT_GITBAR_ENABLED
   const archiveManagerEnabled = config.archiveManagerEnabled ?? DEFAULT_ARCHIVE_MANAGER_ENABLED
-  const resolved: ResolvedUITweaksConfig = { fontSize, tableStyle, dialogWidth, timelineEnabled, gitBarEnabled, archiveManagerEnabled }
+  const mcpManagerEnabled = config.mcpManagerEnabled ?? DEFAULT_MCP_MANAGER_ENABLED
+  const resolved: ResolvedUITweaksConfig = { fontSize, tableStyle, dialogWidth, timelineEnabled, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled }
   if (typeof config.suggestModel === 'string' && config.suggestModel !== '') {
     resolved.suggestModel = config.suggestModel
   }

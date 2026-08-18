@@ -28,6 +28,10 @@
   - **恢复**：把会话移出归档——日志与工作区槽位原样保留，会话回到侧边栏列表。
   - **删除**：**彻底删除**该会话——服务端将其 JSONL 日志从磁盘移除、从工作区记账与归档集合中清除、并清理投影缓存，会话永久消失（不可恢复）。只有**正在运行**（有任务在跑）的会话会被拒绝；已打开但空闲的会话也会从内存中移除，删除后实时从列表消失。
   - 顶部另有**全部恢复 / 全部删除**批量操作（删除类操作需二次确认）。列表随 `host/archived-sessions-changed` 事件与客户端会话列表刷新实时更新，无需刷新页面。
+- **MCP 管理（可开关，默认关闭）**：设置面板中的「MCP 管理」页面，展示 profile 里配置的所有 MCP 服务器（`@deepseek-ai/dsh-mcp-client` 实例）及其状态（运行中 / 错误 / 加载中 / 未运行 / 已停用）、命令、环境变量、已注册工具，并支持完整管理：
+  - **添加 / 编辑**：编辑器支持**表单**（实例 ID / 名称 / 类型 stdio 或 HTTP / 超时时间 ms / 命令 / 参数 / 环境变量 / URL / 请求头）或直接**粘贴 YAML** 两种方式，保存前会做格式校验（名称与 ID 字符集、超时正整数、URL 协议、命令非空、未知 YAML 字段等）。
+  - **启用 / 停用 / 删除 / 重启**：改动直接写入 profile 的 `cordis.patch.yml`（保持注释与结构），DSH 内置补丁监视器热重载加载器——被改动的那个服务器**实时**启动/停止/重启，不影响其它服务器；重启单独运行时生效、不改配置。环境变量值仅在本机浏览器可见，用于编辑。
+  - 新增后请确认服务器能成功连接（状态为「运行中」并注册了工具）；启动失败的实例会显示「错误」并可重启重试。
 
 所有修改**即时生效**，无需刷新。同一份配置也可以直接在设置文档里手改：
 
@@ -87,7 +91,8 @@ npx -y @deepseek-ai/dsh plugin --profile web add .        # 从本目录作为 b
 - **浏览器端**（`src/client/index.tsx`）：读写该路由、渲染设置页，并通过运行时 `<style>` 元素实时应用样式，覆盖稳定的 DSH 锚点（`[data-chat-flow]`、`[data-composer-card]`、`body` 上的 markdown 字体 token、`[data-slot="conversation.chat.node"]` 内的 markdown 表格）。
 - **时间线**（`src/client/timeline.tsx`）：挂在 `conversation.input.dock` 插槽、portal 到 `body`。数据按速度优先：会话投影 → 已加载聊天节点 → 后台 `loadOlder`。位置通过测量 `[data-conversation-scroll]`（消息区）右缘与垂直中线动态锚定，因此 DSH 原生列布局与右侧边栏（`#root` 的 margin-right 布局推挤）变化时都会自动跟随；颜色全部使用 DSH 主题变量（`--dsw-alias-*`），浅色/深色模式均正常。
 - **GitBar**（`src/client/gitbar.tsx`）：挂在同一个 `conversation.input.dock` 插槽。胶囊行以 `width:100%` + `max-width` 与 composer 卡片同宽（buildRuntimeCss 在“对话框宽度”变化时同步覆盖该宽度，实现联动），胶囊行自身背景透明、只有胶囊可见；差异面板展开时通过 `#root { margin-right }` 把对话区往左挤，时间线 rail（锚定消息区右缘）因此不被遮挡。面板内的高度分配采用「只给被拖的那一段显式高度、diff 段 `flex:1` 吃掉余量」的方式，配合 45% 上限，拖动永远不会撑破面板。
-- **归档管理**（服务端 `src/archive.ts` + 浏览器端 `src/client/archive.tsx`）：作为 `settings.section` 插槽（设置面板中的「归档」页面）。列表数据直接来自框架标准 hook `useSessions` + `useWorkspaces`（`archivedSessionIds`），无需额外查询；操作走同源路由 `/_dsh/ui-tweaks/archive`。**恢复**把会话 id 从工作区存储域的 `archivedSessionIds` 全局单例中移除（DSH 只暴露单向 `archiveSession`，无公开的取消归档 API，故直接写活体存储域句柄并同步工作区注册表的内存缓存）。**彻底删除**依次：拒绝正在运行的会话（`ctx.sessions.get` 非空即拒绝）→ 用持久化后端自身的 `findLog` 定位并 `rm` 会话日志目录 → 调用公开的 `WorkspaceEntity.detachSession` 摘除工作区记账 → 从归档集合移除并同步注册表内存缓存与 header 索引 → 尽力清理 `session_projcache` 投影缓存。写路径触发 `domain/changed` → 宿主推送 `host/archived-sessions-changed`，客户端随后 `sessions.refresh()` 重拉会话列表，行与会话本体实时消失。
+- **归档管理**（服务端 `src/archive.ts` + 浏览器端 `src/client/archive.tsx`）：作为 `settings.section` 插槽（设置面板中的「归档」页面）。列表数据直接来自框架标准 hook `useSessions` + `useWorkspaces`（`archivedSessionIds`），无需额外查询；操作走同源路由 `/_dsh/ui-tweaks/archive`。**恢复**把会话 id 从工作区存储域的 `archivedSessionIds` 全局单例中移除（DSH 只暴露单向 `archiveSession`，无公开的取消归档 API，故直接写活体存储域句柄并同步工作区注册表的内存缓存）。**彻底删除**依次：拒绝正在运行的会话（agent `status === 'running'` 才拒绝，空闲会话先 `cancel` + `whenIdle`）→ 用持久化后端自身的 `findLog` 定位并 `rm` 会话日志目录 → 调用公开的 `WorkspaceEntity.detachSession` 摘除工作区记账 → 从归档集合移除并同步注册表内存缓存与 header 索引 → 清理 `session_projcache` → 从内存 SessionStore 摘除该会话（触发 `host/session-removed` 实时消失）。
+- **MCP 管理**（服务端 `src/mcp.ts` + 浏览器端 `src/client/mcp.tsx`）：同源路由 `/_dsh/ui-tweaks/mcp`。**列表**枚举 `ctx.loader.entries()` 中 `@deepseek-ai/dsh-mcp-client` 实例（id / config / fiber 状态：active=2、failed=3 等）并按 `mcp__<serverName>__` 前缀从工具注册表统计工具。**重启**调用 `entry.fiber.restart()`（仅运行时）。**添加 / 编辑 / 删除 / 启用停用**通过 `yaml`（eemeli）的 Document API 直接编辑 profile 的 `cordis.patch.yml`（保留注释与未知补丁结构，原子写 tmp+rename），随后由 DSH 内置的 `watchUserPatches` 热重载监视器重新应用补丁——`cordis-plugin-include` 对根组做**增量** `root.update`，因此只有被改动的 MCP 实例会重启，其它不受影响；环境变量值返回给同源浏览器（本机配置编辑需要），YAML 模式在服务端用 `yaml.parse` + 白名单校验。
 
 ## 协议
 

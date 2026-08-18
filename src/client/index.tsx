@@ -20,6 +20,7 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { TimelineRail, installTimelineStyles } from './timeline.tsx'
 import { GitBar, installGitBarStyles } from './gitbar.tsx'
 import { ArchiveSection, installArchiveStyles } from './archive.tsx'
+import { McpSection, installMcpStyles } from './mcp.tsx'
 
 const NS = 'ui-tweaks'
 const SETTINGS_ROUTE = '/_dsh/ui-tweaks/settings'
@@ -43,6 +44,8 @@ interface TweaksValue {
   gitBarEnabled?: boolean
   /** Whether the Archive manager (sidebar entry above Settings) is shown. */
   archiveManagerEnabled?: boolean
+  /** Whether the MCP manager (Settings page listing MCP servers) is shown. */
+  mcpManagerEnabled?: boolean
 }
 
 interface ResolvedTweaks {
@@ -52,6 +55,7 @@ interface ResolvedTweaks {
   timelineEnabled: boolean
   gitBarEnabled: boolean
   archiveManagerEnabled: boolean
+  mcpManagerEnabled: boolean
 }
 
 interface UITweaksSnapshot {
@@ -92,6 +96,57 @@ const en = {
   archiveManagerHint: 'Show an Archive section in the Settings dialog where archived sessions can be restored or permanently deleted. Off by default; turn it on to enable.',
   archiveManagerOn: 'On',
   archiveManagerOff: 'Off',
+  mcpManager: 'MCP manager',
+  mcpManagerHint: 'Show an MCP management section in the Settings dialog listing the configured MCP servers with their status and tools, and let you restart them. Off by default; turn it on to enable.',
+  mcpManagerOn: 'On',
+  mcpManagerOff: 'Off',
+  mcpNav: 'MCP',
+  mcpTitle: 'MCP servers',
+  mcpEmpty: 'No MCP servers configured.',
+  mcpStatusActive: 'Running',
+  mcpStatusFailed: 'Failed',
+  mcpStatusLoading: 'Loading',
+  mcpStatusStopped: 'Stopped',
+  mcpStatusDisabled: 'Disabled',
+  mcpTools: 'tools',
+  mcpEnv: 'Env',
+  mcpAdd: 'Add server',
+  mcpAddTitle: 'Add MCP server',
+  mcpEditTitle: 'Edit MCP server',
+  mcpEdit: 'Edit',
+  mcpDelete: 'Delete',
+  mcpEnabledAction: 'Enable',
+  mcpDisabledAction: 'Disable',
+  mcpSaved: 'Saved.',
+  mcpRemoved: 'Removed.',
+  mcpFormTab: 'Form',
+  mcpYamlTab: 'YAML',
+  mcpYamlHint: 'Fill in the MCP config directly (serverName / transport / command / args / env / toolCallTimeoutMs / url / headers …). It is validated before saving.',
+  mcpYamlPlaceholder: 'serverName: my-server\ntransport: stdio\ncommand: npx\nargs:\n  - "-y"\n  - "@some/mcp-server"\nenv:\n  KEY: value\ntoolCallTimeoutMs: 60000',
+  mcpFieldId: 'Instance ID',
+  mcpFieldIdHint: 'Loader entry id (letters, digits, - and _ only); it must be unique.',
+  mcpFieldName: 'Name',
+  mcpFieldNameHint: 'Tool namespace `mcp__<name>__*`; letters, digits, - and _ (1–32).',
+  mcpFieldType: 'Type',
+  mcpFieldTimeout: 'Timeout (ms)',
+  mcpFieldCommand: 'Command',
+  mcpFieldCommandPlaceholder: 'e.g. npx',
+  mcpFieldArgs: 'Arguments (one per line)',
+  mcpFieldEnv: 'Environment vars (optional, KEY=value per line)',
+  mcpFieldUrl: 'URL',
+  mcpFieldHeaders: 'Headers (optional, Key: value per line)',
+  mcpFieldEnabled: 'Enabled',
+  mcpSave: 'Save',
+  mcpCancel: 'Cancel',
+  mcpInvalidId: 'Instance ID may only contain letters, digits, - and _.',
+  mcpInvalidName: 'Name may only contain letters, digits, - and _ (1–32 chars).',
+  mcpInvalidTimeout: 'Timeout must be a positive integer (ms).',
+  mcpInvalidUrl: 'URL must start with http:// or https://.',
+  mcpInvalidCommand: 'Command is required.',
+  mcpUnavailable: 'MCP manager unavailable.',
+  mcpDisabledHint: 'MCP management is off. Turn it on in 界面调整 (UI Tweaks) to view and restart MCP servers here.',
+  mcpEnable: 'Enable MCP manager',
+  mcpServerDetail: 'Configured in the profile cordis.patch.yml as @deepseek-ai/dsh-mcp-client instances; add / edit / disable / delete write to that file and apply live.',
   archiveNav: 'Archive',
   archiveTitle: 'Archived sessions',
   archiveEmpty: 'No archived sessions.',
@@ -189,6 +244,57 @@ const zh: Record<LocaleKey, string> = {
   archiveManagerHint: '在设置中显示「归档」页面：可查看、恢复或彻底删除已归档会话。默认关闭，需手动开启。',
   archiveManagerOn: '开启',
   archiveManagerOff: '关闭',
+  mcpManager: 'MCP 管理',
+  mcpManagerHint: '在设置中显示「MCP 管理」页面：查看已配置的 MCP 服务器及其状态与工具，并可重启。默认关闭，需手动开启。',
+  mcpManagerOn: '开启',
+  mcpManagerOff: '关闭',
+  mcpNav: 'MCP 管理',
+  mcpTitle: 'MCP 服务器',
+  mcpEmpty: '未配置任何 MCP 服务器。',
+  mcpStatusActive: '运行中',
+  mcpStatusFailed: '错误',
+  mcpStatusLoading: '加载中',
+  mcpStatusStopped: '未运行',
+  mcpStatusDisabled: '已停用',
+  mcpTools: '个工具',
+  mcpEnv: '环境变量',
+  mcpAdd: '添加服务器',
+  mcpAddTitle: '添加 MCP 服务器',
+  mcpEditTitle: '编辑 MCP 服务器',
+  mcpEdit: '编辑',
+  mcpDelete: '删除',
+  mcpEnabledAction: '启用',
+  mcpDisabledAction: '停用',
+  mcpSaved: '已保存。',
+  mcpRemoved: '已删除。',
+  mcpFormTab: '表单',
+  mcpYamlTab: 'YAML',
+  mcpYamlHint: '直接填写 MCP 配置（serverName / transport / command / args / env / toolCallTimeoutMs / url / headers …），保存前会校验格式。',
+  mcpYamlPlaceholder: 'serverName: my-server\ntransport: stdio\ncommand: npx\nargs:\n  - "-y"\n  - "@some/mcp-server"\nenv:\n  KEY: value\ntoolCallTimeoutMs: 60000',
+  mcpFieldId: '实例 ID',
+  mcpFieldIdHint: '加载器条目 ID（仅字母、数字、- 和 _），需唯一。',
+  mcpFieldName: '名称',
+  mcpFieldNameHint: '工具命名空间 `mcp__<名称>__*`；字母、数字、- 和 _（1–32 字符）。',
+  mcpFieldType: '类型',
+  mcpFieldTimeout: '超时时间 (ms)',
+  mcpFieldCommand: '命令',
+  mcpFieldCommandPlaceholder: '如 npx',
+  mcpFieldArgs: '参数（每行一个）',
+  mcpFieldEnv: '环境变量（可选，每行 KEY=值）',
+  mcpFieldUrl: 'URL',
+  mcpFieldHeaders: '请求头（可选，每行 Key: 值）',
+  mcpFieldEnabled: '启用',
+  mcpSave: '保存',
+  mcpCancel: '取消',
+  mcpInvalidId: '实例 ID 只能包含字母、数字、- 和 _。',
+  mcpInvalidName: '名称只能包含字母、数字、- 和 _（1–32 字符）。',
+  mcpInvalidTimeout: '超时时间必须是正整数（毫秒）。',
+  mcpInvalidUrl: 'URL 必须以 http:// 或 https:// 开头。',
+  mcpInvalidCommand: '命令不能为空。',
+  mcpUnavailable: 'MCP 管理暂不可用。',
+  mcpDisabledHint: 'MCP 管理尚未开启。在「界面调整」中开启“MCP 管理”后，可在此查看并重启 MCP 服务器。',
+  mcpEnable: '开启 MCP 管理',
+  mcpServerDetail: 'MCP 服务器配置在 profile 的 cordis.patch.yml（@deepseek-ai/dsh-mcp-client 实例）；添加 / 编辑 / 停用 / 删除会写入该文件，改动实时生效。',
   archiveNav: '归档',
   archiveTitle: '已归档会话',
   archiveEmpty: '暂无归档会话。',
@@ -278,6 +384,7 @@ function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
     timelineEnabled: value?.timelineEnabled ?? false,
     gitBarEnabled: value?.gitBarEnabled ?? false,
     archiveManagerEnabled: value?.archiveManagerEnabled ?? false,
+    mcpManagerEnabled: value?.mcpManagerEnabled ?? false,
   }
 }
 
@@ -621,7 +728,11 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     void controller.set('archiveManagerEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
-  const reset = (field: 'fontSize' | 'tableStyle' | 'dialogWidth' | 'timelineEnabled' | 'gitBarEnabled' | 'archiveManagerEnabled'): void => {
+  const setMcpManager = (value: boolean): void => {
+    void controller.set('mcpManagerEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
+  }
+
+  const reset = (field: 'fontSize' | 'tableStyle' | 'dialogWidth' | 'timelineEnabled' | 'gitBarEnabled' | 'archiveManagerEnabled' | 'mcpManagerEnabled'): void => {
     void controller.unset(field).then(() => { setStatus('resetDone') }).catch(() => { setStatus('unavailable') })
   }
 
@@ -755,6 +866,18 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
           </div>
           <small>{t('archiveManagerHint')}</small>
         </div>
+        <div className="dut-field">
+          <div className="dut-field-top">
+            <span>{t('mcpManager')}</span>
+            <div className="dut-controls">
+              <div className="dut-seg">
+                <button type="button" className={resolved.mcpManagerEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setMcpManager(true) }}>{t('mcpManagerOn')}</button>
+                <button type="button" className={!resolved.mcpManagerEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setMcpManager(false) }}>{t('mcpManagerOff')}</button>
+              </div>
+            </div>
+          </div>
+          <small>{t('mcpManagerHint')}</small>
+        </div>
       </section>
     </div>
   )
@@ -765,6 +888,7 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(installTimelineStyles, 'dsh-ui-tweaks: timeline styles')
   ctx.effect(installGitBarStyles, 'dsh-ui-tweaks: gitbar styles')
   ctx.effect(installArchiveStyles, 'dsh-ui-tweaks: archive styles')
+  ctx.effect(installMcpStyles, 'dsh-ui-tweaks: mcp styles')
   ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'dsh-ui-tweaks: locale')
   const t = ctx.locale.bind(NS)
 
@@ -823,4 +947,17 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: () => ({ controller, t, sessionsService: ctx.sessions }),
   }, ArchiveSection))
+
+  // MCP manager: a Settings section ("MCP 管理") that lists the configured MCP
+  // servers with their status and tools, and restarts them through the
+  // same-origin mcp route. Reads the mcpManagerEnabled setting off the same
+  // store, so toggling the switch applies live.
+  ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section',
+    id: 'mcp',
+    order: 60,
+    label: () => t('mcpNav'),
+    locale: NS,
+    inject: () => ({ controller, t }),
+  }, McpSection))
 }

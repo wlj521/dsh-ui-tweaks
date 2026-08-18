@@ -22,6 +22,7 @@ import { UITweaksWebBackend, installUITweaksWeb } from './web.ts'
 import { GitBackend } from './git.ts'
 import { installGitWeb } from './git-web.ts'
 import { ArchiveBackend, installArchiveWeb } from './archive.ts'
+import { McpBackend, installMcpWeb } from './mcp.ts'
 
 export const name = 'dsh-ui-tweaks'
 
@@ -50,6 +51,11 @@ export function apply(ctx: Context): void {
   // through these same-origin routes (workspace registry + storage domain
   // are optional services, resolved at request time).
   installArchiveWeb(ctx, new ArchiveBackend(ctx))
+
+  // The MCP manager lists the configured MCP servers (loader entries + tool
+  // registry) and restarts them through these same-origin routes (loader is
+  // an optional service, resolved at request time).
+  installMcpWeb(ctx, new McpBackend(ctx))
 
   ctx.logger.info('[dsh-ui-tweaks] settings namespace registered and Web routes mounted')
 }
