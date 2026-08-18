@@ -3,7 +3,7 @@
  *
  * The browser Settings panel reads and writes the `ui-tweaks` namespace through
  * this same-origin route, because the Web settings RPC only exposes a fixed
- * allowlist of namespaces (hardcoded in dsh-host-apiproxy in rc.6). The route
+ * allowlist of namespaces (hardcoded in dsh-host-apiproxy since rc.6). The route
  * proxies to the real `ctx.settings` service, so the settings document
  * (settings.yaml) stays the single source of truth and hand edits keep working.
  * @module dsh-ui-tweaks/web

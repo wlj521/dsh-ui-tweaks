@@ -6,7 +6,7 @@
  * document directly (settings.yaml `ui-tweaks:` section). All rendering work
  * happens in the browser bundle (`src/client`), which reads and writes this
  * namespace through the same-origin route mounted here — the Web settings RPC
- * only exposes a fixed allowlist of namespaces in rc.6, so a custom route is
+ * only exposes a fixed allowlist of namespaces since rc.6, so a custom route is
  * the supported way for a plugin to own a configuration page.
  * @module dsh-ui-tweaks
  */
@@ -39,7 +39,7 @@ export function apply(ctx: Context): void {
   installTimelineProjection(ctx)
 
   // The browser Settings panel talks to the namespace through this same-origin
-  // route (the Web settings RPC only exposes a fixed allowlist in rc.6).
+  // route (the Web settings RPC only exposes a fixed allowlist since rc.6).
   installUITweaksWeb(ctx, new UITweaksWebBackend(ctx))
 
   // The GitBar runs git in the session's working directory through these

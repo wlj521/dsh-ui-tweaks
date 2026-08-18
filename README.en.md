@@ -79,7 +79,7 @@ npx -y @deepseek-ai/dsh plugin --profile web add .        # bundle install from 
 
 - **Server** (`src/index.ts`) registers the `ui-tweaks` settings namespace and
   mounts a same-origin route (`/_dsh/ui-tweaks/settings`) — the Web settings
-  RPC only exposes a fixed allowlist of namespaces in rc.6, so a custom route
+  RPC only exposes a fixed allowlist of namespaces since rc.6, so a custom route
   is how a plugin owns a configuration page. `src/timeline.ts` also registers
   the `dshChatTimeline` session projection that durably enumerates user
   messages.
