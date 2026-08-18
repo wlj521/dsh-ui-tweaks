@@ -21,6 +21,7 @@ import { installTimelineProjection } from './timeline.ts'
 import { UITweaksWebBackend, installUITweaksWeb } from './web.ts'
 import { GitBackend } from './git.ts'
 import { installGitWeb } from './git-web.ts'
+import { ArchiveBackend, installArchiveWeb } from './archive.ts'
 
 export const name = 'dsh-ui-tweaks'
 
@@ -44,6 +45,11 @@ export function apply(ctx: Context): void {
   // same-origin routes (sessions/llm are optional services, duck-typed).
   const readConfig = (): UITweaksConfig => ctx.settings.get(UI_TWEAKS_SETTINGS_NAMESPACE) as UITweaksConfig
   installGitWeb(ctx, new GitBackend(ctx, readConfig))
+
+  // The Archive panel lists archived sessions and restores ("deletes") them
+  // through these same-origin routes (workspace registry + storage domain
+  // are optional services, resolved at request time).
+  installArchiveWeb(ctx, new ArchiveBackend(ctx))
 
   ctx.logger.info('[dsh-ui-tweaks] settings namespace registered and Web routes mounted')
 }

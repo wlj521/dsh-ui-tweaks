@@ -33,10 +33,16 @@ export interface UITweaksConfig {
   timelineEnabled?: boolean
   /**
    * Whether the GitBar (branch / diff / commit-message pills above the input)
-   * is shown. On by default; the bar hides itself when the session has no
+   * is shown. Off by default; the bar hides itself when the session has no
    * cwd or the directory is not a git repository.
    */
   gitBarEnabled?: boolean
+  /**
+   * Whether the Archive manager is shown: the "归档" Settings page that lists
+   * archived sessions and can restore or permanently delete them. Off by
+   * default; users turn it on in Settings.
+   */
+  archiveManagerEnabled?: boolean
   /**
    * Optional explicit `provider:model` for generating commit messages with the
    * LLM (e.g. `jiyuanlvdong:deepseek-v4-flash-0731`). When unset, the first
@@ -57,8 +63,11 @@ export const DEFAULT_FONT_SIZE = 16
 /** Timeline defaults to off; the Settings segmented control turns it on. */
 export const DEFAULT_TIMELINE_ENABLED = false
 
-/** GitBar defaults to on; it self-hides without a git session. */
-export const DEFAULT_GITBAR_ENABLED = true
+/** GitBar defaults to off; users turn it on in Settings. */
+export const DEFAULT_GITBAR_ENABLED = false
+
+/** Archive manager defaults to off; users turn it on in Settings. */
+export const DEFAULT_ARCHIVE_MANAGER_ENABLED = false
 
 /** Configuration schema with documented defaults. */
 export const Config: Schema<UITweaksConfig> = z.object({
@@ -67,6 +76,7 @@ export const Config: Schema<UITweaksConfig> = z.object({
   dialogWidth: z.union([z.number().min(MIN_DIALOG_WIDTH).max(MAX_DIALOG_WIDTH), z.const('default'), z.const('wide')]).default(DEFAULT_DIALOG_WIDTH),
   timelineEnabled: z.boolean().default(DEFAULT_TIMELINE_ENABLED),
   gitBarEnabled: z.boolean().default(DEFAULT_GITBAR_ENABLED),
+  archiveManagerEnabled: z.boolean().default(DEFAULT_ARCHIVE_MANAGER_ENABLED),
   suggestModel: z.string(),
 })
 
@@ -80,6 +90,8 @@ export interface ResolvedUITweaksConfig {
   timelineEnabled: boolean
   /** Whether the GitBar pills above the input are shown. */
   gitBarEnabled: boolean
+  /** Whether the Archive manager sidebar entry is shown. */
+  archiveManagerEnabled: boolean
   /** Optional `provider:model` override for LLM commit-message generation. */
   suggestModel?: string
 }
@@ -98,7 +110,8 @@ export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConf
   const dialogWidth = resolveDialogWidth(config.dialogWidth)
   const timelineEnabled = config.timelineEnabled ?? DEFAULT_TIMELINE_ENABLED
   const gitBarEnabled = config.gitBarEnabled ?? DEFAULT_GITBAR_ENABLED
-  const resolved: ResolvedUITweaksConfig = { fontSize, tableStyle, dialogWidth, timelineEnabled, gitBarEnabled }
+  const archiveManagerEnabled = config.archiveManagerEnabled ?? DEFAULT_ARCHIVE_MANAGER_ENABLED
+  const resolved: ResolvedUITweaksConfig = { fontSize, tableStyle, dialogWidth, timelineEnabled, gitBarEnabled, archiveManagerEnabled }
   if (typeof config.suggestModel === 'string' && config.suggestModel !== '') {
     resolved.suggestModel = config.suggestModel
   }

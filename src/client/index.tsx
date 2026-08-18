@@ -19,6 +19,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { TimelineRail, installTimelineStyles } from './timeline.tsx'
 import { GitBar, installGitBarStyles } from './gitbar.tsx'
+import { ArchiveSection, installArchiveStyles } from './archive.tsx'
 
 const NS = 'ui-tweaks'
 const SETTINGS_ROUTE = '/_dsh/ui-tweaks/settings'
@@ -40,6 +41,8 @@ interface TweaksValue {
   timelineEnabled?: boolean
   /** Whether the GitBar (branch / diff / commit pills) is shown. */
   gitBarEnabled?: boolean
+  /** Whether the Archive manager (sidebar entry above Settings) is shown. */
+  archiveManagerEnabled?: boolean
 }
 
 interface ResolvedTweaks {
@@ -48,6 +51,7 @@ interface ResolvedTweaks {
   dialogWidth: number
   timelineEnabled: boolean
   gitBarEnabled: boolean
+  archiveManagerEnabled: boolean
 }
 
 interface UITweaksSnapshot {
@@ -77,13 +81,31 @@ const en = {
   presetWide: 'Wide',
   presetWideXl: 'Extra wide',
   timeline: 'Timeline',
-  timelineHint: 'Show a navigation rail on the right of the message area: hover to preview user messages, click to jump to them. Off by default; automatically hidden in short conversations.',
+  timelineHint: 'Show a navigation rail on the right of the message area: hover to preview user messages, click to jump to them. Off by default; turn it on to enable. Automatically hidden in short conversations.',
   timelineOn: 'On',
-  timelineDefault: 'Default',
+  timelineOff: 'Off',
   gitBar: 'Git bar',
-  gitBarHint: 'Show branch / diff / commit-message pills above the input when the session is inside a git repository. On by default; the bar auto-hides outside git repos.',
+  gitBarHint: 'Show branch / diff / commit-message pills above the input when the session is inside a git repository. Off by default; turn it on to enable. The bar auto-hides outside git repos.',
   gitBarOn: 'On',
   gitBarOff: 'Off',
+  archiveManager: 'Archive manager',
+  archiveManagerHint: 'Show an Archive section in the Settings dialog where archived sessions can be restored or permanently deleted. Off by default; turn it on to enable.',
+  archiveManagerOn: 'On',
+  archiveManagerOff: 'Off',
+  archiveNav: 'Archive',
+  archiveTitle: 'Archived sessions',
+  archiveEmpty: 'No archived sessions.',
+  archiveRestore: 'Restore',
+  archiveRestoring: 'Working…',
+  archiveDelete: 'Delete',
+  archiveDeleteAll: 'Delete all',
+  archiveRestoreAll: 'Restore all',
+  archiveCount: 'sessions',
+  archiveUnavailable: 'Archive unavailable.',
+  archiveLiveError: 'This session is running; close it before permanently deleting it.',
+  archiveDisabledHint: 'Archive management is off. Turn it on in 界面调整 (UI Tweaks) to restore or permanently delete archived sessions here.',
+  archiveEnable: 'Enable archive management',
+  archiveRestored: 'Restored.',
   railLabel: 'Chat timeline',
   roleUser: 'User',
   noText: '(no text)',
@@ -156,13 +178,31 @@ const zh: Record<LocaleKey, string> = {
   presetWide: '稍宽',
   presetWideXl: '更宽',
   timeline: '时间线',
-  timelineHint: '在消息区右侧显示导航轨：悬停预览用户消息、点击跳转。默认关闭，会话较短时自动隐藏。',
+  timelineHint: '在消息区右侧显示导航轨：悬停预览用户消息、点击跳转。默认关闭，需手动开启；会话较短时自动隐藏。',
   timelineOn: '开启',
-  timelineDefault: '默认',
+  timelineOff: '关闭',
   gitBar: 'Git 状态栏',
-  gitBarHint: '会话在 git 仓库内时，在输入框上方显示 分支 / 差异 / 提交说明 胶囊。默认开启；非 git 仓库时自动隐藏。',
+  gitBarHint: '会话在 git 仓库内时，在输入框上方显示 分支 / 差异 / 提交说明 胶囊。默认关闭，需手动开启；非 git 仓库时自动隐藏。',
   gitBarOn: '开启',
   gitBarOff: '关闭',
+  archiveManager: '归档管理',
+  archiveManagerHint: '在设置中显示「归档」页面：可查看、恢复或彻底删除已归档会话。默认关闭，需手动开启。',
+  archiveManagerOn: '开启',
+  archiveManagerOff: '关闭',
+  archiveNav: '归档',
+  archiveTitle: '已归档会话',
+  archiveEmpty: '暂无归档会话。',
+  archiveRestore: '恢复',
+  archiveRestoring: '处理中…',
+  archiveDelete: '删除',
+  archiveDeleteAll: '全部删除',
+  archiveRestoreAll: '全部恢复',
+  archiveCount: '个会话',
+  archiveUnavailable: '归档暂不可用。',
+  archiveLiveError: '该会话正在运行，无法彻底删除，请先关闭该会话。',
+  archiveDisabledHint: '归档管理尚未开启。在「界面调整」中开启“归档管理”后，可在此查看、恢复或彻底删除已归档会话。',
+  archiveEnable: '开启归档管理',
+  archiveRestored: '已恢复。',
   railLabel: '对话时间线',
   roleUser: '用户',
   noText: '（无文本内容）',
@@ -236,7 +276,8 @@ function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
     tableStyle: value?.tableStyle === 'claude' ? 'claude' : 'default',
     dialogWidth: resolveDialogWidth(value?.dialogWidth),
     timelineEnabled: value?.timelineEnabled ?? false,
-    gitBarEnabled: value?.gitBarEnabled ?? true,
+    gitBarEnabled: value?.gitBarEnabled ?? false,
+    archiveManagerEnabled: value?.archiveManagerEnabled ?? false,
   }
 }
 
@@ -576,7 +617,11 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     void controller.set('gitBarEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
-  const reset = (field: 'fontSize' | 'tableStyle' | 'dialogWidth' | 'timelineEnabled' | 'gitBarEnabled'): void => {
+  const setArchiveManager = (value: boolean): void => {
+    void controller.set('archiveManagerEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
+  }
+
+  const reset = (field: 'fontSize' | 'tableStyle' | 'dialogWidth' | 'timelineEnabled' | 'gitBarEnabled' | 'archiveManagerEnabled'): void => {
     void controller.unset(field).then(() => { setStatus('resetDone') }).catch(() => { setStatus('unavailable') })
   }
 
@@ -680,7 +725,7 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
             <div className="dut-controls">
               <div className="dut-seg">
                 <button type="button" className={resolved.timelineEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setTimeline(true) }}>{t('timelineOn')}</button>
-                <button type="button" className={!resolved.timelineEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setTimeline(false) }}>{t('timelineDefault')}</button>
+                <button type="button" className={!resolved.timelineEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setTimeline(false) }}>{t('timelineOff')}</button>
               </div>
             </div>
           </div>
@@ -698,6 +743,18 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
           </div>
           <small>{t('gitBarHint')}</small>
         </div>
+        <div className="dut-field">
+          <div className="dut-field-top">
+            <span>{t('archiveManager')}</span>
+            <div className="dut-controls">
+              <div className="dut-seg">
+                <button type="button" className={resolved.archiveManagerEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setArchiveManager(true) }}>{t('archiveManagerOn')}</button>
+                <button type="button" className={!resolved.archiveManagerEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setArchiveManager(false) }}>{t('archiveManagerOff')}</button>
+              </div>
+            </div>
+          </div>
+          <small>{t('archiveManagerHint')}</small>
+        </div>
       </section>
     </div>
   )
@@ -707,6 +764,7 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(installBaseStyles, 'dsh-ui-tweaks: base styles')
   ctx.effect(installTimelineStyles, 'dsh-ui-tweaks: timeline styles')
   ctx.effect(installGitBarStyles, 'dsh-ui-tweaks: gitbar styles')
+  ctx.effect(installArchiveStyles, 'dsh-ui-tweaks: archive styles')
   ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'dsh-ui-tweaks: locale')
   const t = ctx.locale.bind(NS)
 
@@ -752,4 +810,17 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: () => ({ controller, sessionsService: ctx.sessions }),
   }, GitBar))
+
+  // Archive manager: a Settings section ("归档") that lists archived sessions
+  // and can restore or permanently delete them through the same-origin archive
+  // route. Reads the archiveManagerEnabled setting off the same store, so
+  // toggling the switch in the UI Tweaks section applies live.
+  ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section',
+    id: 'archive',
+    order: 50,
+    label: () => t('archiveNav'),
+    locale: NS,
+    inject: () => ({ controller, t, sessionsService: ctx.sessions }),
+  }, ArchiveSection))
 }

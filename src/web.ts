@@ -61,11 +61,11 @@ export function sameOriginPost(req: IncomingMessage): boolean {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function json<T>(res: ServerResponse, status: number, body: JsonResponse<T>): void {
+export function json<T>(res: ServerResponse, status: number, body: JsonResponse<T>): void {
   const bytes = Buffer.from(JSON.stringify(body))
   res.setHeader('Content-Type', 'application/json; charset=utf-8')
   res.setHeader('Content-Length', String(bytes.length))
@@ -75,11 +75,11 @@ function json<T>(res: ServerResponse, status: number, body: JsonResponse<T>): vo
   res.end(bytes)
 }
 
-function requestError(res: ServerResponse, status: number, code: string, message: string): void {
+export function requestError(res: ServerResponse, status: number, code: string, message: string): void {
   json(res, status, { ok: false, error: { code, message } })
 }
 
-async function readJson(req: IncomingMessage, maxBytes = 16 * 1024): Promise<unknown> {
+export async function readJson(req: IncomingMessage, maxBytes = 16 * 1024): Promise<unknown> {
   const contentType = req.headers['content-type']?.split(';', 1)[0]?.trim().toLowerCase()
   if (contentType !== 'application/json') throw new TypeError('Content-Type must be application/json')
   const chunks: Buffer[] = []
@@ -110,7 +110,7 @@ function parseRequest(value: unknown): UITweaksRequest {
   throw new TypeError(`unsupported action: ${value.action}`)
 }
 
-function messageOf(error: unknown): string {
+export function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message
   return String(error)
 }

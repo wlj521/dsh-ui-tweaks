@@ -17,6 +17,10 @@ A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH)
 - **Table style** — choose `Default` or the **Claude Desktop** look (light-gray rounded cell cards with small gaps, no borders; cells share the inline-code background; header not bold).
 - **Dialog width (px)** — type any value (600–1600); the message column, the composer input and the stats line below it widen together.
 - **Conversation timeline (toggleable, off by default)** — a thin navigation rail at the right of the message area: one indicator line per user message, hover to expand a preview panel, scroll-highlighting of the current position, click to smooth-scroll to that message (loading older history on demand). Works in **light and dark mode**, and **always hugs the message area's right edge** — even with a right sidebar installed and expanded (e.g. dsh-better-sidebar), the rail dodges it instead of overlapping. Auto-hidden while a session has fewer than two user messages.
+- **Archive manager (toggleable, off by default)** — an **Archive** page in the Settings dialog listing archived sessions (title / workspace / relative time) with per-row **Restore** and **Delete** actions plus batch **Restore all** / **Delete all** buttons.
+  - **Restore** removes a session from the archive set (its log and workspace slot are kept, so the conversation returns to the normal sidebar list).
+  - **Delete** PERMANENTLY deletes the session — the server removes its JSONL log from disk, detaches it from workspace accounting and the archive set, and clears its projection cache (irreversible). Only genuinely **running** sessions are refused; opened-but-idle sessions are also removed from the in-memory store, so the row disappears live.
+  - The list refreshes live via the `host/archived-sessions-changed` event and a session-list re-pull, with no page reload.
 
 All changes apply **live** — no reload needed. The same values can be hand-edited in the settings document:
 
@@ -26,6 +30,7 @@ ui-tweaks:
   tableStyle: claude
   dialogWidth: 880
   timelineEnabled: true   # defaults to false (off); set true to enable
+  archiveManagerEnabled: true   # defaults to false (off); set true to show the Archive page
 ```
 
 Settings entry: **Settings → UI Tweaks**.
