@@ -50,6 +50,7 @@ type GitBarLabelKey =
   | 'branchNewPlaceholder' | 'branchCreate' | 'diffTitle' | 'diffOnly' | 'diffFull'
   | 'commitTitle' | 'commitPlaceholder' | 'commitHint' | 'commitWillCommit' | 'commitViewDiff'
   | 'commitEmpty' | 'commitCancel' | 'commitSubmit' | 'commitSubmitPush'
+  | 'commitBusy'
   | 'dirty' | 'clean' | 'noChanges' | 'loading' | 'branchDelete' | 'branchDeleteConfirm'
   | 'includeFile' | 'excludeFile' | 'branchPushRemote'
   | 'branchRemoteDelete' | 'branchFrom' | 'branchFromHead' | 'branchGraph'
@@ -472,12 +473,15 @@ export const GITBAR_CSS = `
   display:inline-flex;align-items:center;gap:6px;
 }
 .gbar-btn.gbar-ghost{background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-primary)}
-.gbar-btn.gbar-ghost:hover{background:var(--dsw-alias-interactive-bg-hover-solid)}
+.gbar-btn.gbar-ghost:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-solid)}
 .gbar-btn.gbar-soft{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);color:var(--dsw-alias-state-business-primary)}
-.gbar-btn.gbar-soft:hover{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 18%,transparent)}
+.gbar-btn.gbar-soft:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 18%,transparent)}
 .gbar-btn.gbar-primary{background:var(--dsw-alias-state-business-primary);color:#fff;font-weight:500}
-.gbar-btn.gbar-primary:hover{opacity:.92}
+.gbar-btn.gbar-primary:hover:not(:disabled){opacity:.92}
+/* Disabled buttons (e.g. while a task is running) must NOT light up on hover —
+   they keep their muted look, though the tooltip hint still shows. */
 .gbar-btn:disabled{opacity:.5;cursor:default}
+.gbar-btn:disabled:hover{opacity:.5}
 .gbar-notice{
   position:fixed;z-index:150;left:50%;bottom:28px;transform:translateX(-50%);
   max-width:min(520px,90vw);padding:9px 16px;border-radius:10px;font-size:12.5px;line-height:1.5;
@@ -1198,6 +1202,10 @@ export function GitBarDiff({ session, controller, t }: GitBarDiffProps) {
 
   if (!enabled || sessionStr === undefined) return null
   if (snapshot === null || !snapshot.isRepo) return null
+  // With a clean working tree there is nothing to diff (or commit): hide the
+  // diff pill entirely — it reappears as soon as changes show up. The branch
+  // pill stays, since branch management is still useful while clean.
+  if (snapshot.clean) return null
 
   const dirty = !snapshot.clean
 
@@ -1338,11 +1346,23 @@ export function GitBarDiff({ session, controller, t }: GitBarDiffProps) {
                 />
               </div>
               <div className="gbar-actions">
-                <button type="button" className="gbar-btn gbar-soft" onClick={() => { doCommit(false) }} disabled={busy !== null || agentRunning}>
-                  {t('commitSubmit')}
+                <button
+                  type="button"
+                  className="gbar-btn gbar-soft"
+                  onClick={() => { doCommit(false) }}
+                  disabled={busy !== null || agentRunning}
+                  title={agentRunning ? t('commitBusy') : undefined}
+                >
+                  {busy === 'commit' ? <span className="gbar-spin" /> : null} {t('commitSubmit')}
                 </button>
-                <button type="button" className="gbar-btn gbar-primary" onClick={() => { doCommit(true) }} disabled={busy !== null || agentRunning}>
-                  {t('commitSubmitPush')}
+                <button
+                  type="button"
+                  className="gbar-btn gbar-primary"
+                  onClick={() => { doCommit(true) }}
+                  disabled={busy !== null || agentRunning}
+                  title={agentRunning ? t('commitBusy') : undefined}
+                >
+                  {busy === 'commit-push' ? <span className="gbar-spin" /> : null} {t('commitSubmitPush')}
                 </button>
               </div>
             </div>
