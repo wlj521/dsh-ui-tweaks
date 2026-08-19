@@ -17,6 +17,22 @@ export const UI_TWEAKS_SETTINGS_NAMESPACE = settingsNamespace('ui-tweaks')
 export interface UITweaksConfig {
   /** Message content font size in px. */
   fontSize?: number
+  /**
+   * Code font size as a percentage of the message font size. 81 is the stock
+   * ratio (13px code block at a 16px body); 100 makes code match the body.
+   * Applies to the code block, inline code and the small code font (tool
+   * output / terminal), preserving their relative hierarchy.
+   */
+  codeFontScale?: number
+  /**
+   * The "行高" base unit in px: the vertical rhythm of the reply area. It
+   * drives the gap between message rows (Think ↔ tool cards, user ↔
+   * assistant), the gap between content blocks inside one assistant reply
+   * (Think ↔ text), the markdown text line-height, paragraph bottom margins,
+   * and list margins — all scaled proportionally. 16 matches the stock DSH
+   * spacing.
+   */
+  lineHeight?: number
   /** Markdown table presentation style. */
   tableStyle?: 'default' | 'claude'
   /**
@@ -66,6 +82,16 @@ export const MIN_FONT_SIZE = 10
 export const MAX_FONT_SIZE = 32
 export const DEFAULT_FONT_SIZE = 16
 
+/** 16px matches the stock DSH vertical rhythm (message/block gaps, etc.). */
+export const MIN_LINE_HEIGHT = 0
+export const MAX_LINE_HEIGHT = 64
+export const DEFAULT_LINE_HEIGHT = 16
+
+/** 81% = the stock code ratio (13px code block at a 16px body). */
+export const MIN_CODE_FONT_SCALE = 50
+export const MAX_CODE_FONT_SCALE = 150
+export const DEFAULT_CODE_FONT_SCALE = 81
+
 /** Timeline defaults to off; the Settings segmented control turns it on. */
 export const DEFAULT_TIMELINE_ENABLED = false
 
@@ -81,6 +107,8 @@ export const DEFAULT_MCP_MANAGER_ENABLED = false
 /** Configuration schema with documented defaults. */
 export const Config: Schema<UITweaksConfig> = z.object({
   fontSize: z.number().min(10).max(32).default(16),
+  codeFontScale: z.number().min(MIN_CODE_FONT_SCALE).max(MAX_CODE_FONT_SCALE).default(DEFAULT_CODE_FONT_SCALE),
+  lineHeight: z.number().min(MIN_LINE_HEIGHT).max(MAX_LINE_HEIGHT).default(DEFAULT_LINE_HEIGHT),
   tableStyle: z.union(['default', 'claude'] as const).default('default'),
   dialogWidth: z.union([z.number().min(MIN_DIALOG_WIDTH).max(MAX_DIALOG_WIDTH), z.const('default'), z.const('wide')]).default(DEFAULT_DIALOG_WIDTH),
   timelineEnabled: z.boolean().default(DEFAULT_TIMELINE_ENABLED),
@@ -93,6 +121,10 @@ export const Config: Schema<UITweaksConfig> = z.object({
 /** Configuration after static validation, with every default materialized. */
 export interface ResolvedUITweaksConfig {
   fontSize: number
+  /** Code font size as a percentage of the message font size. */
+  codeFontScale: number
+  /** Base vertical spacing (px) for the reply area ("行高"). */
+  lineHeight: number
   tableStyle: 'default' | 'claude'
   /** Dialog width in px (748 = the stock DSH column). */
   dialogWidth: number
@@ -118,13 +150,15 @@ export function resolveDialogWidth(value: UITweaksConfig['dialogWidth'] | undefi
 /** Resolve a partial config into a fully defaulted value. */
 export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConfig {
   const fontSize = config.fontSize ?? DEFAULT_FONT_SIZE
+  const codeFontScale = config.codeFontScale ?? DEFAULT_CODE_FONT_SCALE
+  const lineHeight = config.lineHeight ?? DEFAULT_LINE_HEIGHT
   const tableStyle = config.tableStyle ?? 'default'
   const dialogWidth = resolveDialogWidth(config.dialogWidth)
   const timelineEnabled = config.timelineEnabled ?? DEFAULT_TIMELINE_ENABLED
   const gitBarEnabled = config.gitBarEnabled ?? DEFAULT_GITBAR_ENABLED
   const archiveManagerEnabled = config.archiveManagerEnabled ?? DEFAULT_ARCHIVE_MANAGER_ENABLED
   const mcpManagerEnabled = config.mcpManagerEnabled ?? DEFAULT_MCP_MANAGER_ENABLED
-  const resolved: ResolvedUITweaksConfig = { fontSize, tableStyle, dialogWidth, timelineEnabled, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled }
+  const resolved: ResolvedUITweaksConfig = { fontSize, codeFontScale, lineHeight, tableStyle, dialogWidth, timelineEnabled, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled }
   if (typeof config.suggestModel === 'string' && config.suggestModel !== '') {
     resolved.suggestModel = config.suggestModel
   }

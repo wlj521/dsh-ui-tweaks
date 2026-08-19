@@ -28,6 +28,14 @@ const SETTINGS_ROUTE = '/_dsh/ui-tweaks/settings'
 const DEFAULT_FONT_SIZE = 16
 const MIN_FONT_SIZE = 10
 const MAX_FONT_SIZE = 32
+/** Code font as a percentage of the message font size (81% = stock 13/16). */
+const DEFAULT_CODE_FONT_SCALE = 81
+const MIN_CODE_FONT_SCALE = 50
+const MAX_CODE_FONT_SCALE = 150
+/** 行高 base unit (px): message/block gaps, text line-height, paragraph & list margins all scale from it. */
+const DEFAULT_LINE_HEIGHT = 16
+const MIN_LINE_HEIGHT = 0
+const MAX_LINE_HEIGHT = 64
 /** Dialog width in px. Keep in sync with src/config.ts. */
 const DEFAULT_DIALOG_WIDTH = 748
 const MIN_DIALOG_WIDTH = 600
@@ -35,6 +43,10 @@ const MAX_DIALOG_WIDTH = 1600
 
 interface TweaksValue {
   fontSize?: number
+  /** Code font size as a percentage of the message font size (81 = stock). */
+  codeFontScale?: number
+  /** 行高 base unit in px; scales message/block gaps, line-height and list/paragraph margins. */
+  lineHeight?: number
   tableStyle?: 'default' | 'claude'
   /** px width; legacy 'default' | 'wide' strings accepted. */
   dialogWidth?: number | 'default' | 'wide'
@@ -50,6 +62,8 @@ interface TweaksValue {
 
 interface ResolvedTweaks {
   fontSize: number
+  codeFontScale: number
+  lineHeight: number
   tableStyle: 'default' | 'claude'
   dialogWidth: number
   timelineEnabled: boolean
@@ -76,6 +90,10 @@ const en = {
   sectionLayout: 'Layout',
   fontSize: 'Message font size',
   fontSizeHint: `Number between ${MIN_FONT_SIZE} and ${MAX_FONT_SIZE}; applies to message text, headings, tables and code.`,
+  codeFontScale: 'Code font size',
+  codeFontScaleHint: `Code as a percentage of the message font size; ${DEFAULT_CODE_FONT_SCALE}% is DSH's default (13px code block at 16px body), 100% matches the body size.`,
+  lineHeight: 'Line spacing',
+  lineHeightHint: `Base vertical spacing in px: gaps between message rows (Think ↔ tool cards) and blocks inside one reply, plus text line-height, paragraph and list margins, all scale from it; ${DEFAULT_LINE_HEIGHT} is DSH's default.`,
   tableStyle: 'Table style',
   tableStyleDefault: 'Default',
   tableStyleClaude: 'Claude Desktop',
@@ -224,6 +242,10 @@ const zh: Record<LocaleKey, string> = {
   sectionLayout: '布局',
   fontSize: '消息字体大小',
   fontSizeHint: `取值 ${MIN_FONT_SIZE}–${MAX_FONT_SIZE}，作用于消息正文、标题、表格与代码。`,
+  codeFontScale: '代码字号',
+  codeFontScaleHint: `代码相对正文字号的百分比；${DEFAULT_CODE_FONT_SCALE}% 为 DSH 默认（正文 16 时代码块 13px），100% 与正文同大。`,
+  lineHeight: '行高',
+  lineHeightHint: `回复区垂直间距的基准值：消息之间（如 Think ↔ 工具卡片）、回复内块之间、正文行高、段落与列表边距都按它缩放；取值 ${MIN_LINE_HEIGHT}–${MAX_LINE_HEIGHT}px，${DEFAULT_LINE_HEIGHT} 为 DSH 默认。`,
   tableStyle: '表格样式',
   tableStyleDefault: '默认',
   tableStyleClaude: 'Claude Desktop',
@@ -379,6 +401,8 @@ function resolveDialogWidth(value: TweaksValue['dialogWidth'] | undefined): numb
 function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
   return {
     fontSize: typeof value?.fontSize === 'number' ? value.fontSize : DEFAULT_FONT_SIZE,
+    codeFontScale: typeof value?.codeFontScale === 'number' ? value.codeFontScale : DEFAULT_CODE_FONT_SCALE,
+    lineHeight: typeof value?.lineHeight === 'number' ? value.lineHeight : DEFAULT_LINE_HEIGHT,
     tableStyle: value?.tableStyle === 'claude' ? 'claude' : 'default',
     dialogWidth: resolveDialogWidth(value?.dialogWidth),
     timelineEnabled: value?.timelineEnabled ?? false,
@@ -394,7 +418,7 @@ function rel(base: number, fontSize: number): number {
 }
 
 /** Rebuild the markdown font tokens for the chosen base size, keeping the theme faces. */
-function buildFontCss(fontSize: number): string {
+function buildFontCss(fontSize: number, lineHeight: number, codeScale: number): string {
   const cs = getComputedStyle(document.body)
   const fam = (name: string, fallback: string): string => {
     const value = cs.getPropertyValue(name).trim()
@@ -405,22 +429,31 @@ function buildFontCss(fontSize: number): string {
   const codeBlock = fam('--dsw-font-markdown-code-block-font-family', '"SF Mono", Consolas, monospace')
 
   const parts: string[] = []
-  const token = (shorthand: string, size: number, line: number, family: string): void => {
+  // `baseLine` is the token's line-height at the 16px baseline; it scales with
+  // both the chosen font size and the 行高 unit, so at the default (16) it
+  // reproduces the stock rhythm exactly.
+  const token = (shorthand: string, size: number, baseLine: number, family: string): void => {
+    const line = Math.max(12, Math.round((baseLine / DEFAULT_FONT_SIZE) * fontSize * (lineHeight / DEFAULT_LINE_HEIGHT)))
     parts.push(`--${shorthand}:${size}px/${line}px ${family}`)
     parts.push(`--${shorthand}-font-size:${size}px`)
     parts.push(`--${shorthand}-line-height:${line}px`)
   }
-  token('dsw-font-markdown-base', fontSize, rel(28, fontSize), base)
-  token('dsw-font-markdown-base-strong', fontSize, rel(28, fontSize), base)
-  token('dsw-font-markdown-base-italic', fontSize, rel(28, fontSize), base)
-  token('dsw-font-markdown-base-strong-italic', fontSize, rel(28, fontSize), base)
-  token('dsw-font-markdown-h1', rel(24, fontSize), rel(34, fontSize), base)
-  token('dsw-font-markdown-h2', rel(22, fontSize), rel(32, fontSize), base)
-  token('dsw-font-markdown-h3', rel(20, fontSize), rel(30, fontSize), base)
-  token('dsw-font-markdown-h4', fontSize, rel(28, fontSize), base)
-  token('dsw-font-markdown-code', rel(14, fontSize), rel(22, fontSize), code)
-  token('dsw-font-markdown-code-block', rel(13, fontSize), rel(22, fontSize), codeBlock)
-  token('dsw-font-markdown-code-block-small', rel(12, fontSize), rel(18, fontSize), codeBlock)
+  // Code fonts are a percentage of the body size (stock: code block 13px at a
+  // 16px body = 81%), with inline code slightly larger and the small variant
+  // slightly smaller, preserving DSH's hierarchy. At the default 81% this is
+  // exactly the stock scaling; 100% makes the code block match the body.
+  const codePx = (stockRatio: number): number => Math.max(8, Math.round(fontSize * stockRatio * (codeScale / DEFAULT_CODE_FONT_SCALE)))
+  token('dsw-font-markdown-base', fontSize, 28, base)
+  token('dsw-font-markdown-base-strong', fontSize, 28, base)
+  token('dsw-font-markdown-base-italic', fontSize, 28, base)
+  token('dsw-font-markdown-base-strong-italic', fontSize, 28, base)
+  token('dsw-font-markdown-h1', rel(24, fontSize), 34, base)
+  token('dsw-font-markdown-h2', rel(22, fontSize), 32, base)
+  token('dsw-font-markdown-h3', rel(20, fontSize), 30, base)
+  token('dsw-font-markdown-h4', fontSize, 28, base)
+  token('dsw-font-markdown-code', codePx(14 / 16), 22, code)
+  token('dsw-font-markdown-code-block', codePx(13 / 16), 22, codeBlock)
+  token('dsw-font-markdown-code-block-small', codePx(12 / 16), 18, codeBlock)
   return `body{${parts.join(';')}}`
 }
 
@@ -466,7 +499,7 @@ div[data-slot="conversation.chat.node"] table pre{
 
 function buildRuntimeCss(value: ResolvedTweaks): string {
   const rules: string[] = []
-  rules.push(buildFontCss(value.fontSize))
+  rules.push(buildFontCss(value.fontSize, value.lineHeight, value.codeFontScale))
   // User-sent messages use their own fixed font-size (not the markdown tokens);
   // route them through the same base so they follow the fontSize setting too.
   // `steering` messages are sent while the agent is busy (busyEnter: steer);
@@ -483,6 +516,59 @@ function buildRuntimeCss(value: ResolvedTweaks): string {
   // Markdown table cells are pinned by DSH (15px); let every table style follow
   // the fontSize setting as well.
   rules.push(`div[data-slot="conversation.chat.node"] table th,div[data-slot="conversation.chat.node"] table td{font-size:var(--dsw-font-markdown-base-font-size) !important}`)
+  // Inline code is pinned by DSH to 0.875em of the surrounding text (it ignores
+  // the code token); scale that em with the code-font percentage.
+  if (value.codeFontScale !== DEFAULT_CODE_FONT_SCALE) {
+    const em = (0.875 * (value.codeFontScale / DEFAULT_CODE_FONT_SCALE)).toFixed(3)
+    rules.push(`div[data-slot="conversation.chat.node"] div[class*="_markdown_"] :not(pre)>code{font-size:${em}em !important}`)
+  }
+  // 行高: the base vertical rhythm of the reply area. When it differs from
+  // the stock 16px, every vertical spacing scales from it proportionally:
+  //  ① gaps between message rows (Think ↔ tool cards like pwsh, user ↔
+  //    assistant) — the chat flow column;
+  //  ② gaps between content blocks inside one assistant reply (Think ↔ text) —
+  //    the Assistant Markdown block container (`Sxvs8a_body`, CSS-module
+  //    hashed, stable within the pinned rc.7 conversation package);
+  //  ③ the markdown typography rhythm: paragraphs (`p` has a stock `margin:
+  //    16px 0` that must be overridden on both axes, not just bottom, or it
+  //    can never tighten below 16), list margins, list-item gaps (stock 6px),
+  //    paragraphs inside list items (stock 8px), code blocks, headings and
+  //    rules — all scaled from the 行高 unit.
+  // Text line-height itself scales in buildFontCss above.
+  if (value.lineHeight !== DEFAULT_LINE_HEIGHT) {
+    const n = value.lineHeight
+    const md = `div[data-slot="conversation.chat.node"] div[class*="_markdown_"]`
+    const liGap = Math.max(2, Math.round((6 * n) / DEFAULT_LINE_HEIGHT))
+    const liPGap = Math.max(2, Math.round((8 * n) / DEFAULT_LINE_HEIGHT))
+    rules.push(`div[data-slot="conversation.view"] .Md3f7G_column{gap:${n}px !important}`)
+    rules.push(`div[data-slot="conversation.chat.node"] .Sxvs8a_body{gap:${n}px !important}`)
+    rules.push(`${md} p{margin:${n}px 0 !important}`)
+    rules.push(`${md} ul,${md} ol{margin:${n}px 0 !important}`)
+    rules.push(`${md} pre{margin:${n}px 0 !important}`)
+    // Code blocks: the pre's inner vertical padding is stock 16px (shiki
+    // default); scale it so the block's own height follows 行高 too. Only
+    // top/bottom is touched, horizontal padding stays as the theme sets it.
+    const codePad = Math.max(4, Math.round((16 * n) / DEFAULT_LINE_HEIGHT))
+    rules.push(`${md} pre{padding-top:${codePad}px !important;padding-bottom:${codePad}px !important}`)
+    // Table cells: vertical cell padding is stock 10px. Scale it for the
+    // default table style; the Claude preset keeps its own compact 7px cell
+    // padding (that look is the point of the preset).
+    if (value.tableStyle !== 'claude') {
+      const cellPad = Math.max(2, Math.round((10 * n) / DEFAULT_LINE_HEIGHT))
+      rules.push(`${md} table th,${md} table td{padding-top:${cellPad}px !important;padding-bottom:${cellPad}px !important}`)
+    }
+    rules.push(`${md} li:not(:first-child){margin-top:${liGap}px !important}`)
+    rules.push(`${md} li>p{margin:${liPGap}px 0 !important}`)
+    rules.push(`${md} h1,${md} h2,${md} h3{margin:${2 * n}px 0 ${n}px !important}`)
+    rules.push(`${md} h4,${md} h5,${md} h6{margin:${n}px 0 !important}`)
+    rules.push(`${md} hr{margin:${2 * n}px 0 !important}`)
+    rules.push(`${md} blockquote{margin:${n}px 0 0 !important}`)
+    // Keep DSH's flush edges: the first/last block of a reply has zero outer
+    // margin (stock `>*:first-child` / `>*:last-child`), so a message starts
+    // and ends tight and the spacing to the next node stays the column gap.
+    rules.push(`${md} > :first-child{margin-top:0 !important}`)
+    rules.push(`${md} > :last-child{margin-bottom:0 !important}`)
+  }
   if (value.dialogWidth !== DEFAULT_DIALOG_WIDTH) {
     const width = value.dialogWidth
     rules.push(`[data-chat-flow]{max-width:${width}px !important}`)
@@ -665,11 +751,15 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
   const resolved = resolveValue(state.value)
   const writable = state.writable
   const [draft, setDraft] = useState<string>(String(resolved.fontSize))
+  const [codeDraft, setCodeDraft] = useState<string>(String(resolved.codeFontScale))
+  const [lineHeightDraft, setLineHeightDraft] = useState<string>(String(resolved.lineHeight))
   const [widthDraft, setWidthDraft] = useState<string>(String(resolved.dialogWidth))
   const [status, setStatus] = useState<LocaleKey | undefined>(undefined)
 
   useEffect(() => { if (state.status === 'loading' && state.value === undefined) void controller.load() }, [controller, state.status, state.value])
   useEffect(() => { setDraft(String(resolved.fontSize)) }, [resolved.fontSize])
+  useEffect(() => { setCodeDraft(String(resolved.codeFontScale)) }, [resolved.codeFontScale])
+  useEffect(() => { setLineHeightDraft(String(resolved.lineHeight)) }, [resolved.lineHeight])
   useEffect(() => { setWidthDraft(String(resolved.dialogWidth)) }, [resolved.dialogWidth])
   useEffect(() => {
     if (status === undefined) return
@@ -684,6 +774,24 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     const clamped = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, Math.round(parsed)))
     setDraft(String(clamped))
     void controller.set('fontSize', clamped).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
+  }
+
+  const commitLineHeight = (raw: string): void => {
+    setLineHeightDraft(raw)
+    const parsed = Number(raw)
+    if (!Number.isFinite(parsed)) return
+    const clamped = Math.min(MAX_LINE_HEIGHT, Math.max(MIN_LINE_HEIGHT, Math.round(parsed)))
+    setLineHeightDraft(String(clamped))
+    void controller.set('lineHeight', clamped).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
+  }
+
+  const commitCodeScale = (raw: string): void => {
+    setCodeDraft(raw)
+    const parsed = Number(raw)
+    if (!Number.isFinite(parsed)) return
+    const clamped = Math.min(MAX_CODE_FONT_SCALE, Math.max(MIN_CODE_FONT_SCALE, Math.round(parsed)))
+    setCodeDraft(String(clamped))
+    void controller.set('codeFontScale', clamped).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
   const pickTableStyle = (raw: string): void => {
@@ -703,6 +811,18 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     const next = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, resolved.fontSize + delta))
     setDraft(String(next))
     void controller.set('fontSize', next).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
+  }
+
+  const stepLineHeight = (delta: number): void => {
+    const next = Math.min(MAX_LINE_HEIGHT, Math.max(MIN_LINE_HEIGHT, resolved.lineHeight + delta))
+    setLineHeightDraft(String(next))
+    void controller.set('lineHeight', next).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
+  }
+
+  const stepCodeScale = (delta: number): void => {
+    const next = Math.min(MAX_CODE_FONT_SCALE, Math.max(MIN_CODE_FONT_SCALE, resolved.codeFontScale + delta))
+    setCodeDraft(String(next))
+    void controller.set('codeFontScale', next).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
   const stepDialogWidth = (delta: number): void => {
@@ -732,7 +852,7 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     void controller.set('mcpManagerEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
-  const reset = (field: 'fontSize' | 'tableStyle' | 'dialogWidth' | 'timelineEnabled' | 'gitBarEnabled' | 'archiveManagerEnabled' | 'mcpManagerEnabled'): void => {
+  const reset = (field: 'fontSize' | 'codeFontScale' | 'lineHeight' | 'tableStyle' | 'dialogWidth' | 'timelineEnabled' | 'gitBarEnabled' | 'archiveManagerEnabled' | 'mcpManagerEnabled'): void => {
     void controller.unset(field).then(() => { setStatus('resetDone') }).catch(() => { setStatus('unavailable') })
   }
 
@@ -780,6 +900,54 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
             </div>
           </div>
           <small>{t('fontSizeHint')}</small>
+        </div>
+        <div className="dut-field">
+          <div className="dut-field-top">
+            <span>{t('lineHeight')}</span>
+            <div className="dut-controls">
+              <div className="dut-stepper">
+                <button type="button" aria-label="−" disabled={!writable || resolved.lineHeight <= MIN_LINE_HEIGHT} onClick={() => { stepLineHeight(-2) }}>−</button>
+                <input
+                  type="number"
+                  min={MIN_LINE_HEIGHT}
+                  max={MAX_LINE_HEIGHT}
+                  step={2}
+                  value={lineHeightDraft}
+                  disabled={!writable}
+                  onChange={(event) => { setLineHeightDraft(event.target.value) }}
+                  onBlur={(event) => { commitLineHeight(event.target.value) }}
+                  onKeyDown={(event) => { if (event.key === 'Enter') commitLineHeight((event.target as HTMLInputElement).value) }}
+                />
+                <button type="button" aria-label="+" disabled={!writable || resolved.lineHeight >= MAX_LINE_HEIGHT} onClick={() => { stepLineHeight(2) }}>+</button>
+              </div>
+              <button type="button" className={'dut-btn' + (resolved.lineHeight === DEFAULT_LINE_HEIGHT ? ' dut-btn-active' : '')} disabled={!writable} onClick={() => { reset('lineHeight') }}>{t('defaultAction')}</button>
+            </div>
+          </div>
+          <small>{t('lineHeightHint')}</small>
+        </div>
+        <div className="dut-field">
+          <div className="dut-field-top">
+            <span>{t('codeFontScale')}</span>
+            <div className="dut-controls">
+              <div className="dut-stepper">
+                <button type="button" aria-label="−" disabled={!writable || resolved.codeFontScale <= MIN_CODE_FONT_SCALE} onClick={() => { stepCodeScale(-1) }}>−</button>
+                <input
+                  type="number"
+                  min={MIN_CODE_FONT_SCALE}
+                  max={MAX_CODE_FONT_SCALE}
+                  step={1}
+                  value={codeDraft}
+                  disabled={!writable}
+                  onChange={(event) => { setCodeDraft(event.target.value) }}
+                  onBlur={(event) => { commitCodeScale(event.target.value) }}
+                  onKeyDown={(event) => { if (event.key === 'Enter') commitCodeScale((event.target as HTMLInputElement).value) }}
+                />
+                <button type="button" aria-label="+" disabled={!writable || resolved.codeFontScale >= MAX_CODE_FONT_SCALE} onClick={() => { stepCodeScale(1) }}>+</button>
+              </div>
+              <button type="button" className={'dut-btn' + (resolved.codeFontScale === DEFAULT_CODE_FONT_SCALE ? ' dut-btn-active' : '')} disabled={!writable} onClick={() => { reset('codeFontScale') }}>{t('defaultAction')}</button>
+            </div>
+          </div>
+          <small>{t('codeFontScaleHint')}</small>
         </div>
       </section>
 
