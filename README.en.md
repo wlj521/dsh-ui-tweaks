@@ -11,7 +11,7 @@ A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH)
 | ![Dialog width](assets/dialog_box.png) | ![Settings panel](assets/settings.png) |
 | **Dialog width**: message column, composer and stats line widen together | **Settings panel**: font size / table style / dialog width / timeline |
 | ![GitBar](assets/git.png) | |
-| **GitBar**: branch / diff / commit pills above the input, with branch management, per-file diff, and commit & push | |
+| **GitBar**: git pills inside the composer tool row (branch after the access-mode control, diff before the model select) — branch management, per-file diff, and commit & push from the diff panel | |
 | ![Archive manager](assets/archive.png) | ![MCP manager](assets/mcp.png) |
 | **Archive manager**: an Archive page in the Settings dialog listing archived sessions (title / workspace / relative time) with Restore and Delete actions | **MCP manager**: an MCP page in the Settings dialog listing configured MCP servers with live status and full management (Add / Edit / Enable / Disable / Delete / Restart) |
 
@@ -21,6 +21,10 @@ A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH)
 - **Table style** — choose `Default` or the **Claude Desktop** look (light-gray rounded cell cards with small gaps, no borders; cells share the inline-code background; header not bold).
 - **Dialog width (px)** — type any value (600–1600); the message column, the composer input and the stats line below it widen together.
 - **Conversation timeline (toggleable, off by default)** — a thin navigation rail at the right of the message area: one indicator line per user message, hover to expand a preview panel, scroll-highlighting of the current position, click to smooth-scroll to that message (loading older history on demand). Works in **light and dark mode**, and **always hugs the message area's right edge** — even with a right sidebar installed and expanded (e.g. dsh-better-sidebar), the rail dodges it instead of overlapping. Auto-hidden while a session has fewer than two user messages.
+- **GitBar (toggleable, off by default)** — when the session's working directory is a git repository, two compact pills render **inside the composer's tool row** (styled like the native access-mode / model-select controls, so the input area no longer carries a separate row above the card):
+  - **Branch pill** — right after the access-mode control; shows the current branch and opens an upward branch panel (local / remote lists, `git switch` on click, new-branch field).
+  - **Diff pill** — right before the model select; shows `+N −M · K files` and opens the right slide-over diff panel (changed-file list + per-file diff, resizable, commit band kept at its foot for 提交 / 提交并推送). The standalone commit pill is gone — commit now happens from the diff panel.
+  - **Squeeze-aware**: the composer tool row is an inline-size container, so when it tightens (e.g. the stretched diff panel pushes the column), the pills degrade like the native chrome — first hiding the "· K files" meta, then collapsing to **icon-only** — never overlapping the access / model controls.
 - **Archive manager (toggleable, off by default)** — an **Archive** page in the Settings dialog listing archived sessions (title / workspace / relative time) with per-row **Restore** and **Delete** actions plus batch **Restore all** / **Delete all** buttons.
   - **Restore** removes a session from the archive set (its log and workspace slot are kept, so the conversation returns to the normal sidebar list).
   - **Delete** PERMANENTLY deletes the session — the server removes its JSONL log from disk, detaches it from workspace accounting and the archive set, and clears its projection cache (irreversible). Only genuinely **running** sessions are refused; opened-but-idle sessions are also removed from the in-memory store, so the row disappears live.

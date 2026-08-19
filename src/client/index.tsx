@@ -18,7 +18,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { TimelineRail, installTimelineStyles } from './timeline.tsx'
-import { GitBar, installGitBarStyles } from './gitbar.tsx'
+import { GitBarBranch, GitBarDiff, installGitBarStyles } from './gitbar.tsx'
 import { ArchiveSection, installArchiveStyles } from './archive.tsx'
 import { McpSection, installMcpStyles } from './mcp.tsx'
 
@@ -578,10 +578,6 @@ function buildRuntimeCss(value: ResolvedTweaks): string {
     // The conversation stats line under the composer (conversation.composer.dock)
     // keeps its own 748px column; widen it together with the dialog.
     rules.push(`[data-slot="conversation.composer.dock"] > div{max-width:${width + 32}px !important}`)
-    // The GitBar pill row (conversation.input.dock) sits inside the composer's
-    // tool row (roughly between the "+" button's right and the send button's
-    // left): composer +32px padding minus ~74px of tool-row chrome each side.
-    rules.push(`[data-slot-plugin="dsh-ui-tweaks-gitbar"]{max-width:${width - 42}px !important}`)
     rules.push(`:root{--dsh-composer-card-max-width:${width + 32}px}`)
   }
   if (value.tableStyle === 'claude') {
@@ -1128,15 +1124,26 @@ export function apply(ctx: ClientContext): void {
     inject: () => ({ controller, sessionsService: ctx.sessions }),
   }, TimelineRail))
 
-  // GitBar: branch / diff / commit-message pills above the composer, mounted
-  // in the same dock row (renders null for non-git sessions).
-  ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
-    name: 'conversation.input.dock',
-    id: 'gitbar',
+  // GitBar: the branch pill (`conversation.input.left`, right after the
+  // access-mode control) and the diff pill (`conversation.input.right`, just
+  // before the model select) live INSIDE the composer's tool row, so the input
+  // area no longer carries a pill row above the card. Each renders null for
+  // non-git sessions.
+  ctx.slots.inject('conversation.input.left', () => ctx.slots.register({
+    name: 'conversation.input.left',
+    id: 'gitbar-branch',
     order: 30,
     locale: NS,
-    inject: () => ({ controller, sessionsService: ctx.sessions }),
-  }, GitBar))
+    inject: () => ({ controller }),
+  }, GitBarBranch))
+
+  ctx.slots.inject('conversation.input.right', () => ctx.slots.register({
+    name: 'conversation.input.right',
+    id: 'gitbar-diff',
+    order: 30,
+    locale: NS,
+    inject: () => ({ controller }),
+  }, GitBarDiff))
 
   // Archive manager: a Settings section ("归档") that lists archived sessions
   // and can restore or permanently delete them. Registered only while the
