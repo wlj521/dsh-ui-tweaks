@@ -530,7 +530,7 @@ function buildRuntimeCss(value: ResolvedTweaks): string {
   //    assistant) — the chat flow column;
   //  ② gaps between content blocks inside one assistant reply (Think ↔ text) —
   //    the Assistant Markdown block container (`Sxvs8a_body`, CSS-module
-  //    hashed, stable within the pinned rc.7 conversation package);
+  //    hashed, stable within the pinned rc.8 conversation package);
   //  ③ the markdown typography rhythm: paragraphs (`p` has a stock `margin:
   //    16px 0` that must be overridden on both axes, not just bottom, or it
   //    can never tighten below 16), list margins, list-item gaps (stock 6px),
