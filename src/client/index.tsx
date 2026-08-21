@@ -7,15 +7,20 @@
  * panel section that edits them.
  */
 
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { createPortal } from 'react-dom'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only import activates the dsh-client-ui-settings slot declarations
 // (`settings.section`) and the client-side settings scope contract.
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 // Type-only import activates the dsh-client-ui-conversation slot declarations
-// (`conversation.input.dock`) that host the timeline rail.
+// (`conversation.input.dock`) that host the timeline rail, and the Context
+// declaration for `ctx.conversation` (scope-addressed send / input registry).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+// Type-only import activates the Context declaration for `ctx.commandUi`
+// (client slash-command contributions) and provides the contribution types.
+import type { SelectOption } from '@deepseek-ai/dsh-client-ui-commands/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { TimelineRail, installTimelineStyles } from './timeline.tsx'
 import { GitBarBranch, GitBarDiff, installGitBarStyles } from './gitbar.tsx'
@@ -28,10 +33,12 @@ const SETTINGS_ROUTE = '/_dsh/ui-tweaks/settings'
 const DEFAULT_FONT_SIZE = 16
 const MIN_FONT_SIZE = 10
 const MAX_FONT_SIZE = 32
-/** Code font as a percentage of the message font size (81% = stock 13/16). */
+/** Legacy: code font as a percentage of the message font size (81% = stock 13/16). */
 const DEFAULT_CODE_FONT_SCALE = 81
-const MIN_CODE_FONT_SCALE = 50
-const MAX_CODE_FONT_SCALE = 150
+/** Absolute code font size (px): 13 is the stock DSH code block at a 16px body. */
+const DEFAULT_CODE_FONT_SIZE = 13
+const MIN_CODE_FONT_SIZE = 8
+const MAX_CODE_FONT_SIZE = 32
 /** 行高 base unit (px): message/block gaps, text line-height, paragraph & list margins all scale from it. */
 const DEFAULT_LINE_HEIGHT = 16
 const MIN_LINE_HEIGHT = 0
@@ -43,8 +50,10 @@ const MAX_DIALOG_WIDTH = 1600
 
 interface TweaksValue {
   fontSize?: number
-  /** Code font size as a percentage of the message font size (81 = stock). */
+  /** Code font size as a percentage of the message font size (81 = stock). Legacy input. */
   codeFontScale?: number
+  /** Absolute code font size in px; wins over the legacy percentage. */
+  codeFontSize?: number
   /** 行高 base unit in px; scales message/block gaps, line-height and list/paragraph margins. */
   lineHeight?: number
   tableStyle?: 'default' | 'claude'
@@ -58,11 +67,14 @@ interface TweaksValue {
   archiveManagerEnabled?: boolean
   /** Whether the MCP manager (Settings page listing MCP servers) is shown. */
   mcpManagerEnabled?: boolean
+  /** Whether the /init slash command (AGENTS.md bootstrap prompt) is registered. */
+  initCommandEnabled?: boolean
 }
 
 interface ResolvedTweaks {
   fontSize: number
-  codeFontScale: number
+  /** Effective absolute code font size in px (codeFontSize, else legacy %, else stock). */
+  codeFontSize: number
   lineHeight: number
   tableStyle: 'default' | 'claude'
   dialogWidth: number
@@ -70,6 +82,7 @@ interface ResolvedTweaks {
   gitBarEnabled: boolean
   archiveManagerEnabled: boolean
   mcpManagerEnabled: boolean
+  initCommandEnabled: boolean
 }
 
 interface UITweaksSnapshot {
@@ -84,17 +97,18 @@ interface ApiFailure { ok: false; error: { code: string; message: string } }
 const en = {
   nav: 'UI Tweaks',
   settingsTitle: 'UI Tweaks',
-  settingsIntro: 'Tune the conversation UI: message font size, markdown table style, dialog width, the timeline rail and the git bar. Changes apply live.',
-  sectionText: 'Text',
-  sectionContent: 'Content',
+  settingsIntro: 'Tune the conversation UI — text, tables and layout, plus optional features: the timeline rail, git bar, archive & MCP managers and the /init command. Changes apply live.',
+  sectionText: 'Text & tables',
   sectionLayout: 'Layout',
+  sectionFeatures: 'Features',
   fontSize: 'Message font size',
   fontSizeHint: `Number between ${MIN_FONT_SIZE} and ${MAX_FONT_SIZE}; applies to message text, headings, tables and code.`,
-  codeFontScale: 'Code font size',
-  codeFontScaleHint: `Code as a percentage of the message font size; ${DEFAULT_CODE_FONT_SCALE}% is DSH's default (13px code block at 16px body), 100% matches the body size.`,
+  codeFontSize: 'Code font size',
+  codeFontSizeHint: `Absolute code size in px (${MIN_CODE_FONT_SIZE}–${MAX_CODE_FONT_SIZE}); ${DEFAULT_CODE_FONT_SIZE}px is DSH's default at a 16px body. Applies to code blocks; inline code follows proportionally.`,
   lineHeight: 'Line spacing',
   lineHeightHint: `Base vertical spacing in px: gaps between message rows (Think ↔ tool cards) and blocks inside one reply, plus text line-height, paragraph and list margins, all scale from it; ${DEFAULT_LINE_HEIGHT} is DSH's default.`,
   tableStyle: 'Table style',
+  tableStyleHint: 'Cell look for markdown tables: stock borders, or the Claude Desktop card style.',
   tableStyleDefault: 'Default',
   tableStyleClaude: 'Claude Desktop',
   dialogWidth: 'Dialog width',
@@ -103,19 +117,19 @@ const en = {
   presetWide: 'Wide',
   presetWideXl: 'Extra wide',
   timeline: 'Timeline',
-  timelineHint: 'Show a navigation rail on the right of the message area: hover to preview user messages, click to jump to them. Off by default; turn it on to enable. Automatically hidden in short conversations.',
+  timelineHint: 'A navigation rail right of the messages: hover to preview, click to jump; auto-hidden in short conversations.',
   timelineOn: 'On',
   timelineOff: 'Off',
   gitBar: 'Git bar',
-  gitBarHint: 'Show branch / diff / commit-message pills above the input when the session is inside a git repository. Off by default; turn it on to enable. The bar auto-hides outside git repos.',
+  gitBarHint: 'Branch / diff pills above the input inside git repos, with branch management and commit & push; auto-hidden outside git.',
   gitBarOn: 'On',
   gitBarOff: 'Off',
   archiveManager: 'Archive manager',
-  archiveManagerHint: 'Show an Archive section in the Settings dialog where archived sessions can be restored or permanently deleted. Off by default; turn it on to enable.',
+  archiveManagerHint: 'An Archive settings page to restore or permanently delete archived sessions.',
   archiveManagerOn: 'On',
   archiveManagerOff: 'Off',
   mcpManager: 'MCP manager',
-  mcpManagerHint: 'Show an MCP management section in the Settings dialog listing the configured MCP servers with their status and tools, and let you restart them. Off by default; turn it on to enable.',
+  mcpManagerHint: 'An MCP settings page listing servers with status and tools; edit and restart them.',
   mcpManagerOn: 'On',
   mcpManagerOff: 'Off',
   mcpNav: 'MCP',
@@ -164,6 +178,10 @@ const en = {
   mcpUnavailable: 'MCP manager unavailable.',
   mcpDisabledHint: 'MCP management is off. Turn it on in 界面调整 (UI Tweaks) to view and restart MCP servers here.',
   mcpEnable: 'Enable MCP manager',
+  initCommand: '/init command',
+  initCommandHint: 'The /init slash command: pick a prompt language and the agent analyzes the project and writes AGENTS.md.',
+  initCommandOn: 'On',
+  initCommandOff: 'Off',
   mcpServerDetail: 'Configured in the profile cordis.patch.yml as @deepseek-ai/dsh-mcp-client instances; add / edit / disable / delete write to that file and apply live.',
   archiveNav: 'Archive',
   archiveTitle: 'Archived sessions',
@@ -230,6 +248,12 @@ const en = {
   branchPushRemote: 'Push to remote',
   includeFile: 'Include in commit',
   excludeFile: 'Exclude from commit',
+  initDesc: 'Analyze this project and generate an AGENTS.md for future coding agents',
+  initOptionZh: 'AGENTS.md — Chinese prompt',
+  initOptionZhDetail: 'Submit a Chinese prompt asking the agent to analyze the project and write or improve AGENTS.md.',
+  initOptionEn: 'AGENTS.md — English prompt',
+  initOptionEnDetail: 'Submit an English prompt asking the agent to analyze the project and write or improve AGENTS.md.',
+  initFailed: '/init failed to send the prompt',
 } as const
 
 type LocaleKey = keyof typeof en
@@ -237,17 +261,18 @@ type LocaleKey = keyof typeof en
 const zh: Record<LocaleKey, string> = {
   nav: '界面调整',
   settingsTitle: '界面调整',
-  settingsIntro: '调整对话界面——消息字体、表格样式、对话框宽度、时间线与 Git 状态栏，修改即时生效。',
-  sectionText: '文本',
-  sectionContent: '内容',
+  settingsIntro: '调整对话界面——文本、表格与布局，以及时间线、Git 状态栏、归档 / MCP 管理、/init 命令等功能开关，修改即时生效。',
+  sectionText: '文本与表格',
   sectionLayout: '布局',
+  sectionFeatures: '功能',
   fontSize: '消息字体大小',
   fontSizeHint: `取值 ${MIN_FONT_SIZE}–${MAX_FONT_SIZE}，作用于消息正文、标题、表格与代码。`,
-  codeFontScale: '代码字号',
-  codeFontScaleHint: `代码相对正文字号的百分比；${DEFAULT_CODE_FONT_SCALE}% 为 DSH 默认（正文 16 时代码块 13px），100% 与正文同大。`,
+  codeFontSize: '代码字号',
+  codeFontSizeHint: `代码绝对字号，取值 ${MIN_CODE_FONT_SIZE}–${MAX_CODE_FONT_SIZE}px；${DEFAULT_CODE_FONT_SIZE}px 为 DSH 默认（正文 16 时）。作用于代码块，行内代码按比例跟随。`,
   lineHeight: '行高',
   lineHeightHint: `回复区垂直间距的基准值：消息之间（如 Think ↔ 工具卡片）、回复内块之间、正文行高、段落与列表边距都按它缩放；取值 ${MIN_LINE_HEIGHT}–${MAX_LINE_HEIGHT}px，${DEFAULT_LINE_HEIGHT} 为 DSH 默认。`,
   tableStyle: '表格样式',
+  tableStyleHint: 'Markdown 表格的外观：默认边框，或 Claude Desktop 卡片风格。',
   tableStyleDefault: '默认',
   tableStyleClaude: 'Claude Desktop',
   dialogWidth: '对话框宽度',
@@ -256,19 +281,19 @@ const zh: Record<LocaleKey, string> = {
   presetWide: '稍宽',
   presetWideXl: '更宽',
   timeline: '时间线',
-  timelineHint: '在消息区右侧显示导航轨：悬停预览用户消息、点击跳转。默认关闭，需手动开启；会话较短时自动隐藏。',
+  timelineHint: '在消息区右侧显示导航轨：悬停预览、点击跳转；会话较短时自动隐藏。',
   timelineOn: '开启',
   timelineOff: '关闭',
   gitBar: 'Git 状态栏',
-  gitBarHint: '会话在 git 仓库内时，在输入框上方显示 分支 / 差异 / 提交说明 胶囊。默认关闭，需手动开启；非 git 仓库时自动隐藏。',
+  gitBarHint: 'git 仓库内时在输入框上方显示 分支 / 差异 胶囊，支持分支管理与提交推送；非 git 目录自动隐藏。',
   gitBarOn: '开启',
   gitBarOff: '关闭',
   archiveManager: '归档管理',
-  archiveManagerHint: '在设置中显示「归档」页面：可查看、恢复或彻底删除已归档会话。默认关闭，需手动开启。',
+  archiveManagerHint: '在设置中显示「归档」页面：恢复或彻底删除已归档会话。',
   archiveManagerOn: '开启',
   archiveManagerOff: '关闭',
   mcpManager: 'MCP 管理',
-  mcpManagerHint: '在设置中显示「MCP 管理」页面：查看已配置的 MCP 服务器及其状态与工具，并可重启。默认关闭，需手动开启。',
+  mcpManagerHint: '在设置中显示「MCP 管理」页面：查看服务器状态与工具，可编辑并重启。',
   mcpManagerOn: '开启',
   mcpManagerOff: '关闭',
   mcpNav: 'MCP 管理',
@@ -317,6 +342,10 @@ const zh: Record<LocaleKey, string> = {
   mcpUnavailable: 'MCP 管理暂不可用。',
   mcpDisabledHint: 'MCP 管理尚未开启。在「界面调整」中开启“MCP 管理”后，可在此查看并重启 MCP 服务器。',
   mcpEnable: '开启 MCP 管理',
+  initCommand: '/init 命令',
+  initCommandHint: '注册 /init 斜杠命令：选择提示词语言后，让代理分析项目并生成 AGENTS.md。',
+  initCommandOn: '开启',
+  initCommandOff: '关闭',
   mcpServerDetail: 'MCP 服务器配置在 profile 的 cordis.patch.yml（@deepseek-ai/dsh-mcp-client 实例）；添加 / 编辑 / 停用 / 删除会写入该文件，改动实时生效。',
   archiveNav: '归档',
   archiveTitle: '已归档会话',
@@ -383,6 +412,12 @@ const zh: Record<LocaleKey, string> = {
   branchPushRemote: '推送到远程',
   includeFile: '提交包含此文件',
   excludeFile: '提交排除此文件',
+  initDesc: '分析当前项目并生成 AGENTS.md，供未来的 AI 编码代理使用',
+  initOptionZh: 'AGENTS.md（中文提示词）',
+  initOptionZhDetail: '向会话提交中文提示词，让代理分析项目并生成或改进 AGENTS.md。',
+  initOptionEn: 'AGENTS.md（英文提示词）',
+  initOptionEnDetail: '向会话提交英文提示词，让代理分析项目并生成或改进 AGENTS.md。',
+  initFailed: '/init 提示词发送失败',
 }
 
 type Translate = (key: LocaleKey) => string
@@ -401,9 +436,15 @@ function resolveDialogWidth(value: TweaksValue['dialogWidth'] | undefined): numb
 }
 
 function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
+  const fontSize = typeof value?.fontSize === 'number' ? value.fontSize : DEFAULT_FONT_SIZE
+  // Effective code size: the absolute px input wins; otherwise derive px from
+  // the legacy percentage at the resolved body size; otherwise stock.
+  const codeFontSize = typeof value?.codeFontSize === 'number'
+    ? Math.min(MAX_CODE_FONT_SIZE, Math.max(MIN_CODE_FONT_SIZE, value.codeFontSize))
+    : Math.max(8, Math.round(fontSize * (13 / 16) * ((value?.codeFontScale ?? DEFAULT_CODE_FONT_SCALE) / DEFAULT_CODE_FONT_SCALE)))
   return {
-    fontSize: typeof value?.fontSize === 'number' ? value.fontSize : DEFAULT_FONT_SIZE,
-    codeFontScale: typeof value?.codeFontScale === 'number' ? value.codeFontScale : DEFAULT_CODE_FONT_SCALE,
+    fontSize,
+    codeFontSize,
     lineHeight: typeof value?.lineHeight === 'number' ? value.lineHeight : DEFAULT_LINE_HEIGHT,
     tableStyle: value?.tableStyle === 'claude' ? 'claude' : 'default',
     dialogWidth: resolveDialogWidth(value?.dialogWidth),
@@ -411,6 +452,7 @@ function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
     gitBarEnabled: value?.gitBarEnabled ?? false,
     archiveManagerEnabled: value?.archiveManagerEnabled ?? false,
     mcpManagerEnabled: value?.mcpManagerEnabled ?? false,
+    initCommandEnabled: value?.initCommandEnabled ?? false,
   }
 }
 
@@ -420,7 +462,7 @@ function rel(base: number, fontSize: number): number {
 }
 
 /** Rebuild the markdown font tokens for the chosen base size, keeping the theme faces. */
-function buildFontCss(fontSize: number, lineHeight: number, codeScale: number): string {
+function buildFontCss(fontSize: number, lineHeight: number, codeFontSize: number): string {
   const cs = getComputedStyle(document.body)
   const fam = (name: string, fallback: string): string => {
     const value = cs.getPropertyValue(name).trim()
@@ -440,11 +482,10 @@ function buildFontCss(fontSize: number, lineHeight: number, codeScale: number): 
     parts.push(`--${shorthand}-font-size:${size}px`)
     parts.push(`--${shorthand}-line-height:${line}px`)
   }
-  // Code fonts are a percentage of the body size (stock: code block 13px at a
-  // 16px body = 81%), with inline code slightly larger and the small variant
-  // slightly smaller, preserving DSH's hierarchy. At the default 81% this is
-  // exactly the stock scaling; 100% makes the code block match the body.
-  const codePx = (stockRatio: number): number => Math.max(8, Math.round(fontSize * stockRatio * (codeScale / DEFAULT_CODE_FONT_SCALE)))
+  // Code fonts hang off the absolute code-block size (stock: 13px at a 16px
+  // body), with inline code slightly larger and the small variant slightly
+  // smaller, preserving DSH's hierarchy (14/13 and 12/13 of the block).
+  const codePx = (blockRatio: number): number => Math.max(8, Math.round(codeFontSize * blockRatio))
   token('dsw-font-markdown-base', fontSize, 28, base)
   token('dsw-font-markdown-base-strong', fontSize, 28, base)
   token('dsw-font-markdown-base-italic', fontSize, 28, base)
@@ -453,9 +494,9 @@ function buildFontCss(fontSize: number, lineHeight: number, codeScale: number): 
   token('dsw-font-markdown-h2', rel(22, fontSize), 32, base)
   token('dsw-font-markdown-h3', rel(20, fontSize), 30, base)
   token('dsw-font-markdown-h4', fontSize, 28, base)
-  token('dsw-font-markdown-code', codePx(14 / 16), 22, code)
-  token('dsw-font-markdown-code-block', codePx(13 / 16), 22, codeBlock)
-  token('dsw-font-markdown-code-block-small', codePx(12 / 16), 18, codeBlock)
+  token('dsw-font-markdown-code', codePx(14 / 13), 22, code)
+  token('dsw-font-markdown-code-block', codePx(1), 22, codeBlock)
+  token('dsw-font-markdown-code-block-small', codePx(12 / 13), 18, codeBlock)
   return `body{${parts.join(';')}}`
 }
 
@@ -501,7 +542,7 @@ div[data-slot="conversation.chat.node"] table pre{
 
 function buildRuntimeCss(value: ResolvedTweaks): string {
   const rules: string[] = []
-  rules.push(buildFontCss(value.fontSize, value.lineHeight, value.codeFontScale))
+  rules.push(buildFontCss(value.fontSize, value.lineHeight, value.codeFontSize))
   // User-sent messages use their own fixed font-size (not the markdown tokens);
   // route them through the same base so they follow the fontSize setting too.
   // `steering` messages are sent while the agent is busy (busyEnter: steer);
@@ -519,9 +560,11 @@ function buildRuntimeCss(value: ResolvedTweaks): string {
   // the fontSize setting as well.
   rules.push(`div[data-slot="conversation.chat.node"] table th,div[data-slot="conversation.chat.node"] table td{font-size:var(--dsw-font-markdown-base-font-size) !important}`)
   // Inline code is pinned by DSH to 0.875em of the surrounding text (it ignores
-  // the code token); scale that em with the code-font percentage.
-  if (value.codeFontScale !== DEFAULT_CODE_FONT_SCALE) {
-    const em = (0.875 * (value.codeFontScale / DEFAULT_CODE_FONT_SCALE)).toFixed(3)
+  // the code token); scale that em by how far the chosen code size sits from
+  // the stock ratio (a 13px block at this body size).
+  const stockCodeBlock = value.fontSize * (13 / 16)
+  if (Math.abs(value.codeFontSize - stockCodeBlock) > 0.5) {
+    const em = (0.875 * (value.codeFontSize / stockCodeBlock)).toFixed(3)
     rules.push(`div[data-slot="conversation.chat.node"] div[class*="_markdown_"] :not(pre)>code{font-size:${em}em !important}`)
   }
   // 行高: the base vertical rhythm of the reply area. When it differs from
@@ -601,24 +644,33 @@ function runtimeStyleElement(): HTMLStyleElement {
 }
 
 const BASE_CSS = `
-.dut-settings{display:grid;gap:12px;max-width:680px;padding:6px 2px 36px;color:var(--dsw-alias-label-primary)}
-.dut-settings-header{display:flex;align-items:flex-start;gap:12px;padding:6px 2px 2px}
-.dut-logo{flex:none;display:grid;place-items:center;width:38px;height:38px;border-radius:11px;border:1px solid var(--dsw-alias-border-l1);background:linear-gradient(135deg,color-mix(in srgb,var(--dsw-alias-state-business-primary) 16%,transparent),transparent);font-size:18px;line-height:1}
-.dut-settings-header h2{font-size:19px;letter-spacing:-.01em;margin:2px 0 4px}
-.dut-settings-header p{max-width:600px;margin:0;color:var(--dsw-alias-label-secondary);font-size:12.5px;line-height:1.55}
+.dut-settings{display:grid;gap:8px;max-width:680px;padding:4px 2px 24px;color:var(--dsw-alias-label-primary)}
+.dut-settings-header{display:flex;align-items:flex-start;gap:10px;padding:2px 2px 0}
+.dut-logo{flex:none;display:grid;place-items:center;width:30px;height:30px;border-radius:9px;border:1px solid var(--dsw-alias-border-l1);background:linear-gradient(135deg,color-mix(in srgb,var(--dsw-alias-state-business-primary) 16%,transparent),transparent);font-size:15px;line-height:1}
+.dut-settings-header h2{font-size:16px;letter-spacing:-.01em;margin:0 0 2px}
+.dut-settings-header p{max-width:600px;margin:0;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:1.45}
 .dut-panel{display:grid;gap:0;border:1px solid var(--dsw-alias-border-l1);border-radius:14px;background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-shadow-lv1);overflow:hidden}
-.dut-section-label{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--dsw-alias-label-tertiary);padding:14px 16px 6px}
-.dut-field{display:grid;gap:8px;padding:8px 16px 14px}
+.dut-section-label{font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--dsw-alias-label-tertiary);padding:9px 16px 4px}
+.dut-field{display:grid;gap:6px;padding:7px 16px 10px}
 .dut-field+.dut-field{border-top:1px solid var(--dsw-alias-border-l1)}
+/* Two-column toggle grid: hairline dividers come from the 1px gap painting the
+   panel's border color through; cells repaint the panel background above it. */
+.dut-grid{grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1px;background:var(--dsw-alias-border-l1)}
+.dut-grid>.dut-section-label{grid-column:1/-1;background:var(--dsw-alias-bg-layer-1)}
+.dut-grid .dut-field{background:var(--dsw-alias-bg-layer-1)}
+.dut-grid .dut-field+.dut-field{border-top:none}
 .dut-field-top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .dut-field-top>span{font-size:13.5px;font-weight:600}
-.dut-field small{font-size:11.5px;line-height:1.5;color:var(--dsw-alias-label-secondary)}
+.dut-label{display:inline-flex;align-items:center;gap:6px}
+.dut-hint{flex:none;display:inline-grid;place-items:center;width:15px;height:15px;border-radius:50%;border:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-tertiary);font-size:9.5px;font-weight:600;font-style:normal;line-height:1;cursor:help;user-select:none;transition:color .15s ease,border-color .15s ease}
+.dut-hint:hover,.dut-hint:focus-visible{color:var(--dsw-alias-state-business-primary);border-color:var(--dsw-alias-state-business-primary)}
+.dut-hint-pop{position:fixed;z-index:9999;width:max-content;max-width:300px;padding:8px 10px;border-radius:8px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-size:11.5px;line-height:1.5;box-shadow:0 4px 16px rgba(0,0,0,.14);pointer-events:none}
 .dut-controls{display:flex;align-items:center;gap:8px}
 .dut-stepper{display:inline-flex;align-items:center;border:1px solid var(--dsw-alias-border-l1);border-radius:9px;background:var(--dsw-alias-bg-layer-2);overflow:hidden}
-.dut-stepper button{width:30px;height:32px;border:none;background:transparent;color:inherit;font-size:15px;font-weight:500;line-height:1;cursor:pointer;display:grid;place-items:center;transition:background .15s ease}
+.dut-stepper button{width:28px;height:28px;border:none;background:transparent;color:inherit;font-size:15px;font-weight:500;line-height:1;cursor:pointer;display:grid;place-items:center;transition:background .15s ease}
 .dut-stepper button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 .dut-stepper button:disabled{opacity:.35;cursor:default}
-.dut-stepper input{box-sizing:border-box;width:64px;height:32px;border:none;border-left:1px solid var(--dsw-alias-border-l1);border-right:1px solid var(--dsw-alias-border-l1);background:transparent;color:inherit;font:inherit;font-size:13px;text-align:center;-moz-appearance:textfield}
+.dut-stepper input{box-sizing:border-box;width:60px;height:28px;border:none;border-left:1px solid var(--dsw-alias-border-l1);border-right:1px solid var(--dsw-alias-border-l1);background:transparent;color:inherit;font:inherit;font-size:13px;text-align:center;-moz-appearance:textfield}
 .dut-stepper input::-webkit-outer-spin-button,.dut-stepper input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .dut-stepper input:focus{outline:none}
 .dut-seg{display:inline-flex;padding:3px;gap:3px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}
@@ -638,7 +690,7 @@ const BASE_CSS = `
 .dut-btn:disabled{opacity:.4;cursor:default}
 .dut-status{justify-self:start;font-size:11.5px;padding:3px 10px;border-radius:999px;background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 12%,transparent);color:var(--dsw-alias-state-success-primary);animation:dut-fadein .18s ease}
 @keyframes dut-fadein{from{opacity:0;transform:translateY(-2px)}to{opacity:1;transform:none}}
-.dut-loading{padding:24px;border-radius:12px;background:var(--dsw-alias-bg-layer-2);font-size:12px;color:var(--dsw-alias-label-secondary)}
+.dut-loading{padding:16px;border-radius:12px;background:var(--dsw-alias-bg-layer-2);font-size:12px;color:var(--dsw-alias-label-secondary)}
 .dut-alert{padding:10px 12px;border-radius:10px;font-size:12px;line-height:1.5}
 .dut-alert.warning{background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 12%,transparent);color:var(--dsw-alias-state-warn-label)}
 .dut-alert.error{background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent);color:var(--dsw-alias-state-error-primary)}
@@ -736,8 +788,51 @@ export class SettingsClient {
   }
 }
 
-/** Required client services: slots (settings.section), locale, and sessions (timeline rail). */
-export const inject = ['slots', 'locale', 'sessions']
+/** Required client services: slots (settings.section), locale, sessions (timeline rail), the slash-command registry, and the scope-addressed conversation face. */
+export const inject = ['slots', 'locale', 'sessions', 'commandUi', 'conversation']
+
+/**
+ * Hover/focus hint: a small ⓘ next to the field label; the hint text renders
+ * in a fixed-position bubble portaled to <body> (so panel `overflow:hidden`
+ * can never clip it), measured in a layout effect to prefer the space above
+ * the anchor and flip below near the viewport top. No layout shift: hints
+ * never occupy flow height.
+ */
+function Hint({ text }: { text: string }) {
+  const anchorRef = useRef<HTMLSpanElement>(null)
+  const popRef = useRef<HTMLDivElement>(null)
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState<{ top: number; left: number }>({ top: -9999, left: -9999 })
+  useLayoutEffect(() => {
+    if (!open) return
+    const anchor = anchorRef.current?.getBoundingClientRect()
+    const pop = popRef.current
+    if (anchor === undefined || pop === null) return
+    let left = Math.min(Math.max(8, anchor.left), window.innerWidth - pop.offsetWidth - 8)
+    let top = anchor.top - pop.offsetHeight - 8
+    if (top < 8) top = anchor.bottom + 8
+    setPos({ top, left })
+  }, [open])
+  return (
+    <>
+      <span
+        ref={anchorRef}
+        className="dut-hint"
+        role="note"
+        aria-label={text}
+        tabIndex={0}
+        onMouseEnter={() => { setOpen(true) }}
+        onMouseLeave={() => { setOpen(false) }}
+        onFocus={() => { setOpen(true) }}
+        onBlur={() => { setOpen(false) }}
+      >i</span>
+      {open && createPortal(
+        <div ref={popRef} className="dut-hint-pop" style={{ top: pos.top, left: pos.left }}>{text}</div>,
+        document.body,
+      )}
+    </>
+  )
+}
 
 type SettingsSectionProps = PropsRuntime<'settings.section'> & {
   controller: SettingsClient
@@ -749,14 +844,14 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
   const resolved = resolveValue(state.value)
   const writable = state.writable
   const [draft, setDraft] = useState<string>(String(resolved.fontSize))
-  const [codeDraft, setCodeDraft] = useState<string>(String(resolved.codeFontScale))
+  const [codeDraft, setCodeDraft] = useState<string>(String(resolved.codeFontSize))
   const [lineHeightDraft, setLineHeightDraft] = useState<string>(String(resolved.lineHeight))
   const [widthDraft, setWidthDraft] = useState<string>(String(resolved.dialogWidth))
   const [status, setStatus] = useState<LocaleKey | undefined>(undefined)
 
   useEffect(() => { if (state.status === 'loading' && state.value === undefined) void controller.load() }, [controller, state.status, state.value])
   useEffect(() => { setDraft(String(resolved.fontSize)) }, [resolved.fontSize])
-  useEffect(() => { setCodeDraft(String(resolved.codeFontScale)) }, [resolved.codeFontScale])
+  useEffect(() => { setCodeDraft(String(resolved.codeFontSize)) }, [resolved.codeFontSize])
   useEffect(() => { setLineHeightDraft(String(resolved.lineHeight)) }, [resolved.lineHeight])
   useEffect(() => { setWidthDraft(String(resolved.dialogWidth)) }, [resolved.dialogWidth])
   useEffect(() => {
@@ -783,13 +878,13 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     void controller.set('lineHeight', clamped).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
-  const commitCodeScale = (raw: string): void => {
+  const commitCodeSize = (raw: string): void => {
     setCodeDraft(raw)
     const parsed = Number(raw)
     if (!Number.isFinite(parsed)) return
-    const clamped = Math.min(MAX_CODE_FONT_SCALE, Math.max(MIN_CODE_FONT_SCALE, Math.round(parsed)))
+    const clamped = Math.min(MAX_CODE_FONT_SIZE, Math.max(MIN_CODE_FONT_SIZE, Math.round(parsed)))
     setCodeDraft(String(clamped))
-    void controller.set('codeFontScale', clamped).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
+    void controller.set('codeFontSize', clamped).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
   const pickTableStyle = (raw: string): void => {
@@ -817,10 +912,10 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     void controller.set('lineHeight', next).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
-  const stepCodeScale = (delta: number): void => {
-    const next = Math.min(MAX_CODE_FONT_SCALE, Math.max(MIN_CODE_FONT_SCALE, resolved.codeFontScale + delta))
+  const stepCodeSize = (delta: number): void => {
+    const next = Math.min(MAX_CODE_FONT_SIZE, Math.max(MIN_CODE_FONT_SIZE, resolved.codeFontSize + delta))
     setCodeDraft(String(next))
-    void controller.set('codeFontScale', next).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
+    void controller.set('codeFontSize', next).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
   const stepDialogWidth = (delta: number): void => {
@@ -850,8 +945,25 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     void controller.set('mcpManagerEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
-  const reset = (field: 'fontSize' | 'codeFontScale' | 'lineHeight' | 'tableStyle' | 'dialogWidth' | 'timelineEnabled' | 'gitBarEnabled' | 'archiveManagerEnabled' | 'mcpManagerEnabled'): void => {
+  const setInitCommand = (value: boolean): void => {
+    void controller.set('initCommandEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
+  }
+
+  const reset = (field: 'fontSize' | 'lineHeight' | 'tableStyle' | 'dialogWidth' | 'timelineEnabled' | 'gitBarEnabled' | 'archiveManagerEnabled' | 'mcpManagerEnabled'): void => {
     void controller.unset(field).then(() => { setStatus('resetDone') }).catch(() => { setStatus('unavailable') })
+  }
+
+  /** Code size reset clears BOTH keys: the px input and the legacy percentage. */
+  const resetCodeSize = (): void => {
+    void (async () => {
+      try {
+        await controller.unset('codeFontSize')
+        await controller.unset('codeFontScale')
+        setStatus('resetDone')
+      } catch {
+        setStatus('unavailable')
+      }
+    })()
   }
 
   if (state.status === 'loading' && state.value === undefined) {
@@ -877,7 +989,7 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
         <div className="dut-section-label">{t('sectionText')}</div>
         <div className="dut-field">
           <div className="dut-field-top">
-            <span>{t('fontSize')}</span>
+            <span className="dut-label">{t('fontSize')}<Hint text={t('fontSizeHint')} /></span>
             <div className="dut-controls">
               <div className="dut-stepper">
                 <button type="button" aria-label="−" disabled={!writable || resolved.fontSize <= MIN_FONT_SIZE} onClick={() => { stepFontSize(-1) }}>−</button>
@@ -897,11 +1009,10 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
               <button type="button" className={'dut-btn' + (resolved.fontSize === DEFAULT_FONT_SIZE ? ' dut-btn-active' : '')} disabled={!writable} onClick={() => { reset('fontSize') }}>{t('defaultAction')}</button>
             </div>
           </div>
-          <small>{t('fontSizeHint')}</small>
         </div>
         <div className="dut-field">
           <div className="dut-field-top">
-            <span>{t('lineHeight')}</span>
+            <span className="dut-label">{t('lineHeight')}<Hint text={t('lineHeightHint')} /></span>
             <div className="dut-controls">
               <div className="dut-stepper">
                 <button type="button" aria-label="−" disabled={!writable || resolved.lineHeight <= MIN_LINE_HEIGHT} onClick={() => { stepLineHeight(-2) }}>−</button>
@@ -921,39 +1032,33 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
               <button type="button" className={'dut-btn' + (resolved.lineHeight === DEFAULT_LINE_HEIGHT ? ' dut-btn-active' : '')} disabled={!writable} onClick={() => { reset('lineHeight') }}>{t('defaultAction')}</button>
             </div>
           </div>
-          <small>{t('lineHeightHint')}</small>
         </div>
         <div className="dut-field">
           <div className="dut-field-top">
-            <span>{t('codeFontScale')}</span>
+            <span className="dut-label">{t('codeFontSize')}<Hint text={t('codeFontSizeHint')} /></span>
             <div className="dut-controls">
               <div className="dut-stepper">
-                <button type="button" aria-label="−" disabled={!writable || resolved.codeFontScale <= MIN_CODE_FONT_SCALE} onClick={() => { stepCodeScale(-1) }}>−</button>
+                <button type="button" aria-label="−" disabled={!writable || resolved.codeFontSize <= MIN_CODE_FONT_SIZE} onClick={() => { stepCodeSize(-1) }}>−</button>
                 <input
                   type="number"
-                  min={MIN_CODE_FONT_SCALE}
-                  max={MAX_CODE_FONT_SCALE}
+                  min={MIN_CODE_FONT_SIZE}
+                  max={MAX_CODE_FONT_SIZE}
                   step={1}
                   value={codeDraft}
                   disabled={!writable}
                   onChange={(event) => { setCodeDraft(event.target.value) }}
-                  onBlur={(event) => { commitCodeScale(event.target.value) }}
-                  onKeyDown={(event) => { if (event.key === 'Enter') commitCodeScale((event.target as HTMLInputElement).value) }}
+                  onBlur={(event) => { commitCodeSize(event.target.value) }}
+                  onKeyDown={(event) => { if (event.key === 'Enter') commitCodeSize((event.target as HTMLInputElement).value) }}
                 />
-                <button type="button" aria-label="+" disabled={!writable || resolved.codeFontScale >= MAX_CODE_FONT_SCALE} onClick={() => { stepCodeScale(1) }}>+</button>
+                <button type="button" aria-label="+" disabled={!writable || resolved.codeFontSize >= MAX_CODE_FONT_SIZE} onClick={() => { stepCodeSize(1) }}>+</button>
               </div>
-              <button type="button" className={'dut-btn' + (resolved.codeFontScale === DEFAULT_CODE_FONT_SCALE ? ' dut-btn-active' : '')} disabled={!writable} onClick={() => { reset('codeFontScale') }}>{t('defaultAction')}</button>
+              <button type="button" className={'dut-btn' + (resolved.codeFontSize === DEFAULT_CODE_FONT_SIZE ? ' dut-btn-active' : '')} disabled={!writable} onClick={() => { resetCodeSize() }}>{t('defaultAction')}</button>
             </div>
           </div>
-          <small>{t('codeFontScaleHint')}</small>
         </div>
-      </section>
-
-      <section className="dut-panel">
-        <div className="dut-section-label">{t('sectionContent')}</div>
         <div className="dut-field">
           <div className="dut-field-top">
-            <span>{t('tableStyle')}</span>
+            <span className="dut-label">{t('tableStyle')}<Hint text={t('tableStyleHint')} /></span>
             <div className="dut-controls">
               <div className="dut-seg">
                 <button type="button" className={resolved.tableStyle === 'claude' ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { pickTableStyle('claude') }}>{t('tableStyleClaude')}</button>
@@ -968,7 +1073,7 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
         <div className="dut-section-label">{t('sectionLayout')}</div>
         <div className="dut-field">
           <div className="dut-field-top">
-            <span>{t('dialogWidth')}</span>
+            <span className="dut-label">{t('dialogWidth')}<Hint text={t('dialogWidthHint')} /></span>
             <div className="dut-controls">
               <div className="dut-stepper">
                 <button type="button" aria-label="−" disabled={!writable || resolved.dialogWidth <= MIN_DIALOG_WIDTH} onClick={() => { stepDialogWidth(-20) }}>−</button>
@@ -994,11 +1099,14 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
               <button type="button" className={resolved.dialogWidth === 748 ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { applyWidthPreset(748) }}>{t('presetDefault')} · 748</button>
             </div>
           </div>
-          <small>{t('dialogWidthHint')}</small>
         </div>
+      </section>
+
+      <section className="dut-panel dut-grid">
+        <div className="dut-section-label">{t('sectionFeatures')}</div>
         <div className="dut-field">
           <div className="dut-field-top">
-            <span>{t('timeline')}</span>
+            <span className="dut-label">{t('timeline')}<Hint text={t('timelineHint')} /></span>
             <div className="dut-controls">
               <div className="dut-seg">
                 <button type="button" className={resolved.timelineEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setTimeline(true) }}>{t('timelineOn')}</button>
@@ -1006,11 +1114,10 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
               </div>
             </div>
           </div>
-          <small>{t('timelineHint')}</small>
         </div>
         <div className="dut-field">
           <div className="dut-field-top">
-            <span>{t('gitBar')}</span>
+            <span className="dut-label">{t('gitBar')}<Hint text={t('gitBarHint')} /></span>
             <div className="dut-controls">
               <div className="dut-seg">
                 <button type="button" className={resolved.gitBarEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setGitBar(true) }}>{t('gitBarOn')}</button>
@@ -1018,11 +1125,10 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
               </div>
             </div>
           </div>
-          <small>{t('gitBarHint')}</small>
         </div>
         <div className="dut-field">
           <div className="dut-field-top">
-            <span>{t('archiveManager')}</span>
+            <span className="dut-label">{t('archiveManager')}<Hint text={t('archiveManagerHint')} /></span>
             <div className="dut-controls">
               <div className="dut-seg">
                 <button type="button" className={resolved.archiveManagerEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setArchiveManager(true) }}>{t('archiveManagerOn')}</button>
@@ -1030,11 +1136,10 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
               </div>
             </div>
           </div>
-          <small>{t('archiveManagerHint')}</small>
         </div>
         <div className="dut-field">
           <div className="dut-field-top">
-            <span>{t('mcpManager')}</span>
+            <span className="dut-label">{t('mcpManager')}<Hint text={t('mcpManagerHint')} /></span>
             <div className="dut-controls">
               <div className="dut-seg">
                 <button type="button" className={resolved.mcpManagerEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setMcpManager(true) }}>{t('mcpManagerOn')}</button>
@@ -1042,11 +1147,88 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
               </div>
             </div>
           </div>
-          <small>{t('mcpManagerHint')}</small>
+        </div>
+        <div className="dut-field">
+          <div className="dut-field-top">
+            <span className="dut-label">{t('initCommand')}<Hint text={t('initCommandHint')} /></span>
+            <div className="dut-controls">
+              <div className="dut-seg">
+                <button type="button" className={resolved.initCommandEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setInitCommand(true) }}>{t('initCommandOn')}</button>
+                <button type="button" className={!resolved.initCommandEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setInitCommand(false) }}>{t('initCommandOff')}</button>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
     </div>
   )
+}
+
+/**
+ * The /init bootstrap prompts, submitted verbatim into the current session on
+ * pick. Modeled after the classic coding-agent `/init`: explore the project,
+ * then write (or improve) a root AGENTS.md addressed to future AI agents.
+ */
+const INIT_PROMPT_ZH = [
+  '请为本项目生成一份面向 AI 编码代理的 AGENTS.md，放在仓库根目录：',
+  '',
+  '1. 先自行探索项目——阅读 README、清单文件（package.json / pyproject.toml 等）、构建脚本与关键源码目录，不要向我追问这些信息；',
+  '2. AGENTS.md 用中文撰写，包含：项目简介、常用命令（安装 / 构建 / 测试 / 检查）、代码风格与约定、目录结构导览、已知注意事项；',
+  '3. 只写从代码中验证过的事实，保持简洁（建议不超过 150 行），不要臆测；',
+  '4. 如果已存在 AGENTS.md，在其基础上改进补充，不要丢失已有内容；',
+  '5. 完成后简要汇报你写了什么。',
+].join('\n')
+
+const INIT_PROMPT_EN = [
+  'Generate an AGENTS.md for this project at the repository root, addressed to future AI coding agents:',
+  '',
+  '1. Explore the project first — read the README, manifest files (package.json / pyproject.toml etc.), build scripts and key source directories; do not ask me about them.',
+  '2. Write the AGENTS.md in English covering: project overview, common commands (install / build / test / lint), code style and conventions, a directory guide, and known gotchas.',
+  '3. Only state facts verified from the code; keep it concise (~150 lines max); no speculation.',
+  '4. If an AGENTS.md already exists, improve it in place without losing existing content.',
+  '5. Briefly report what you wrote when done.',
+].join('\n')
+
+/**
+ * Register the `/init` slash command: a client-owned contribution that pops a
+ * language picker and submits the matching AGENTS.md bootstrap prompt into
+ * the picked session via the scope-addressed conversation face
+ * (`ctx.sessions.scope(id).conversation.send` — the same hop DSH's own
+ * packages use). Contribution rows merge into the host catalog by name; the
+ * description string is captured at registration time, so a mid-session
+ * language switch refreshes it only after reload.
+ */
+function registerInitCommand(ctx: ClientContext): () => void {
+  const t = ctx.locale.bind(NS)
+  return ctx.commandUi.register({
+    name: 'init',
+    description: t('initDesc'),
+    available: () => true,
+    ui: {
+      kind: 'popupSelect',
+      options: (): Promise<readonly SelectOption[]> => Promise.resolve([
+        { id: 'zh', label: t('initOptionZh'), detail: t('initOptionZhDetail') },
+        { id: 'en', label: t('initOptionEn'), detail: t('initOptionEnDetail') },
+      ]),
+      onSelect: async (option, session) => {
+        const prompt = option.id === 'en' ? INIT_PROMPT_EN : INIT_PROMPT_ZH
+        const scoped = ctx.sessions.scope(session.sessionId)
+        try {
+          if (scoped === undefined) throw new Error(`session ${session.sessionId} is not scoped`)
+          await scoped.conversation.send(prompt)
+        } catch (error) {
+          // Surface through the session composer's notice bar when reachable;
+          // fall back to the console for pruned scopes.
+          const text = `${t('initFailed')}: ${error instanceof Error ? error.message : String(error)}`
+          if (scoped !== undefined) {
+            try { ctx.conversation.input.for(scoped).notify('error', text) } catch { console.error(`[dsh-ui-tweaks] ${text}`) }
+          } else {
+            console.error(`[dsh-ui-tweaks] ${text}`)
+          }
+        }
+      },
+    },
+  })
 }
 
 /**
@@ -1173,4 +1355,23 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: () => ({ controller, t }),
   }, McpSection))
+
+  // /init slash command: registered only while the initCommandEnabled toggle
+  // in the UI Tweaks section is on, so `/init` appears in the slash menu only
+  // while the feature is enabled — same live register/dispose choreography as
+  // the conditional Settings sections above.
+  ctx.effect(() => {
+    let dispose: (() => void) | undefined
+    const sync = (): void => {
+      const enabled = controller.getSnapshot().value?.initCommandEnabled === true
+      if (enabled && dispose === undefined) {
+        dispose = registerInitCommand(ctx)
+      } else if (!enabled && dispose !== undefined) {
+        dispose()
+        dispose = undefined
+      }
+    }
+    sync()
+    return controller.subscribe(sync)
+  }, 'dsh-ui-tweaks: /init command')
 }

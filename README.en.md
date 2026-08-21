@@ -17,7 +17,7 @@ A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH)
 
 ## Features
 
-- **Message font size (px)** — type any value (10–32); applies to message text, headings, tables and code.
+- **Message font size (px)** — type any value (10–32); applies to message text, headings, tables and code. The **code font size** can be set separately (absolute 8–32px, default 13; inline code follows proportionally) — the legacy percentage (`codeFontScale`) stays compatible and is overridden once a px value is set.
 - **Table style** — choose `Default` or the **Claude Desktop** look (light-gray rounded cell cards with small gaps, no borders; cells share the inline-code background; header not bold).
 - **Dialog width (px)** — type any value (600–1600); the message column, the composer input and the stats line below it widen together.
 - **Conversation timeline (toggleable, off by default)** — a thin navigation rail at the right of the message area: one indicator line per user message, hover to expand a preview panel, scroll-highlighting of the current position, click to smooth-scroll to that message (loading older history on demand). Works in **light and dark mode**, and **always hugs the message area's right edge** — even with a right sidebar installed and expanded (e.g. dsh-better-sidebar), the rail dodges it instead of overlapping. Auto-hidden while a session has fewer than two user messages.
@@ -30,6 +30,7 @@ A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH)
   - **Delete** PERMANENTLY deletes the session — the server removes its JSONL log from disk, detaches it from workspace accounting and the archive set, and clears its projection cache (irreversible). Only genuinely **running** sessions are refused; opened-but-idle sessions are also removed from the in-memory store, so the row disappears live.
   - The list refreshes live via the `host/archived-sessions-changed` event and a session-list re-pull, with no page reload.
 - **MCP manager (toggleable, off by default)** — an **MCP** page in the Settings dialog listing every configured MCP server (`@deepseek-ai/dsh-mcp-client` loader entries) with its live status, command/url, env vars and registered tools, plus full management: **Add / Edit** (a structured form — instance id, name, stdio or HTTP type, timeout ms, command, args, env — OR raw YAML, both validated), **Enable / Disable / Delete**, and **Restart** (runtime-only). Changes persist to the profile's `cordis.patch.yml` and DSH's built-in patch watcher hot-reloads just that server.
+- **`/init` slash command (toggleable, off by default)** — type `/init` in the composer (the slash menu shows "Analyze this project and generate an AGENTS.md"), pick a prompt language from the popup (**Chinese / English**), and a complete AGENTS.md bootstrap prompt is submitted into the current session: the agent explores the project on its own (README, manifests, build scripts, key directories), then writes or improves a root `AGENTS.md` addressed to future AI coding agents (overview, common commands, conventions, directory guide, gotchas; existing files are improved in place). Pure client-side contribution; enable it in the UI Tweaks settings section.
 
 All changes apply **live** — no reload needed. The same values can be hand-edited in the settings document:
 
@@ -40,6 +41,7 @@ ui-tweaks:
   dialogWidth: 880
   timelineEnabled: true   # defaults to false (off); set true to enable
   archiveManagerEnabled: true   # defaults to false (off); set true to show the Archive page
+  initCommandEnabled: true      # defaults to false (off); set true to register the /init slash command
 ```
 
 Settings entry: **Settings → UI Tweaks**.

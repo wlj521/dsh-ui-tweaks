@@ -1,7 +1,7 @@
 {
   "name": "dsh-ui-tweaks",
-  "version": "0.6.0",
-  "description": "DSH web plugin: live-tune the conversation UI — message font size (px input), markdown table style (Claude Desktop look), dialog width (default / wide), an optional conversation timeline rail, and a GitBar (branch / diff pills inside the composer tool row — branch after the access-mode control, diff before the model select — with branch management, per-file diff, and commit & push from the diff panel) — from the Settings panel.",
+  "version": "0.7.0",
+  "description": "DSH web plugin: live-tune the conversation UI — message font size (px input), markdown table style (Claude Desktop look), dialog width (default / wide), an optional conversation timeline rail, a GitBar (branch / diff pills inside the composer tool row — branch after the access-mode control, diff before the model select — with branch management, per-file diff, and commit & push from the diff panel), and an /init slash command that submits an AGENTS.md bootstrap prompt (Chinese or English) into the current session — from the Settings panel.",
   "keywords": [
     "dsh",
     "deepseek-harness",
@@ -61,6 +61,7 @@
       "inject": [
         "@deepseek-ai/dsh-client-runtime",
         "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-commands",
         "@deepseek-ai/dsh-client-ui-slots",
         "@deepseek-ai/dsh-client-ui-settings",
         "@deepseek-ai/dsh-client-ui-conversation"
@@ -72,6 +73,7 @@
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-client-locale": "^0.1.0-rc.8",
     "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.8",
+    "@deepseek-ai/dsh-client-ui-commands": "^0.1.0-rc.8",
     "@deepseek-ai/dsh-client-ui-conversation": "^0.1.0-rc.8",
     "@deepseek-ai/dsh-client-ui-settings": "^0.1.0-rc.8",
     "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.8",
@@ -93,6 +95,7 @@
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-client-locale": "^0.1.0-rc.8",
     "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.8",
+    "@deepseek-ai/dsh-client-ui-commands": "^0.1.0-rc.8",
     "@deepseek-ai/dsh-client-ui-conversation": "^0.1.0-rc.8",
     "@deepseek-ai/dsh-client-ui-settings": "^0.1.0-rc.8",
     "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.8",

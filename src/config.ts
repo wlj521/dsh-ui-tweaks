@@ -20,10 +20,18 @@ export interface UITweaksConfig {
   /**
    * Code font size as a percentage of the message font size. 81 is the stock
    * ratio (13px code block at a 16px body); 100 makes code match the body.
-   * Applies to the code block, inline code and the small code font (tool
-   * output / terminal), preserving their relative hierarchy.
+   *
+   * @deprecated Legacy percent input, kept for migration; prefer
+   * `codeFontSize`. Ignored once `codeFontSize` is set.
    */
   codeFontScale?: number
+  /**
+   * Absolute code font size in px (8–32). 13 matches the stock DSH code block
+   * at a 16px body. Drives the code block directly; inline code and the small
+   * code font follow proportionally. When unset, falls back to the legacy
+   * `codeFontScale` percentage, then to the stock default.
+   */
+  codeFontSize?: number
   /**
    * The "行高" base unit in px: the vertical rhythm of the reply area. It
    * drives the gap between message rows (Think ↔ tool cards, user ↔
@@ -66,6 +74,12 @@ export interface UITweaksConfig {
    */
   mcpManagerEnabled?: boolean
   /**
+   * Whether the `/init` slash command is registered: picking a prompt language
+   * submits an AGENTS.md bootstrap prompt into the session. Off by default;
+   * users turn it on in Settings.
+   */
+  initCommandEnabled?: boolean
+  /**
    * Optional explicit `provider:model` for generating commit messages with the
    * LLM (e.g. `jiyuanlvdong:deepseek-v4-flash-0731`). When unset, the first
    * registered provider/model is used; when the LLM service is unavailable or
@@ -87,10 +101,15 @@ export const MIN_LINE_HEIGHT = 0
 export const MAX_LINE_HEIGHT = 64
 export const DEFAULT_LINE_HEIGHT = 16
 
-/** 81% = the stock code ratio (13px code block at a 16px body). */
+/** 81% = the stock code ratio (13px code block at a 16px body). Legacy input. */
 export const MIN_CODE_FONT_SCALE = 50
 export const MAX_CODE_FONT_SCALE = 150
 export const DEFAULT_CODE_FONT_SCALE = 81
+
+/** Absolute code font size (px): 13 is the stock DSH code block at a 16px body. */
+export const MIN_CODE_FONT_SIZE = 8
+export const MAX_CODE_FONT_SIZE = 32
+export const DEFAULT_CODE_FONT_SIZE = 13
 
 /** Timeline defaults to off; the Settings segmented control turns it on. */
 export const DEFAULT_TIMELINE_ENABLED = false
@@ -104,10 +123,14 @@ export const DEFAULT_ARCHIVE_MANAGER_ENABLED = false
 /** MCP manager defaults to off; users turn it on in Settings. */
 export const DEFAULT_MCP_MANAGER_ENABLED = false
 
+/** The /init slash command defaults to off; users turn it on in Settings. */
+export const DEFAULT_INIT_COMMAND_ENABLED = false
+
 /** Configuration schema with documented defaults. */
 export const Config: Schema<UITweaksConfig> = z.object({
   fontSize: z.number().min(10).max(32).default(16),
   codeFontScale: z.number().min(MIN_CODE_FONT_SCALE).max(MAX_CODE_FONT_SCALE).default(DEFAULT_CODE_FONT_SCALE),
+  codeFontSize: z.number().min(MIN_CODE_FONT_SIZE).max(MAX_CODE_FONT_SIZE),
   lineHeight: z.number().min(MIN_LINE_HEIGHT).max(MAX_LINE_HEIGHT).default(DEFAULT_LINE_HEIGHT),
   tableStyle: z.union(['default', 'claude'] as const).default('default'),
   dialogWidth: z.union([z.number().min(MIN_DIALOG_WIDTH).max(MAX_DIALOG_WIDTH), z.const('default'), z.const('wide')]).default(DEFAULT_DIALOG_WIDTH),
@@ -115,14 +138,17 @@ export const Config: Schema<UITweaksConfig> = z.object({
   gitBarEnabled: z.boolean().default(DEFAULT_GITBAR_ENABLED),
   archiveManagerEnabled: z.boolean().default(DEFAULT_ARCHIVE_MANAGER_ENABLED),
   mcpManagerEnabled: z.boolean().default(DEFAULT_MCP_MANAGER_ENABLED),
+  initCommandEnabled: z.boolean().default(DEFAULT_INIT_COMMAND_ENABLED),
   suggestModel: z.string(),
 })
 
 /** Configuration after static validation, with every default materialized. */
 export interface ResolvedUITweaksConfig {
   fontSize: number
-  /** Code font size as a percentage of the message font size. */
+  /** Code font size as a percentage of the message font size (legacy input). */
   codeFontScale: number
+  /** Effective absolute code font size in px (codeFontSize, else legacy %, else stock). */
+  codeFontSize: number
   /** Base vertical spacing (px) for the reply area ("行高"). */
   lineHeight: number
   tableStyle: 'default' | 'claude'
@@ -136,6 +162,8 @@ export interface ResolvedUITweaksConfig {
   archiveManagerEnabled: boolean
   /** Whether the MCP manager Settings page is shown. */
   mcpManagerEnabled: boolean
+  /** Whether the /init slash command is registered. */
+  initCommandEnabled: boolean
   /** Optional `provider:model` override for LLM commit-message generation. */
   suggestModel?: string
 }
@@ -151,6 +179,11 @@ export function resolveDialogWidth(value: UITweaksConfig['dialogWidth'] | undefi
 export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConfig {
   const fontSize = config.fontSize ?? DEFAULT_FONT_SIZE
   const codeFontScale = config.codeFontScale ?? DEFAULT_CODE_FONT_SCALE
+  // Effective code size: the absolute px input wins; otherwise derive px from
+  // the legacy percentage at the resolved body size; otherwise stock.
+  const codeFontSize = typeof config.codeFontSize === 'number'
+    ? Math.min(MAX_CODE_FONT_SIZE, Math.max(MIN_CODE_FONT_SIZE, config.codeFontSize))
+    : Math.max(8, Math.round(fontSize * (13 / 16) * (codeFontScale / DEFAULT_CODE_FONT_SCALE)))
   const lineHeight = config.lineHeight ?? DEFAULT_LINE_HEIGHT
   const tableStyle = config.tableStyle ?? 'default'
   const dialogWidth = resolveDialogWidth(config.dialogWidth)
@@ -158,7 +191,8 @@ export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConf
   const gitBarEnabled = config.gitBarEnabled ?? DEFAULT_GITBAR_ENABLED
   const archiveManagerEnabled = config.archiveManagerEnabled ?? DEFAULT_ARCHIVE_MANAGER_ENABLED
   const mcpManagerEnabled = config.mcpManagerEnabled ?? DEFAULT_MCP_MANAGER_ENABLED
-  const resolved: ResolvedUITweaksConfig = { fontSize, codeFontScale, lineHeight, tableStyle, dialogWidth, timelineEnabled, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled }
+  const initCommandEnabled = config.initCommandEnabled ?? DEFAULT_INIT_COMMAND_ENABLED
+  const resolved: ResolvedUITweaksConfig = { fontSize, codeFontScale, codeFontSize, lineHeight, tableStyle, dialogWidth, timelineEnabled, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled }
   if (typeof config.suggestModel === 'string' && config.suggestModel !== '') {
     resolved.suggestModel = config.suggestModel
   }
