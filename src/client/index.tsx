@@ -1213,19 +1213,18 @@ function registerInitCommand(ctx: ClientContext): () => void {
       onSelect: async (option, session) => {
         const prompt = option.id === 'en' ? INIT_PROMPT_EN : INIT_PROMPT_ZH
         const scoped = ctx.sessions.scope(session.sessionId)
-        try {
-          if (scoped === undefined) throw new Error(`session ${session.sessionId} is not scoped`)
-          await scoped.conversation.send(prompt)
-        } catch (error) {
-          // Surface through the session composer's notice bar when reachable;
-          // fall back to the console for pruned scopes.
-          const text = `${t('initFailed')}: ${error instanceof Error ? error.message : String(error)}`
-          if (scoped !== undefined) {
-            try { ctx.conversation.input.for(scoped).notify('error', text) } catch { console.error(`[dsh-ui-tweaks] ${text}`) }
-          } else {
-            console.error(`[dsh-ui-tweaks] ${text}`)
-          }
+        if (scoped === undefined) {
+          console.error(`[dsh-ui-tweaks] ${t('initFailed')}: session ${session.sessionId} is not scoped`)
+          return
         }
+        // Route through the session's input facade (draft + submit) instead of
+        // a bare conversation.send: the hub's own send choreography then
+        // handles first-message materialization for a brand-new session, plus
+        // queue/steer policy while a turn is running. A direct send cannot
+        // start an unmaterialized session and fails silently there.
+        const input = ctx.conversation.input.for(scoped)
+        input.setDraft(prompt)
+        input.submit()
       },
     },
   })
