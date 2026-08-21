@@ -8,3 +8,4 @@ lib/
 .npmrc
 .dsh-vision-toolkit/
 .docs/
+AGENTS.md

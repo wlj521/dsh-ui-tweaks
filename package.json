@@ -1,6 +1,6 @@
 {
   "name": "dsh-ui-tweaks",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "DSH web plugin: live-tune the conversation UI — message font size (px input), markdown table style (Claude Desktop look), dialog width (default / wide), an optional conversation timeline rail, a GitBar (branch / diff pills inside the composer tool row — branch after the access-mode control, diff before the model select — with branch management, per-file diff, and commit & push from the diff panel), and an /init slash command that submits an AGENTS.md bootstrap prompt (Chinese or English) into the current session — from the Settings panel.",
   "keywords": [
     "dsh",
