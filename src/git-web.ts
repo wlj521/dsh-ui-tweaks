@@ -67,12 +67,13 @@ function str(value: unknown): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined
 }
 
-/** URL-decoded session + file query params, with a sane file length cap. */
-function queryParams(req: IncomingMessage): { session?: string | undefined; file?: string | undefined; mode?: string | undefined } {
+/** URL-decoded session/workspace + file query params, with a sane file length cap. */
+function queryParams(req: IncomingMessage): { session?: string | undefined; ws?: string | undefined; file?: string | undefined; mode?: string | undefined } {
   const url = new URL(req.url ?? '/', 'http://localhost')
   const file = url.searchParams.get('file')
   return {
     session: str(url.searchParams.get('session')),
+    ws: str(url.searchParams.get('ws')),
     file: file !== null && file.length <= 4096 ? file : undefined,
     mode: str(url.searchParams.get('mode')),
   }
@@ -102,9 +103,9 @@ export class GitWebHandler {
     const path = url.pathname
 
     if (req.method === 'GET') {
-      const { session, file, mode } = queryParams(req)
+      const { session, ws, file, mode } = queryParams(req)
       try {
-        const cwd = this.backend.resolveCwd(session)
+        const cwd = this.backend.resolveTargetCwd({ session, ws })
         if (cwd === undefined) {
           ok(res, { isRepo: false })
           return
@@ -155,15 +156,33 @@ export class GitWebHandler {
       return
     }
     const session = isRecord(body) ? str(body.session) : undefined
+    const ws = isRecord(body) ? str(body.ws) : undefined
 
     try {
+      if (path === `${GIT_ROUTE}/open`) {
+        const fields = requireFields(body, ['target'])
+        if (fields.target !== 'explorer' && fields.target !== 'vscode' && fields.target !== 'idea') {
+          throw new TypeError('target must be "explorer", "vscode" or "idea"')
+        }
+        const cwd = this.requireCwd({ session, ws })
+        await this.backend.openFolder(cwd, fields.target as 'explorer' | 'vscode' | 'idea')
+        ok(res, { opened: fields.target })
+        return
+      }
+      if (path === `${GIT_ROUTE}/terminal`) {
+        const fields = requireFields(body, ['command'])
+        if (fields.command.length > 2000) throw new TypeError('command is too long')
+        const cwd = this.requireCwd({ session, ws })
+        ok(res, await this.backend.runTerminal(cwd, fields.command))
+        return
+      }
       if (path === `${GIT_ROUTE}/commit`) {
         const fields = requireFields(body, ['message'])
         const push = isRecord(body) && body.push === true
         const exclude = isRecord(body) && Array.isArray(body.exclude)
           ? body.exclude.filter((entry): entry is string => typeof entry === 'string' && entry !== '')
           : undefined
-        const cwd = this.requireCwd(session)
+        const cwd = this.requireCwd({ session, ws })
         ok(res, await this.backend.commit(cwd, fields.message, {
           push,
           ...(exclude !== undefined && exclude.length > 0 ? { exclude } : {}),
@@ -171,14 +190,14 @@ export class GitWebHandler {
         return
       }
       if (path === `${GIT_ROUTE}/push`) {
-        const cwd = this.requireCwd(session)
+        const cwd = this.requireCwd({ session, ws })
         await this.backend.push(cwd)
         ok(res, { pushed: true })
         return
       }
       if (path === `${GIT_ROUTE}/checkout`) {
         const fields = requireFields(body, ['branch'])
-        const cwd = this.requireCwd(session)
+        const cwd = this.requireCwd({ session, ws })
         await this.backend.checkout(cwd, fields.branch)
         ok(res, { branch: fields.branch })
         return
@@ -187,27 +206,27 @@ export class GitWebHandler {
         const fields = requireFields(body, ['name'])
         const base = isRecord(body) ? str(body.base) : undefined
         const pushRemote = isRecord(body) && body.push === true
-        const cwd = this.requireCwd(session)
+        const cwd = this.requireCwd({ session, ws })
         await this.backend.createBranch(cwd, fields.name, base, pushRemote)
         ok(res, { branch: fields.name, pushed: pushRemote })
         return
       }
       if (path === `${GIT_ROUTE}/branch-delete`) {
         const fields = requireFields(body, ['name'])
-        const cwd = this.requireCwd(session)
+        const cwd = this.requireCwd({ session, ws })
         await this.backend.deleteBranch(cwd, fields.name)
         ok(res, { branch: fields.name })
         return
       }
       if (path === `${GIT_ROUTE}/remote-delete`) {
         const fields = requireFields(body, ['name'])
-        const cwd = this.requireCwd(session)
+        const cwd = this.requireCwd({ session, ws })
         await this.backend.deleteRemoteBranch(cwd, fields.name)
         ok(res, { branch: fields.name })
         return
       }
       if (path === `${GIT_ROUTE}/suggest`) {
-        const cwd = this.requireCwd(session)
+        const cwd = this.requireCwd({ session, ws })
         // `via` / `reason` let the UI say when the offline heuristic wrote the
         // message; `message` stays the first-class field.
         ok(res, await this.backend.suggestDetailed(cwd))
@@ -220,8 +239,8 @@ export class GitWebHandler {
     fail(res, 404, 'not-found', 'unknown git endpoint')
   }
 
-  private requireCwd(session: string | undefined): string {
-    const cwd = this.backend.resolveCwd(session)
+  private requireCwd(target: { session?: string | undefined; ws?: string | undefined }): string {
+    const cwd = this.backend.resolveTargetCwd(target)
     if (cwd === undefined) throw new Error('no working directory for this session')
     return cwd
   }

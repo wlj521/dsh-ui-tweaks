@@ -23,7 +23,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SelectOption } from '@deepseek-ai/dsh-client-ui-commands/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { TimelineRail, installTimelineStyles } from './timeline.tsx'
-import { GitBarBranch, GitBarDiff, installGitBarStyles } from './gitbar.tsx'
+import { BranchChipEntry, HeaderUtilities, installGitBarStyles, installHeroChip } from './gitbar.tsx'
 import { ArchiveSection, installArchiveStyles } from './archive.tsx'
 import { McpSection, installMcpStyles } from './mcp.tsx'
 
@@ -248,6 +248,15 @@ const en = {
   branchPushRemote: 'Push to remote',
   includeFile: 'Include in commit',
   excludeFile: 'Exclude from commit',
+  openProject: 'Open project',
+  terminal: 'Terminal',
+  openExplorer: 'Open in File Explorer',
+  openVscode: 'Open in VS Code',
+  openIdea: 'Open in IntelliJ IDEA',
+  copyPath: 'Copy folder path',
+  copyPathDone: 'Path copied.',
+  copyPathFail: 'Could not copy the path.',
+  termWelcome: 'Type a command and press Enter; ↑↓ walks history.',
   initDesc: 'Analyze this project and generate an AGENTS.md for future coding agents',
   initOptionZh: 'AGENTS.md — Chinese prompt',
   initOptionZhDetail: 'Submit a Chinese prompt asking the agent to analyze the project and write or improve AGENTS.md.',
@@ -412,6 +421,15 @@ const zh: Record<LocaleKey, string> = {
   branchPushRemote: '推送到远程',
   includeFile: '提交包含此文件',
   excludeFile: '提交排除此文件',
+  openProject: '打开项目',
+  terminal: '终端',
+  openExplorer: '在资源管理器中打开',
+  openVscode: '在 VS Code 中打开',
+  openIdea: '在 IntelliJ IDEA 中打开',
+  copyPath: '复制文件夹路径',
+  copyPathDone: '已复制路径。',
+  copyPathFail: '复制失败。',
+  termWelcome: '输入命令后回车运行；↑↓ 翻看历史。',
   initDesc: '分析当前项目并生成 AGENTS.md，供未来的 AI 编码代理使用',
   initOptionZh: 'AGENTS.md（中文提示词）',
   initOptionZhDetail: '向会话提交中文提示词，让代理分析项目并生成或改进 AGENTS.md。',
@@ -1307,26 +1325,30 @@ export function apply(ctx: ClientContext): void {
     inject: () => ({ controller, sessionsService: ctx.sessions }),
   }, TimelineRail))
 
-  // GitBar: the branch pill (`conversation.input.left`, right after the
-  // access-mode control) and the diff pill (`conversation.input.right`, just
-  // before the model select) live INSIDE the composer's tool row, so the input
-  // area no longer carries a pill row above the card. Each renders null for
-  // non-git sessions.
-  ctx.slots.inject('conversation.input.left', () => ctx.slots.register({
-    name: 'conversation.input.left',
+  // GitBar v3: the branch chip lives in the session header's action row
+  // (beside the title, AFTER the mode badge) and the 打开项目/终端/差异 icon
+  // group sits in the header's right-aligned utilities. Both are strict
+  // session slots; each renders null outside git repos.
+  ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
+    name: 'conversation.session.header.actions',
     id: 'gitbar-branch',
-    order: 30,
+    order: 10,
     locale: NS,
     inject: () => ({ controller }),
-  }, GitBarBranch))
+  }, BranchChipEntry))
 
-  ctx.slots.inject('conversation.input.right', () => ctx.slots.register({
-    name: 'conversation.input.right',
-    id: 'gitbar-diff',
-    order: 30,
+  ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
+    name: 'conversation.session.header.utilities',
+    id: 'gitbar-utils',
+    order: 10,
     locale: NS,
     inject: () => ({ controller }),
-  }, GitBarDiff))
+  }, HeaderUtilities))
+
+  // Hero (new-session screen): the session header does not mount there, so a
+  // floating branch chip anchors beside the workspace picker instead — only
+  // when the picked workspace is a git repo.
+  ctx.effect(() => installHeroChip(controller, t), 'dsh-ui-tweaks: hero branch chip')
 
   // Archive manager: a Settings section ("归档") that lists archived sessions
   // and can restore or permanently delete them. Registered only while the

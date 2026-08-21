@@ -24,9 +24,10 @@
  * @module dsh-ui-tweaks/client/gitbar
  */
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
-import type { ConversationSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
+import { createRoot } from 'react-dom/client'
+import type { ConversationSnapshot, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { SettingsClient } from './index.tsx'
 
 /** Route prefix matching the host half (src/git-web.ts). */
@@ -56,6 +57,8 @@ type GitBarLabelKey =
   | 'branchRemoteDelete' | 'branchFrom' | 'branchFromHead' | 'branchGraph'
   | 'branchRefresh' | 'branchCancel' | 'graphTitle'
   | 'graphColGraph' | 'graphColCommit' | 'graphColSubject' | 'graphColAuthor' | 'graphColDate'
+  | 'openProject' | 'terminal' | 'openExplorer' | 'openVscode' | 'openIdea'
+  | 'copyPath' | 'copyPathDone' | 'copyPathFail' | 'termWelcome'
 
 type Translate = (key: GitBarLabelKey) => string
 
@@ -148,6 +151,34 @@ async function apiPost<T>(path: string, payload: unknown): Promise<T> {
   return body.value
 }
 
+/**
+ * Where git ops resolve their working directory: a real session id, or a
+ * workspace title for the hero/new-session screen (which has no materialized
+ * session yet — the server resolves the picked workspace's path instead).
+ */
+export interface GitTarget { session?: string; ws?: string }
+
+function targetQuery(t: GitTarget): string {
+  if (t.session !== undefined) return `session=${encodeURIComponent(t.session)}`
+  if (t.ws !== undefined) return `ws=${encodeURIComponent(t.ws)}`
+  return ''
+}
+
+function targetFields(t: GitTarget): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (t.session !== undefined) out.session = t.session
+  if (t.ws !== undefined) out.ws = t.ws
+  return out
+}
+
+/** Basename of a cwd path ('' / undefined → '—'), for the chip's folder label. */
+function basenameOf(path: string | undefined): string {
+  if (path === undefined || path === '') return '—'
+  const norm = path.replace(/[\\/]+$/, '')
+  const idx = Math.max(norm.lastIndexOf('\\'), norm.lastIndexOf('/'))
+  return idx >= 0 ? norm.slice(idx + 1) : norm
+}
+
 // ---------------------------------------------------------------------------
 // GitBar styles — DSH theme tokens only (light + dark).
 // ---------------------------------------------------------------------------
@@ -160,7 +191,7 @@ export const GITBAR_CSS = `
    (conversation.input.left / .right): the branch pill's containing block, so
    its popup opens from the pill itself. flex:0 1 auto + min-width:0 let the
    pill compress when the row is squeezed instead of spilling over neighbours. */
-.gbar{position:relative;display:inline-flex;align-items:center;flex:0 1 auto;min-width:0}
+.gbar{position:relative;display:inline-flex;align-items:center;gap:6px;flex:0 1 auto;min-width:0}
 /* Pills match the input bar's resident chrome (access mode / model select):
    28px tall, fully-rounded, transparent at rest with a soft hover fill.
    overflow:hidden clips the pill's content while it compresses. */
@@ -209,17 +240,23 @@ export const GITBAR_CSS = `
   .gbar-pill .gbar-caret{display:none}
 }
 
-/* branch popup — opens upward so the composer below stays uncovered. Pinned
-   header (current branch + worktree state) and pinned action bar surround a
-   freely scrolling branch list. */
+/* branch popup — the chip lives in the session HEADER now, so the menu opens
+   DOWNWARD (top-anchored, small arrow pointing up). Pinned header (current
+   branch + worktree state) and pinned action bar surround a freely scrolling
+   branch list. */
 .gbar-pop{
-  position:absolute;left:0;bottom:calc(100% + 6px);z-index:90;
+  position:absolute;left:0;top:calc(100% + 8px);z-index:120;
   width:300px;
   background:var(--dsw-alias-bg-layer-1);
   border:1px solid var(--dsw-alias-border-l2);border-radius:14px;
   box-shadow:var(--dsw-shadow-lv2);
   display:flex;flex-direction:column;overflow:hidden;
+  animation:gpop-down .16s cubic-bezier(.32,.72,0,1);
 }
+.gbar-pop::before{content:"";position:absolute;top:-5px;left:22px;width:9px;height:9px;
+  background:var(--dsw-alias-bg-layer-1);border-left:1px solid var(--dsw-alias-border-l2);
+  border-top:1px solid var(--dsw-alias-border-l2);transform:rotate(45deg)}
+@keyframes gpop-down{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
 .gbar-pop-head{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-module-platform)}
 .gbar-pop-head .gbar-bicon{width:14px;height:14px;flex:none}
 .gbar-pop-head .gbar-curname{display:flex;align-items:center;gap:7px;min-width:0;font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary)}
@@ -541,7 +578,95 @@ export const GITBAR_CSS = `
 .gbar-notice.gbar-err{background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 14%,var(--dsw-alias-bg-layer-1));color:var(--dsw-alias-state-error-primary)}
 .gbar-spin{width:12px;height:12px;border-radius:50%;border:2px solid color-mix(in srgb,var(--dsw-alias-label-tertiary) 30%,transparent);border-top-color:currentColor;animation:gbar-spin .7s linear infinite}
 @keyframes gbar-spin{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){.gbar-side,.gbar-modal,.gbar-notice{animation:none}}
+
+/* branch capsule — the only interactive half of the header seat: 22px tall
+   like the resident agent-preset badge (same 12px type), fully-rounded,
+   quiet fill on hover, active tint while the popup is open. */
+.gbar-chip{position:relative;display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 9px;
+  border:none;border-radius:16px;background:transparent;color:var(--dsw-alias-label-secondary);
+  font:inherit;font-size:12px;font-weight:400;line-height:22px;cursor:pointer;white-space:nowrap;
+  -webkit-user-select:none;user-select:none;transition:background .15s ease}
+.gbar-chip:hover,.gbar-chip:focus-visible{background:var(--dsw-alias-interactive-bg-hover)}
+.gbar-chip.gbar-open{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,var(--dsw-alias-bg-module-platform));color:var(--dsw-alias-state-business-primary)}
+.gbar-chip svg{width:14px;height:14px;flex:none;opacity:.9}
+.gbar-chip .gbar-bname{max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* folder label — plain context beside the capsule: NO background (not a
+   capsule), not clickable and no hover, so only the branch carries the pill.
+   Same 22px / 12px type as the agent-preset badge beside it, and like that
+   label the folder name stays selectable so it can be copied with the mouse;
+   cursor:auto lets the browser show the text caret over the selectable name,
+   exactly like that label. */
+.gbar-fchip{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 2px;
+  color:var(--dsw-alias-label-secondary);
+  font:inherit;font-size:12px;font-weight:400;line-height:22px;white-space:nowrap;
+  -webkit-user-select:text;user-select:text;cursor:auto}
+.gbar-fchip svg{width:14px;height:14px;flex:none;opacity:.9}
+.gbar-fchip .gbar-folder{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* wraps the interactive branch capsule so its popup anchors to the capsule,
+   not to the whole folder + branch row */
+.gbar-bwrap{position:relative;display:inline-flex;align-items:center}
+
+/* header utilities row: 打开项目 / 终端 / 差异 */
+.gbar-hicons{margin-left:auto;display:inline-flex;align-items:center;gap:2px;position:relative}
+/* The three header utility icons are injected into the title row's utilities
+   slot (beside "Session log"), but they belong in the view-tabs row (对话 /
+   轨迹) right below it. The session header is their containing block: anchor
+   them to the right edge, vertically centred on the 16px tab text line that
+   starts right under the 32px title row (12px header top padding + 32px title
+   row + 4px tab margin). The :has() guard keeps the in-flow position for the
+   rare header without a tablist, and z-index keeps them above the tabs' own
+   stacking context. */
+header:has([role="tablist"]) .gbar-hicons{
+  position:absolute;
+  top:calc(12px + 32px + 4px + (16px - 28px)/2);
+  right:28px;
+  z-index:2;
+}
+.gbar-hicon{position:relative;width:32px;height:28px;display:inline-flex;align-items:center;justify-content:center;
+  border:none;background:transparent;border-radius:9px;color:var(--dsw-alias-label-secondary);cursor:pointer;
+  transition:background .14s ease,color .14s ease}
+.gbar-hicon:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.gbar-hicon.gbar-on{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);color:var(--dsw-alias-state-business-primary)}
+.gbar-hicon svg{width:16px;height:16px}
+
+/* 「打开项目」menu — hangs below its icon, right-aligned */
+.gbar-openmenu{position:absolute;top:calc(100% + 8px);right:0;width:240px;z-index:130;
+  background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:12px;
+  box-shadow:var(--dsw-shadow-lv2);padding:5px;text-align:left;animation:gpop-down .16s cubic-bezier(.32,.72,0,1)}
+.gbar-openmenu::before{content:"";position:absolute;top:-5px;right:16px;width:9px;height:9px;
+  background:var(--dsw-alias-bg-layer-1);border-left:1px solid var(--dsw-alias-border-l2);
+  border-top:1px solid var(--dsw-alias-border-l2);transform:rotate(45deg)}
+.gbar-omrow{display:flex;align-items:center;gap:9px;width:100%;padding:7px 9px;border:none;border-radius:8px;
+  background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;cursor:pointer;text-align:left}
+.gbar-omrow:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.gbar-omrow svg{width:14px;height:14px;color:var(--dsw-alias-label-tertiary);flex:none}
+
+/* terminal panel body — always-dark scrollback with an inline prompt input */
+.gbar-term{flex:1;min-height:0;background:#16161b;color:#d6d6dc;cursor:text;
+  font-family:var(--dsw-font-markdown-code-font-family,"SF Mono",Consolas,monospace);font-size:12px;line-height:1.75;
+  padding:10px 14px;overflow:auto;scrollbar-width:thin}
+.gbar-term:focus-visible{outline:none}
+.gbar-term .gbar-ps1{color:#7d94ff}
+.gbar-term .gbar-tcmd{color:#ffffff}
+.gbar-term .gbar-tout{white-space:pre-wrap;word-break:break-all;opacity:.88}
+.gbar-term .gbar-tdim{opacity:.45}
+.gbar-term .gbar-terr{color:#ef6b70}
+.gbar-term .gbar-tin{display:flex;align-items:baseline}
+.gbar-term .gbar-tin input{flex:1;min-width:0;background:transparent;border:none;outline:none;color:#ffffff;
+  font:inherit;font-size:12px;line-height:1.75;caret-color:#7d94ff;padding:0}
+
+/* half-screen toggle button in side-panel heads */
+.gbar-side-half{border:1px solid var(--dsw-alias-border-l1);background:transparent;color:var(--dsw-alias-label-tertiary);
+  width:28px;height:28px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;
+  cursor:pointer;flex:none;transition:background .15s ease,color .15s ease,border-color .15s ease}
+.gbar-side-half:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.gbar-side-half.gbar-on{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);
+  color:var(--dsw-alias-state-business-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 40%,transparent)}
+.gbar-side-half svg{width:15px;height:15px;display:block}
+
+/* hero (new-session) floating chip wrapper */
+.gbar-hero{position:fixed;z-index:110;transform:translateY(-50%);display:inline-flex;align-items:center;gap:6px}
+@media (prefers-reduced-motion:reduce){.gbar-side,.gbar-modal,.gbar-notice,.gbar-pop,.gbar-openmenu{animation:none}}
 `
 
 /** Install the GitBar stylesheet once (idempotent); returns the disposer. */
@@ -590,11 +715,12 @@ function statusClass(status: string): string {
 // ---------------------------------------------------------------------------
 
 /** Load the git snapshot on session change, then poll; returns [snapshot, refresh]. */
-function useGitStatus(enabled: boolean, session: string | undefined): [GitSnapshot | null, () => Promise<void>] {
+function useGitStatus(enabled: boolean, target: GitTarget): [GitSnapshot | null, () => Promise<void>] {
   const [snapshot, setSnapshot] = useState<GitSnapshot | null>(null)
+  const key = target.session ?? target.ws ?? ''
 
   useEffect(() => {
-    if (!enabled || session === undefined) {
+    if (!enabled || key === '') {
       setSnapshot(null)
       return
     }
@@ -602,7 +728,7 @@ function useGitStatus(enabled: boolean, session: string | undefined): [GitSnapsh
     let timer: number | undefined
     const refresh = async (): Promise<void> => {
       try {
-        const next = await apiGet<GitSnapshot>(`${GIT_ROUTE}/status?session=${encodeURIComponent(session)}`)
+        const next = await apiGet<GitSnapshot>(`${GIT_ROUTE}/status?${targetQuery(target)}`)
         if (!cancelled) setSnapshot(next)
       } catch {
         // Transient git failure: keep the previous snapshot.
@@ -616,40 +742,42 @@ function useGitStatus(enabled: boolean, session: string | undefined): [GitSnapsh
       cancelled = true
       if (timer !== undefined) clearInterval(timer)
     }
-  }, [enabled, session])
+  }, [enabled, key])
 
   const refresh = useCallback(async (): Promise<void> => {
-    if (session === undefined) return
+    if (key === '') return
     try {
-      setSnapshot(await apiGet<GitSnapshot>(`${GIT_ROUTE}/status?session=${encodeURIComponent(session)}`))
+      setSnapshot(await apiGet<GitSnapshot>(`${GIT_ROUTE}/status?${targetQuery(target)}`))
     } catch {
       // Keep the previous snapshot on transient failures.
     }
-  }, [session])
+  }, [target.session, target.ws])
 
   return [snapshot, refresh]
 }
 
 // ---------------------------------------------------------------------------
-// Branch pill — `conversation.input.left` (inside the composer tool row, right
-// after the access-mode control).
+// Branch chip — `conversation.session.header.actions` (beside the title,
+// before the mode badge). Native header-seat styling; the menu opens DOWNWARD
+// from the chip. The folder label comes from the snapshot's cwd.
 // ---------------------------------------------------------------------------
 
-export interface GitBarBranchProps {
-  /** InputZone owner share: the live conversation snapshot (sessionId, running). */
-  session: ConversationSnapshot
+export interface BranchChipProps {
+  /** Framework session kit: the definite current session id. */
+  sessionId: SessionId
   /** Injected: the ui-tweaks settings store (reads `gitBarEnabled`). */
   controller: SettingsClient
   /** Locale-bound translator for the GitBar labels. */
   t: Translate
 }
 
-export function GitBarBranch({ session, controller, t }: GitBarBranchProps) {
+export function BranchChipEntry({ sessionId, controller, t }: BranchChipProps) {
   const settingsState = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
   const enabled = settingsState.value?.gitBarEnabled ?? true
-  const sessionStr = session === undefined ? undefined : String(session.sessionId)
+  const sessionStr = String(sessionId)
+  const target: GitTarget = { session: sessionStr }
 
-  const [snapshot, refresh] = useGitStatus(enabled, sessionStr)
+  const [snapshot, refresh] = useGitStatus(enabled, target)
   const [branchOpen, setBranchOpen] = useState(false)
   const [branches, setBranches] = useState<GitBranches | null>(null)
   const [newBranchName, setNewBranchName] = useState('')
@@ -695,7 +823,7 @@ export function GitBarBranch({ session, controller, t }: GitBarBranchProps) {
 
   const loadBranches = (): void => {
     if (sessionStr === undefined) return
-    void apiGet<GitBranches>(`${GIT_ROUTE}/branches?session=${encodeURIComponent(sessionStr)}`)
+    void apiGet<GitBranches>(`${GIT_ROUTE}/branches?${targetQuery(target)}`)
       .then(setBranches)
       .catch(cause => { showNotice('err', cause instanceof Error ? cause.message : String(cause)) })
   }
@@ -822,33 +950,37 @@ export function GitBarBranch({ session, controller, t }: GitBarBranchProps) {
 
   return (
     <span className="gbar" data-slot-plugin="dsh-ui-tweaks-gitbar">
-      {/* Branch pill */}
-      <button
-        type="button"
-        ref={branchRef}
-        className={'gbar-pill' + (branchOpen ? ' gbar-active' : '')}
-        onClick={toggleBranch}
-        title={dirty ? t('dirty') : t('clean')}
-        aria-expanded={branchOpen}
-      >
-        {/* Outline git-branch mark, same stroke style as the resident access-mode
-            shield: circles at top and bottom balance the optical weight, so the
-            icon reads as vertically centered in the pill. */}
-        <svg className="gbar-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <circle cx="4.5" cy="3.5" r="1.8" />
-          <circle cx="4.5" cy="12.5" r="1.8" />
-          <circle cx="12" cy="5.5" r="1.8" />
-          <path d="M4.5 5.3v5.4" />
-          <path d="M12 7.3c0 3-3.5 4.8-7.5 3.4" />
+      {/* Folder label — plain (no capsule), not clickable */}
+      <span className="gbar-fchip" title={snapshot.cwd}>
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M1.5 4A1.5 1.5 0 0 1 3 2.5h3l1.5 2H13A1.5 1.5 0 0 1 14.5 6v6A1.5 1.5 0 0 1 13 13.5H3A1.5 1.5 0 0 1 1.5 12V4Z" />
         </svg>
-        <span className="gbar-text gbar-branch">{snapshot.branch ?? snapshot.detachedHead ?? '—'}</span>
-        <span className="gbar-caret" aria-hidden>▾</span>
-      </button>
+        <span className="gbar-folder">{basenameOf(snapshot.cwd)}</span>
+      </span>
+      {/* Branch capsule — clickable, opens the branch popup */}
+      <span className="gbar-bwrap">
+        <button
+          type="button"
+          ref={branchRef}
+          className={'gbar-chip' + (branchOpen ? ' gbar-open' : '')}
+          onClick={toggleBranch}
+          title={dirty ? t('dirty') : t('clean')}
+          aria-expanded={branchOpen}
+        >
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <circle cx="4.5" cy="3.5" r="1.8" />
+            <circle cx="4.5" cy="12.5" r="1.8" />
+            <circle cx="12" cy="5.5" r="1.8" />
+            <path d="M4.5 5.3v5.4" />
+            <path d="M12 7.3c0 3-3.5 4.8-7.5 3.4" />
+          </svg>
+          <span className="gbar-bname">{snapshot.branch ?? snapshot.detachedHead ?? '—'}</span>
+        </button>
 
-      {/* Branch popup — pinned header (current branch + worktree state),
-          scrolling local/remote lists, pinned action entries */}
-      {branchOpen ? (
-        <div className="gbar-pop" role="menu" aria-label={snapshot.branch ?? 'git'} ref={branchPopRef}>
+        {/* Branch popup — pinned header (current branch + worktree state),
+            scrolling local/remote lists, pinned action entries */}
+        {branchOpen ? (
+          <div className="gbar-pop" role="menu" aria-label={snapshot.branch ?? 'git'} ref={branchPopRef}>
           <div className="gbar-pop-head">
             <span className="gbar-curname" title={dirty ? t('dirty') : t('clean')}>
               <svg className="gbar-bicon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -956,6 +1088,7 @@ export function GitBarBranch({ session, controller, t }: GitBarBranchProps) {
           </div>
         </div>
       ) : null}
+      </span>
 
       {/* New-branch dialog */}
       {newBranchOpen ? createPortal(
@@ -1068,28 +1201,30 @@ export function GitBarBranch({ session, controller, t }: GitBarBranchProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Diff pill — `conversation.input.right` (inside the composer tool row, just
-// before the model select). Opens the slide-over diff panel, which keeps the
-// commit band at its foot.
+// Diff panel — opened from the header utilities' diff icon (always available,
+// even on a clean tree). Slide-over on the right; commit band at its foot.
 // ---------------------------------------------------------------------------
 
-export interface GitBarDiffProps {
-  /** InputZone owner share: the live conversation snapshot (sessionId, running). */
-  session: ConversationSnapshot
+export interface DiffPanelProps {
+  /** Framework session kit: the definite current session id. */
+  sessionId: SessionId
+  /** Framework session kit: live conversation snapshot selector. */
+  useSession: <T>(selector: (snapshot: ConversationSnapshot) => T) => T
   /** Injected: the ui-tweaks settings store (reads `gitBarEnabled`). */
   controller: SettingsClient
   /** Locale-bound translator for the GitBar labels. */
   t: Translate
+  /** Parent closes the panel (icon toggles; outside clicks route here too). */
+  onClose: () => void
 }
 
-export function GitBarDiff({ session, controller, t }: GitBarDiffProps) {
+export function DiffPanel({ sessionId, useSession, controller, t, onClose }: DiffPanelProps) {
   const settingsState = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
   const enabled = settingsState.value?.gitBarEnabled ?? true
-  const sessionStr = session === undefined ? undefined : String(session.sessionId)
-  const agentRunning = session.running === true
+  const sessionStr = String(sessionId)
+  const agentRunning = useSession(snapshot => snapshot.running) ?? false
 
-  const [snapshot, refresh] = useGitStatus(enabled, sessionStr)
-  const [diffOpen, setDiffOpen] = useState(false)
+  const [snapshot, refresh] = useGitStatus(enabled, { session: sessionStr })
   const [diff, setDiff] = useState<GitDiffResult | null>(null)
   const [diffMode, setDiffMode] = useState<'hunk' | 'full'>('hunk')
   const [diffPath, setDiffPath] = useState<string | null>(null)
@@ -1102,14 +1237,6 @@ export function GitBarDiff({ session, controller, t }: GitBarDiffProps) {
   const [filesHeight, setFilesHeight] = useState<number | null>(null)
   const [commitHeight, setCommitHeight] = useState<number | null>(null)
   const [dragging, setDragging] = useState<'files' | 'commit' | null>(null)
-
-  // Close the panel and drop selections when the session or the toggle changes.
-  useEffect(() => {
-    if (!enabled || sessionStr === undefined) {
-      setDiffOpen(false)
-      setDiffPath(null)
-    }
-  }, [enabled, sessionStr])
 
   const showNotice = (kind: 'ok' | 'err', text: string): void => {
     setNotice({ kind, text })
@@ -1139,15 +1266,13 @@ export function GitBarDiff({ session, controller, t }: GitBarDiffProps) {
     })
   }
 
-  const openDiff = (): void => {
-    const next = !diffOpen
-    setDiffOpen(next)
-    if (next) {
-      void refresh()
-      // Auto-select the first changed file so the panel opens with a diff.
-      setDiffPath(current => current ?? snapshot?.files[0]?.path ?? null)
-    }
-  }
+  // Auto-select the first changed file so the panel opens with a diff.
+  useEffect(() => {
+    void refresh()
+    setDiffPath(current => current ?? snapshot?.files[0]?.path ?? null)
+    // Run once on mount; later file changes keep the user's selection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const selectDiffFile = (path: string): void => {
     setDiffPath(path)
@@ -1157,23 +1282,23 @@ export function GitBarDiff({ session, controller, t }: GitBarDiffProps) {
     setDiffMode(mode)
   }
 
-  // Load the selected file's diff when the panel opens or the selection/mode changes.
+  // Load the selected file's diff when the selection/mode changes.
   useEffect(() => {
-    if (!diffOpen || sessionStr === undefined || diffPath === null) return
+    if (sessionStr === undefined || diffPath === null) return
     let cancelled = false
     setDiff(null)
     void apiGet<GitDiffResult>(
-      `${GIT_ROUTE}/diff?session=${encodeURIComponent(sessionStr)}&file=${encodeURIComponent(diffPath)}&mode=${diffMode}`,
+      `${GIT_ROUTE}/diff?${targetQuery({ session: sessionStr })}&file=${encodeURIComponent(diffPath)}&mode=${diffMode}`,
     ).then(result => {
       if (!cancelled) setDiff(result)
     }).catch(cause => {
       if (!cancelled) showNotice('err', cause instanceof Error ? cause.message : String(cause))
     })
     return () => { cancelled = true }
-  }, [diffOpen, sessionStr, diffPath, diffMode])
+  }, [sessionStr, diffPath, diffMode])
 
   const doCommit = (push: boolean): void => {
-    if (sessionStr === undefined || agentRunning) return
+    if (agentRunning) return
     void run(push ? 'commit-push' : 'commit', async () => {
       const msg = message.trim()
       if (msg === '') {
@@ -1186,7 +1311,7 @@ export function GitBarDiff({ session, controller, t }: GitBarDiffProps) {
         push,
         exclude: [...excluded],
       })
-      setDiffOpen(false)
+      onClose()
       setMessage('')
       setExcluded(new Set())
       await refresh()
@@ -1197,7 +1322,6 @@ export function GitBarDiff({ session, controller, t }: GitBarDiffProps) {
   // The panel never covers the session header / message-area top edge: anchor
   // its top to the message scrollport's top.
   useEffect(() => {
-    if (!diffOpen) return
     const measure = (): void => {
       const sp = document.querySelector('[data-conversation-scroll]')
       const top = sp === null ? 0 : Math.round(sp.getBoundingClientRect().top)
@@ -1212,21 +1336,20 @@ export function GitBarDiff({ session, controller, t }: GitBarDiffProps) {
       window.removeEventListener('resize', measure)
       observer.disconnect()
     }
-  }, [diffOpen])
+  }, [])
 
-  // Close the diff panel when clicking outside it (the pill's own onClick toggles).
+  // Close the diff panel when clicking outside it (the 差异 icon toggles).
   useEffect(() => {
-    if (!diffOpen) return
     const onDown = (event: MouseEvent): void => {
       const target = event.target as Node | null
       if (target === null) return
       if (document.querySelector('.gbar-side')?.contains(target)) return
       if (document.querySelector('.gbar')?.contains(target)) return
-      setDiffOpen(false)
+      onClose()
     }
     document.addEventListener('mousedown', onDown)
     return () => { document.removeEventListener('mousedown', onDown) }
-  }, [diffOpen])
+  }, [onClose])
 
   // Drag the panel's left edge to resize it. A press WITHOUT any drag counts
   // as a click: it snaps the panel to half the screen (or back to the width
@@ -1309,61 +1432,43 @@ export function GitBarDiff({ session, controller, t }: GitBarDiffProps) {
   // timeline rail (anchored to the message-area right edge) stays visible.
   useEffect(() => {
     const root = document.querySelector('#root') as HTMLElement | null
-    if (!diffOpen) return
     if (root !== null) root.style.marginRight = `${diffWidth}px`
     return () => { if (root !== null) root.style.marginRight = '' }
-  }, [diffOpen, diffWidth])
+  }, [diffWidth])
 
   if (!enabled || sessionStr === undefined) return null
   if (snapshot === null || !snapshot.isRepo) return null
-  // With a clean working tree there is nothing to diff (or commit): hide the
-  // diff pill entirely — it reappears as soon as changes show up. The branch
-  // pill stays, since branch management is still useful while clean.
-  if (snapshot.clean) return null
 
   const dirty = !snapshot.clean
+  const halfActive = diffWidth >= Math.round(window.innerWidth / 2) - 4
 
-  return (
-    <span className="gbar" data-slot-plugin="dsh-ui-tweaks-gitbar">
-      {/* Diff pill */}
-      <button
-        type="button"
-        className={'gbar-pill' + (diffOpen ? ' gbar-active' : '')}
-        onClick={openDiff}
-        title={t('diffTitle')}
-      >
-        <svg className="gbar-ico" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
-          <path d="M5 1.5h4l3 3V13a1.5 1.5 0 0 1-1.5 1.5h-5A1.5 1.5 0 0 1 4 13V3A1.5 1.5 0 0 1 5 1.5zM5 2.5V13h5V5.2L8.8 3.5H5zm.5 4.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5zm3.25.25h-1.5v1.5h1.5V7.25zm.25 2.5H5.75v1.5h3.25v-1.5z" />
-        </svg>
-        <span className="gbar-text">
-          {dirty ? (
-            <>
-              <span className="gbar-add">+{snapshot.totalAdded}</span>
-              <span className="gbar-del">−{snapshot.totalDeleted}</span>
-              <span className="gbar-meta">· {snapshot.files.length} {t('diffFiles')}</span>
-            </>
-          ) : (
-            <span className="gbar-hint">{t('clean')}</span>
-          )}
+  return createPortal(
+    <>
+    <div className="gbar-side" role="dialog" aria-label={t('diffTitle')} style={{ width: `${diffWidth}px`, top: `${panelTop}px` }}>
+      <div className="gbar-resize" onPointerDown={startResize} title="拖动调整宽度 · 点击展开到半屏" />
+      <div className="gbar-side-head">
+        <span className="gbar-title">{diffPath ?? t('diffTitle')}</span>
+        <span className="gbar-sub">
+          {snapshot.files.length} {t('diffFiles')} · <span className="gbar-a">+{snapshot.totalAdded}</span> <span className="gbar-d">−{snapshot.totalDeleted}</span>
         </span>
-      </button>
-
-      {/* Diff side panel */}
-      {diffOpen ? createPortal(
-        <div className="gbar-side" role="dialog" aria-label={t('diffTitle')} style={{ width: `${diffWidth}px`, top: `${panelTop}px` }}>
-          <div className="gbar-resize" onPointerDown={startResize} title="拖动调整宽度 · 点击展开到半屏" />
-          <div className="gbar-side-head">
-            <span className="gbar-title">{diffPath ?? t('diffTitle')}</span>
-            <span className="gbar-sub">
-              {snapshot.files.length} {t('diffFiles')} · <span className="gbar-a">+{snapshot.totalAdded}</span> <span className="gbar-d">−{snapshot.totalDeleted}</span>
-            </span>
-            <span className="gbar-spacer" />
-            <div className="gbar-seg" role="group">
-              <button type="button" className={diffMode === 'hunk' ? 'gbar-on' : ''} onClick={() => { switchDiffMode('hunk') }}>{t('diffOnly')}</button>
-              <button type="button" className={diffMode === 'full' ? 'gbar-on' : ''} onClick={() => { switchDiffMode('full') }}>{t('diffFull')}</button>
-            </div>
-            <button type="button" className="gbar-side-x" onClick={() => { setDiffOpen(false) }} aria-label="✕">✕</button>
-          </div>
+        <span className="gbar-spacer" />
+        <div className="gbar-seg" role="group">
+          <button type="button" className={diffMode === 'hunk' ? 'gbar-on' : ''} onClick={() => { switchDiffMode('hunk') }}>{t('diffOnly')}</button>
+          <button type="button" className={diffMode === 'full' ? 'gbar-on' : ''} onClick={() => { switchDiffMode('full') }}>{t('diffFull')}</button>
+        </div>
+        <button
+          type="button"
+          className={'gbar-side-half' + (halfActive ? ' gbar-on' : '')}
+          onClick={toggleHalfWidth}
+          title="展开到半屏 / 恢复宽度"
+          aria-pressed={halfActive}
+        >
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 3H3v3" /><path d="M10 13h3v-3" /><path d="M3 3l4 4" /><path d="M13 13L9 9" />
+          </svg>
+        </button>
+        <button type="button" className="gbar-side-x" onClick={onClose} aria-label="✕">✕</button>
+      </div>
           <div className="gbar-side-body">
             <div
               className="gbar-files"
@@ -1413,7 +1518,7 @@ export function GitBarDiff({ session, controller, t }: GitBarDiffProps) {
               onDoubleClick={() => { setFilesHeight(null) }}
             />
             {diff === null ? (
-              <div className="gbar-diff"><div className="gbar-empty">{t('loading')}</div></div>
+              <div className="gbar-diff"><div className="gbar-empty">{snapshot.clean || snapshot.files.length === 0 ? t('clean') : t('loading')}</div></div>
             ) : diff.lines.length === 0 ? (
               <div className="gbar-diff"><div className="gbar-empty">{t('noChanges')}</div></div>
             ) : (
@@ -1487,15 +1592,557 @@ export function GitBarDiff({ session, controller, t }: GitBarDiffProps) {
               </div>
             </div>
           ) : null}
-        </div>,
-        document.body,
+        </div>
+        {/* Transient notice */}
+        {notice !== null ? (
+          <div className={'gbar-notice gbar-' + notice.kind} role="status">{notice.text}</div>
+        ) : null}
+      </>,
+      document.body,
+    )
+  }
+
+// ---------------------------------------------------------------------------
+// Terminal panel — opened from the header utilities' terminal icon. Same
+// slide-over skeleton as the diff panel; the scrollback IS the input (click
+// anywhere to focus, type at the prompt, Enter runs, ↑↓ walks history).
+// ---------------------------------------------------------------------------
+
+interface TermLine { kind: 'cmd' | 'out' | 'err' | 'info'; text: string }
+
+export function TerminalPanel({ sessionId, controller, t, onClose }: {
+  sessionId: SessionId
+  controller: SettingsClient
+  t: Translate
+  onClose: () => void
+}) {
+  const settingsState = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
+  const enabled = settingsState.value?.gitBarEnabled ?? true
+  const target: GitTarget = { session: String(sessionId) }
+  const [snapshot] = useGitStatus(enabled, target)
+  const [lines, setLines] = useState<TermLine[]>([])
+  const [value, setValue] = useState('')
+  const [running, setRunning] = useState(false)
+  const [width, setWidth] = useState(520)
+  const prevWidthRef = useRef<number | null>(null)
+  const historyRef = useRef<string[]>([])
+  const histIdxRef = useRef(-1)
+  const bodyRef = useRef<HTMLDivElement | null>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    setLines([{ kind: 'info', text: t('termWelcome') }])
+    inputRef.current?.focus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  useEffect(() => {
+    const body = bodyRef.current
+    if (body !== null) body.scrollTop = body.scrollHeight
+  }, [lines])
+
+  const toggleHalfWidth = (): void => {
+    const half = Math.round(window.innerWidth / 2)
+    if (width >= half - 4) {
+      const restore = prevWidthRef.current ?? 520
+      prevWidthRef.current = null
+      setWidth(restore)
+    } else {
+      prevWidthRef.current = width
+      setWidth(half)
+    }
+  }
+
+  const run = async (): Promise<void> => {
+    const command = value.trim()
+    if (command === '' || running) return
+    historyRef.current.push(command)
+    histIdxRef.current = -1
+    setValue('')
+    setRunning(true)
+    setLines(prev => [...prev, { kind: 'cmd', text: command }])
+    try {
+      const result = await apiPost<{ code: number; stdout: string; stderr: string }>(
+        `${GIT_ROUTE}/terminal`,
+        { ...targetFields(target), command },
+      )
+      setLines(prev => {
+        const next = [...prev]
+        if (result.stdout !== '') next.push({ kind: 'out', text: result.stdout.replace(/\n$/, '') })
+        if (result.stderr !== '') next.push({ kind: 'err', text: result.stderr.replace(/\n$/, '') })
+        if (result.code !== 0) next.push({ kind: 'err', text: `[exit ${result.code}]` })
+        return next
+      })
+    } catch (cause) {
+      setLines(prev => [...prev, { kind: 'err', text: cause instanceof Error ? cause.message : String(cause) }])
+    } finally {
+      setRunning(false)
+      inputRef.current?.focus()
+    }
+  }
+
+  if (!enabled) return null
+
+  return createPortal(
+    <div className="gbar-side" role="dialog" aria-label={t('terminal')} style={{ width: `${width}px` }}>
+      <div className="side-head gbar-side-head">
+        <span className="stitle gbar-title">{t('terminal')}</span>
+        <span className="ssub gbar-sub" style={{ fontFamily: '"SF Mono",ui-monospace,Consolas,monospace' }}>{basenameOf(snapshot?.cwd)}</span>
+        <span className="sp gbar-spacer" />
+        <button
+          type="button"
+          className={'gbar-side-half' + (width >= Math.round(window.innerWidth / 2) - 4 ? ' gbar-on' : '')}
+          onClick={toggleHalfWidth}
+          title="展开到半屏 / 恢复宽度"
+        >
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 3H3v3" /><path d="M10 13h3v-3" /><path d="M3 3l4 4" /><path d="M13 13L9 9" />
+          </svg>
+        </button>
+        <button type="button" className="gbar-side-x" onClick={onClose} aria-label="✕">✕</button>
+      </div>
+      <div className="gbar-term" ref={bodyRef} onClick={() => { inputRef.current?.focus() }}>
+        {lines.map((line, i) => {
+          if (line.kind === 'cmd') {
+            return (
+              <div key={i}>
+                <span className="gbar-ps1">PS&gt;&nbsp;</span>
+                <span className="gbar-tcmd">{line.text}</span>
+              </div>
+            )
+          }
+          if (line.kind === 'info') return <div key={i} className="gbar-tdim">{line.text}</div>
+          if (line.kind === 'err') return <div key={i} className="gbar-tout gbar-terr">{line.text}</div>
+          return <div key={i} className="gbar-tout">{line.text}</div>
+        })}
+        <div className="gbar-tin">
+          <span className="gbar-ps1">PS&gt;</span>
+          <input
+            ref={inputRef}
+            value={value}
+            spellCheck={false}
+            aria-label={t('terminal')}
+            onChange={event => { setValue(event.target.value) }}
+            onKeyDown={event => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                void run()
+              } else if (event.key === 'ArrowUp') {
+                event.preventDefault()
+                const history = historyRef.current
+                if (history.length === 0) return
+                histIdxRef.current = histIdxRef.current === -1 ? history.length - 1 : Math.max(0, histIdxRef.current - 1)
+                setValue(history[histIdxRef.current] ?? '')
+              } else if (event.key === 'ArrowDown') {
+                event.preventDefault()
+                if (histIdxRef.current === -1) return
+                histIdxRef.current += 1
+                if (histIdxRef.current >= historyRef.current.length) {
+                  histIdxRef.current = -1
+                  setValue('')
+                } else {
+                  setValue(historyRef.current[histIdxRef.current] ?? '')
+                }
+              }
+            }}
+          />
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Header utilities — `conversation.session.header.utilities` (right-aligned):
+// 打开项目 / 终端 / 差异. The two panels are INDEPENDENT (same position, one
+// at a time); each icon toggles its own.
+// ---------------------------------------------------------------------------
+
+export interface HeaderUtilitiesProps {
+  sessionId: SessionId
+  useSession: <T>(selector: (snapshot: ConversationSnapshot) => T) => T
+  controller: SettingsClient
+  t: Translate
+}
+
+export function HeaderUtilities({ sessionId, useSession, controller, t }: HeaderUtilitiesProps) {
+  const settingsState = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
+  const enabled = settingsState.value?.gitBarEnabled ?? true
+  const target: GitTarget = { session: String(sessionId) }
+  const [snapshot] = useGitStatus(enabled, target)
+
+  const [openMenu, setOpenMenu] = useState(false)
+  const [diffOpen, setDiffOpen] = useState(false)
+  const [termOpen, setTermOpen] = useState(false)
+  const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+  const wrapRef = useRef<HTMLSpanElement | null>(null)
+  const iconRef = useRef<HTMLButtonElement | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
+
+  // Close the open-project menu on outside click / Escape.
+  useEffect(() => {
+    if (!openMenu) return
+    const onDown = (event: MouseEvent): void => {
+      const node = event.target as Node | null
+      if (node === null) return
+      if (wrapRef.current?.contains(node) || menuRef.current?.contains(node)) return
+      setOpenMenu(false)
+    }
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setOpenMenu(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [openMenu])
+
+  const showNotice = (kind: 'ok' | 'err', text: string): void => {
+    setNotice({ kind, text })
+    window.setTimeout(() => setNotice(null), 4000)
+  }
+
+  const runOpen = async (app: 'explorer' | 'vscode' | 'idea'): Promise<void> => {
+    try {
+      await apiPost(`${GIT_ROUTE}/open`, { ...targetFields(target), target: app })
+      setOpenMenu(false)
+      showNotice('ok', `✓ ${app}`)
+    } catch (cause) {
+      showNotice('err', cause instanceof Error ? cause.message : String(cause))
+    }
+  }
+
+  const copyPath = async (): Promise<void> => {
+    const cwd = snapshot?.cwd ?? ''
+    try {
+      await navigator.clipboard.writeText(cwd)
+      setOpenMenu(false)
+      showNotice('ok', t('copyPathDone'))
+    } catch {
+      showNotice('err', t('copyPathFail'))
+    }
+  }
+
+  if (!enabled) return null
+
+  return (
+    <span className="gbar-hicons" ref={wrapRef}>
+      <button
+        type="button"
+        ref={iconRef}
+        className={'gbar-hicon' + (openMenu ? ' gbar-on' : '')}
+        onClick={() => { setOpenMenu(value => !value) }}
+        title={t('openProject')}
+        aria-expanded={openMenu}
+      >
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M1.5 4A1.5 1.5 0 0 1 3 2.5h3l1.5 2H13A1.5 1.5 0 0 1 14.5 6v6A1.5 1.5 0 0 1 13 13.5H3A1.5 1.5 0 0 1 1.5 12V4Z" />
+          <path d="M9.5 8.25l2.2 1.35-2.2 1.35v-2.7Z" fill="currentColor" stroke="none" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        className={'gbar-hicon' + (termOpen ? ' gbar-on' : '')}
+        onClick={() => { setTermOpen(value => !value) }}
+        title={t('terminal')}
+        aria-expanded={termOpen}
+      >
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="1.5" y="2.5" width="13" height="11" rx="2" />
+          <path d="M4.5 6l2.5 2-2.5 2" />
+          <path d="M8.5 10h3" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        className={'gbar-hicon' + (diffOpen ? ' gbar-on' : '')}
+        onClick={() => { setDiffOpen(value => !value) }}
+        title={t('diffTitle')}
+        aria-expanded={diffOpen}
+      >
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9.5 1.5H4A1.5 1.5 0 0 0 2.5 3v10A1.5 1.5 0 0 0 4 14.5h8A1.5 1.5 0 0 0 13.5 13V5.5l-4-4Z" />
+          <path d="M9.5 1.5V5.5h4" />
+          <path d="M5.75 10h4.5M5.75 7.5h2" />
+        </svg>
+      </button>
+
+      {openMenu ? (
+        <div className="gbar-openmenu" ref={menuRef} role="menu">
+          <button type="button" className="gbar-omrow" onClick={() => { void runOpen('explorer') }}>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><path d="M1.5 4A1.5 1.5 0 0 1 3 2.5h3l1.5 2H13A1.5 1.5 0 0 1 14.5 6v6A1.5 1.5 0 0 1 13 13.5H3A1.5 1.5 0 0 1 1.5 12V4Z" /></svg>
+            {t('openExplorer')}
+          </button>
+          <button type="button" className="gbar-omrow" onClick={() => { void runOpen('vscode') }}>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><path d="M5.5 2.5 2 8l3.5 5.5" /><path d="M10.5 2.5 14 8l-3.5 5.5" /></svg>
+            {t('openVscode')}
+          </button>
+          <button type="button" className="gbar-omrow" onClick={() => { void runOpen('idea') }}>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="12" height="12" rx="2.5" /><path d="M5 11V5h2l2 3 2-3h2v6" /></svg>
+            {t('openIdea')}
+          </button>
+          <button type="button" className="gbar-omrow" onClick={() => { void copyPath() }}>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><rect x="5.5" y="5.5" width="9" height="9" rx="1.5" /><path d="M10.5 5.5V3A1.5 1.5 0 0 0 9 1.5H3A1.5 1.5 0 0 0 1.5 3v6A1.5 1.5 0 0 0 3 10.5h2.5" /></svg>
+            {t('copyPath')}
+          </button>
+        </div>
       ) : null}
 
-      {/* Transient notice */}
+      {termOpen ? <TerminalPanel sessionId={sessionId} controller={controller} t={t} onClose={() => { setTermOpen(false) }} /> : null}
+      {/* The diff panel opens even while the model is running (it only reads
+          git state; committing inside stays disabled while the agent works). */}
+      {diffOpen ? <DiffPanel sessionId={sessionId} useSession={useSession} controller={controller} t={t} onClose={() => { setDiffOpen(false) }} /> : null}
+
       {notice !== null ? createPortal(
         <div className={'gbar-notice gbar-' + notice.kind} role="status">{notice.text}</div>,
         document.body,
       ) : null}
     </span>
   )
+}
+
+// ---------------------------------------------------------------------------
+// Hero (new-session) branch chip — the session header does not mount on the
+// blank/new-session screen, so the chip floats there instead: anchored just
+// left of the workspace picker (`[class$="_workspace"]`, CSS-module suffix is
+// stable within a pinned build). Git ops resolve via the workspace title
+// (`ws` target); if there is no repo, nothing renders.
+// ---------------------------------------------------------------------------
+
+const HERO_ANCHOR_SELECTOR = '[class$="_workspace"]'
+
+function HeroBranchChip({ t, right, top }: {
+  t: Translate
+  right: number
+  top: number
+}) {
+  const wsName = useMemo(
+    () => document.querySelector<HTMLElement>(HERO_ANCHOR_SELECTOR)?.textContent?.trim() ?? '',
+    [],
+  )
+  const [snapshot, refresh] = useGitStatus(true, { ws: wsName })
+  const [branchOpen, setBranchOpen] = useState(false)
+  const [branches, setBranches] = useState<GitBranches | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+  const chipRef = useRef<HTMLButtonElement | null>(null)
+  const popRef = useRef<HTMLDivElement | null>(null)
+
+  const showNotice = (kind: 'ok' | 'err', text: string): void => {
+    setNotice({ kind, text })
+    window.setTimeout(() => setNotice(null), 4000)
+  }
+
+  const run = async (label: string, fn: () => Promise<void>): Promise<boolean> => {
+    if (busy !== null) return false
+    setBusy(label)
+    try {
+      await fn()
+      return true
+    } catch (cause) {
+      showNotice('err', cause instanceof Error ? cause.message : String(cause))
+      return false
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const loadBranches = (): void => {
+    void apiGet<GitBranches>(`${GIT_ROUTE}/branches?${targetQuery({ ws: wsName })}`)
+      .then(setBranches)
+      .catch(cause => { showNotice('err', cause instanceof Error ? cause.message : String(cause)) })
+  }
+
+  const pickBranch = (name: string): void => {
+    if (name === branches?.current) return
+    void run('checkout', async () => {
+      await apiPost(`${GIT_ROUTE}/checkout`, { ws: wsName, branch: name })
+      setBranchOpen(false)
+      await refresh()
+      loadBranches()
+      showNotice('ok', `→ ${name}`)
+    })
+  }
+
+  const deleteLocal = (name: string): void => {
+    if (confirmDelete === name) {
+      setConfirmDelete(null)
+      void run('branch-delete', async () => {
+        await apiPost(`${GIT_ROUTE}/branch-delete`, { ws: wsName, name })
+        loadBranches()
+        showNotice('ok', `🗑 ${name}`)
+      })
+    } else {
+      setConfirmDelete(name)
+      window.setTimeout(() => { setConfirmDelete(current => (current === name ? null : current)) }, 3000)
+    }
+  }
+
+  const deleteRemote = (name: string): void => {
+    if (confirmDelete === name) {
+      setConfirmDelete(null)
+      void run('remote-delete', async () => {
+        await apiPost(`${GIT_ROUTE}/remote-delete`, { ws: wsName, name })
+        loadBranches()
+        showNotice('ok', `🗑 ${name}`)
+      })
+    } else {
+      setConfirmDelete(name)
+      window.setTimeout(() => { setConfirmDelete(current => (current === name ? null : current)) }, 3000)
+    }
+  }
+
+  // Close on outside click / Escape.
+  useEffect(() => {
+    if (!branchOpen) return
+    const onDown = (event: MouseEvent): void => {
+      const node = event.target as Node | null
+      if (node === null) return
+      if (chipRef.current?.contains(node) || popRef.current?.contains(node)) return
+      setBranchOpen(false)
+    }
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setBranchOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [branchOpen])
+
+  if (snapshot === null || !snapshot.isRepo) return null
+
+  const dirty = !snapshot.clean
+
+  return (
+    <div className="gbar-hero" style={{ top, right }}>
+      <span className="gbar-fchip" title={snapshot.cwd}>
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M1.5 4A1.5 1.5 0 0 1 3 2.5h3l1.5 2H13A1.5 1.5 0 0 1 14.5 6v6A1.5 1.5 0 0 1 13 13.5H3A1.5 1.5 0 0 1 1.5 12V4Z" />
+        </svg>
+        <span className="gbar-folder">{basenameOf(snapshot.cwd)}</span>
+      </span>
+      <span className="gbar-bwrap">
+        <button
+          type="button"
+          ref={chipRef}
+          className={'gbar-chip' + (branchOpen ? ' gbar-open' : '')}
+          onClick={() => { setBranchOpen(value => { if (!value) loadBranches(); return !value }) }}
+          title={dirty ? t('dirty') : t('clean')}
+          aria-expanded={branchOpen}
+        >
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <circle cx="4.5" cy="3.5" r="1.8" />
+            <circle cx="4.5" cy="12.5" r="1.8" />
+            <circle cx="12" cy="5.5" r="1.8" />
+            <path d="M4.5 5.3v5.4" />
+            <path d="M12 7.3c0 3-3.5 4.8-7.5 3.4" />
+          </svg>
+          <span className="gbar-bname">{snapshot.branch ?? snapshot.detachedHead ?? '—'}</span>
+        </button>
+        {branchOpen ? (
+          <div className="gbar-pop" ref={popRef} role="menu">
+          <div className="gbar-pop-head">
+            <svg style={{ width: 14, height: 14, color: 'var(--dsw-alias-state-business-primary)', flex: 'none' }} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"><circle cx="4.5" cy="3.5" r="1.8" /><circle cx="4.5" cy="12.5" r="1.8" /><circle cx="12" cy="5.5" r="1.8" /><path d="M4.5 5.3v5.4" /><path d="M12 7.3c0 3-3.5 4.8-7.5 3.4" /></svg>
+            <span className="cname">{snapshot.branch ?? snapshot.detachedHead ?? '—'}</span>
+            <span className="state">
+              <span style={{ width: 6, height: 6, borderRadius: 999, background: dirty ? 'var(--dsw-alias-state-warn-primary)' : 'var(--dsw-alias-state-success-primary)' }} />
+              {snapshot.ahead > 0 ? <span>↑{snapshot.ahead}</span> : null}
+              {snapshot.behind > 0 ? <span>↓{snapshot.behind}</span> : null}
+            </span>
+          </div>
+          <div className="gbar-pop-body">
+            <div className="gbar-sec">{t('branchLocal')}{branches !== null ? <span className="gbar-count">{branches.local.length}</span> : null}</div>
+            {branches === null ? (
+              <div className="gbar-loading"><span className="gbar-spin" />{t('loading')}</div>
+            ) : branches.local.map(name => (
+              <div key={name} className="gbar-rowwrap">
+                <button type="button" className={'gbar-row' + (name === branches.current ? ' gbar-cur' : '')} onClick={() => { pickBranch(name) }}>
+                  <span>{name}</span>
+                  {name === branches.current ? <span className="gbar-check" aria-hidden>✓</span> : null}
+                </button>
+                {name !== branches.current && !isProtectedBranch(name) ? (
+                  <button type="button" className={'gbar-del' + (confirmDelete === name ? ' gbar-arm' : '')} onClick={() => { deleteLocal(name) }} title={t('branchDelete')}>
+                    {confirmDelete === name ? t('branchDeleteConfirm') : '🗑'}
+                  </button>
+                ) : null}
+              </div>
+            ))}
+            <div className="gbar-sec">{t('branchRemote')}{branches !== null ? <span className="gbar-count">{branches.remote.length}</span> : null}</div>
+            {branches?.remote.map(name => (
+              <div key={name} className="gbar-rowwrap">
+                <button type="button" className="gbar-row" onClick={() => { pickBranch(shortBranch(name)) }}>
+                  <span>{shortBranch(name)}</span>
+                  <span className="gbar-rm">{name.split('/')[0]}</span>
+                </button>
+                {!isProtectedBranch(shortBranch(name)) ? (
+                  <button type="button" className={'gbar-del' + (confirmDelete === name ? ' gbar-arm' : '')} onClick={() => { deleteRemote(name) }} title={t('branchRemoteDelete')}>
+                    {confirmDelete === name ? t('branchDeleteConfirm') : '🗑'}
+                  </button>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      </span>
+      {notice !== null ? createPortal(
+        <div className={'gbar-notice gbar-' + notice.kind} role="status">{notice.text}</div>,
+        document.body,
+      ) : null}
+    </div>
+  )
+}
+
+/**
+ * Mount the hero floating chip: watch for the workspace picker appearing
+ * (hero mounts/unmounts as sessions open and close), keep a fixed-position
+ * React root anchored just left of it, and re-render on settings changes.
+ */
+export function installHeroChip(controller: SettingsClient, t: Translate): () => void {
+  const host = document.createElement('div')
+  host.dataset.plugin = 'dsh-ui-tweaks-gitbar-hero'
+  document.body.appendChild(host)
+  const root = createRoot(host)
+  let rect: { right: number; top: number } | null = null
+
+  const render = (): void => {
+    const enabled = controller.getSnapshot().value?.gitBarEnabled ?? true
+    root.render(rect === null || !enabled
+      ? null
+      : <HeroBranchChip t={t} right={rect.right} top={rect.top} />)
+  }
+  const measure = (): void => {
+    const el = document.querySelector<HTMLElement>(HERO_ANCHOR_SELECTOR)
+    rect = el === null
+      ? null
+      : (() => {
+          const box = el.getBoundingClientRect()
+          return { right: Math.max(0, Math.round(window.innerWidth - box.left + 8)), top: Math.round(box.top + box.height / 2) }
+        })()
+    render()
+  }
+  let raf = 0
+  const observer = new MutationObserver(() => {
+    cancelAnimationFrame(raf)
+    raf = requestAnimationFrame(measure)
+  })
+  observer.observe(document.body, { childList: true, subtree: true })
+  window.addEventListener('resize', measure)
+  const unsubscribe = controller.subscribe(render)
+  measure()
+
+  return () => {
+    observer.disconnect()
+    cancelAnimationFrame(raf)
+    window.removeEventListener('resize', measure)
+    unsubscribe()
+    root.render(null)
+    host.remove()
+  }
 }

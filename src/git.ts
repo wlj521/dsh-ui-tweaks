@@ -15,7 +15,7 @@
  * @module dsh-ui-tweaks/git
  */
 
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { open } from 'node:fs/promises'
 import { resolve, sep } from 'node:path'
@@ -592,6 +592,90 @@ export class GitBackend {
       if (typeof cwd === 'string' && cwd !== '' && existsSync(cwd)) return cwd
     }
     return undefined
+  }
+
+  /**
+   * Resolve a workspace title (the hero/new-session screen has no real session
+   * yet, only the picked workspace) to its directory. Matches the display
+   * title exactly first, then a basename suffix — titles may duplicate, so an
+   * exact hit always wins. Optional-service read like resolveCwd.
+   */
+  resolveWorkspaceCwd(name: string | undefined): string | undefined {
+    if (name === undefined || name === '') return undefined
+    const workspaces = this.ctx.get('workspaces') as { list?: () => Array<{ path: string; title?: string }> } | undefined
+    const list = workspaces?.list?.() ?? []
+    const byTitle = list.find(w => w.title === name)
+    const byBase = list.find(w => w.path.endsWith(`${sep}${name}`))
+    const cwd = byTitle?.path ?? byBase?.path
+    if (typeof cwd === 'string' && cwd !== '' && existsSync(cwd)) return cwd
+    return undefined
+  }
+
+  /** Resolve either target form to a cwd (session id first, then workspace title). */
+  resolveTargetCwd(target: { session?: string | undefined; ws?: string | undefined }): string | undefined {
+    return this.resolveCwd(target.session) ?? this.resolveWorkspaceCwd(target.ws)
+  }
+
+  /**
+   * Run one shell command in the project directory for the terminal panel.
+   * Non-interactive by design (no TTY): each invocation is a fresh
+   * `powershell -Command` / `sh -c` with bounded timeout and capped output;
+   * a non-zero exit is a RESULT (code + stderr), not a rejection, so the
+   * scrollback can show it like a real terminal would.
+   */
+  async runTerminal(cwd: string, command: string): Promise<{ code: number; stdout: string; stderr: string }> {
+    const isWin = process.platform === 'win32'
+    const file = isWin ? 'powershell.exe' : 'sh'
+    const args = isWin ? ['-NoProfile', '-NonInteractive', '-Command', command] : ['-c', command]
+    return new Promise((resolvePromise) => {
+      execFile(file, args, { cwd, timeout: 120_000, maxBuffer: 4 * 1024 * 1024 }, (error, stdout, stderr) => {
+        if (error === null) {
+          resolvePromise({ code: 0, stdout: stdout.toString(), stderr: stderr.toString() })
+          return
+        }
+        // Non-zero exit carries its code on the error; spawn failures (missing
+        // shell) surface as string codes — map those to 127 like a shell would.
+        const raw = error.code
+        resolvePromise({
+          code: typeof raw === 'number' ? raw : 127,
+          stdout: stdout.toString(),
+          stderr: stderr.toString() !== '' ? stderr.toString() : error.message,
+        })
+      })
+    })
+  }
+
+  /**
+   * Open the project folder in an external app (explorer / VS Code / IDEA).
+   * Fire-and-forget GUI launches: explorer exits non-zero even on success, so
+   * only a spawn FAILURE rejects; app shims missing from PATH reject with a
+   * user-visible hint instead of crashing the route.
+   */
+  async openFolder(cwd: string, target: 'explorer' | 'vscode' | 'idea'): Promise<void> {
+    const launch = (file: string, args: readonly string[]): Promise<void> =>
+      new Promise((resolvePromise, rejectPromise) => {
+        const child = spawn(file, args, { cwd, stdio: 'ignore', detached: true })
+        child.once('error', rejectPromise)
+        child.once('spawn', () => { child.unref(); resolvePromise() })
+      })
+    if (process.platform === 'win32') {
+      if (target === 'explorer') return launch('explorer.exe', [cwd])
+      const shim = target === 'vscode' ? 'code' : 'idea'
+      return new Promise((resolvePromise, rejectPromise) => {
+        const child = spawn('cmd.exe', ['/c', shim, '.'], { cwd, stdio: 'ignore' })
+        child.once('error', rejectPromise)
+        child.once('exit', (code) => {
+          if (code === 0) resolvePromise()
+          else rejectPromise(new Error(`${shim} 未能启动(退出码 ${code})——可能未安装或未加入 PATH`))
+        })
+      })
+    }
+    if (target === 'explorer') {
+      const opener = process.platform === 'darwin' ? 'open' : 'xdg-open'
+      return launch(opener, [cwd])
+    }
+    const shim = target === 'vscode' ? 'code' : 'idea'
+    return launch(shim, [cwd])
   }
 
   /** Full status snapshot for a session's cwd. */
