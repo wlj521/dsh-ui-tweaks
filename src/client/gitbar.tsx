@@ -363,7 +363,9 @@ export const GITBAR_CSS = `
 @keyframes gbar-in{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
 .gbar-side-head{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--dsw-alias-border-l1)}
 .gbar-side-head .gbar-title{font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.gbar-side-head .gbar-sub{font-size:12px;color:var(--dsw-alias-label-tertiary);flex:none}
+.gbar-side-head .gbar-sub{font-size:12px;color:var(--dsw-alias-label-tertiary);flex:none;font-variant-numeric:tabular-nums}
+.gbar-side-head .gbar-sub .gbar-a{color:var(--dsw-alias-state-success-primary)}
+.gbar-side-head .gbar-sub .gbar-d{color:var(--dsw-alias-state-error-primary)}
 .gbar-side-head .gbar-spacer{flex:1}
 .gbar-seg{display:inline-flex;padding:3px;gap:2px;border-radius:10px;background:var(--dsw-alias-bg-module-platform);flex:none}
 .gbar-seg button{border:none;border-radius:8px;padding:4px 10px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;cursor:pointer}
@@ -375,7 +377,9 @@ export const GITBAR_CSS = `
    neighbours carry an explicit inline height and the diff pane absorbs whatever
    is left, so a drag can never overflow the panel. The dividing hairlines are
    painted by the splitters, not by the sections' own borders. */
-.gbar-files{flex:none;overflow-y:auto}
+.gbar-files{flex:none;overflow-y:auto;scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--dsw-alias-label-tertiary) 35%,transparent) transparent}
+.gbar-files::-webkit-scrollbar{width:5px}
+.gbar-files::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--dsw-alias-label-tertiary) 35%,transparent);border-radius:4px}
 /* horizontal drag splitters between the sections */
 .gbar-vsplit{
   flex:none;position:relative;height:7px;
@@ -397,7 +401,7 @@ export const GITBAR_CSS = `
   color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;cursor:pointer;text-align:left;
 }
 .gbar-file .gbar-file-main:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.gbar-file.gbar-on .gbar-file-main{background:var(--dsw-alias-interactive-bg-hover)}
+.gbar-file.gbar-on .gbar-file-main{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 9%,transparent);box-shadow:inset 2px 0 0 var(--dsw-alias-state-business-primary)}
 .gbar-file.gbar-excl{opacity:.55}
 .gbar-chk{
   flex:none;width:16px;height:16px;padding:0;
@@ -407,26 +411,43 @@ export const GITBAR_CSS = `
 }
 .gbar-chk:hover{border-color:var(--dsw-alias-state-business-primary)}
 .gbar-chk.gbar-off{color:transparent}
-.gbar-file .gbar-st{flex:none;width:16px;font-weight:700;font-size:12px}
-.gbar-file .gbar-st.gbar-m{color:var(--dsw-alias-state-warn-primary)}
-.gbar-file .gbar-st.gbar-a{color:var(--dsw-alias-state-success-primary)}
-.gbar-file .gbar-st.gbar-d{color:var(--dsw-alias-state-error-primary)}
-.gbar-file .gbar-st.gbar-u{color:var(--dsw-alias-label-tertiary)}
+.gbar-file .gbar-st{
+  flex:none;min-width:17px;height:17px;padding:0 4px;
+  display:inline-flex;align-items:center;justify-content:center;
+  font-weight:700;font-size:10.5px;border-radius:5px;
+}
+.gbar-file .gbar-st.gbar-m{color:var(--dsw-alias-state-warn-primary);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 13%,transparent)}
+.gbar-file .gbar-st.gbar-a{color:var(--dsw-alias-state-success-primary);background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 13%,transparent)}
+.gbar-file .gbar-st.gbar-d{color:var(--dsw-alias-state-error-primary);background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 12%,transparent)}
+.gbar-file .gbar-st.gbar-u{color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-bg-module-platform)}
 .gbar-file .gbar-path{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--dsw-font-markdown-code-font-family,"SF Mono",Consolas,monospace);font-size:12px}
+/* Directory part dims, filename stays bright — GitHub-style path rendering. */
+.gbar-file .gbar-path .gbar-dir{color:var(--dsw-alias-label-tertiary)}
 .gbar-file .gbar-nums{flex:none;font-variant-numeric:tabular-nums;font-size:11.5px}
 .gbar-file .gbar-nums .gbar-a{color:var(--dsw-alias-state-success-primary)}
 .gbar-file .gbar-nums .gbar-d{color:var(--dsw-alias-state-error-primary)}
-.gbar-diff{flex:1;min-height:0;overflow:auto;font-family:var(--dsw-font-markdown-code-font-family,"SF Mono",Consolas,monospace);font-size:12px;line-height:1.7;padding:8px 0}
-.gbar-diff .gbar-hunk{display:flex;align-items:center;height:24px;color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-markdown-inline-code);padding:0 14px;font-size:11.5px;white-space:nowrap}
+.gbar-diff{
+  flex:1;min-height:0;overflow:auto;
+  font-family:var(--dsw-font-markdown-code-font-family,"SF Mono",Consolas,monospace);font-size:12px;line-height:1.7;padding:8px 0;
+  scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--dsw-alias-label-tertiary) 35%,transparent) transparent;
+}
+.gbar-diff::-webkit-scrollbar{width:5px;height:5px}
+.gbar-diff::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--dsw-alias-label-tertiary) 35%,transparent);border-radius:4px}
+/* Hunk header: a centered pill strip (GitHub-style), gutter numbers hidden but
+   still occupying space so the code column stays aligned. */
+.gbar-diff .gbar-line.gbar-hunk{background:transparent;padding-top:7px;padding-bottom:3px}
+.gbar-diff .gbar-line.gbar-hunk .gbar-ln{visibility:hidden}
+.gbar-diff .gbar-line.gbar-hunk .gbar-code{color:var(--dsw-alias-state-business-primary)}
 .gbar-diff .gbar-line{display:flex;align-items:center;min-height:21px;padding:0 14px 0 0;white-space:pre}
-.gbar-diff .gbar-line .gbar-ln{flex:none;width:46px;text-align:right;padding-right:12px;color:var(--dsw-alias-label-tertiary);font-size:11px;-webkit-user-select:none;user-select:none}
-.gbar-diff .gbar-line .gbar-code{flex:1;white-space:pre;color:var(--dsw-alias-label-primary)}
-.gbar-diff .gbar-line.gbar-add{background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 14%,transparent)}
+.gbar-diff .gbar-line .gbar-ln{flex:none;width:34px;text-align:right;padding-right:8px;color:var(--dsw-alias-label-tertiary);font-size:11px;-webkit-user-select:none;user-select:none}
+.gbar-diff .gbar-line .gbar-ln+.gbar-ln{border-right:1px solid var(--dsw-alias-border-l1);margin-right:10px}
+.gbar-diff .gbar-line .gbar-code{flex:1;white-space:pre;color:var(--dsw-alias-label-primary);padding-right:14px}
+.gbar-diff .gbar-line.gbar-add{background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 13%,transparent);box-shadow:inset 2px 0 0 color-mix(in srgb,var(--dsw-alias-state-success-primary) 55%,transparent)}
 .gbar-diff .gbar-line.gbar-add .gbar-ln{color:var(--dsw-alias-state-success-primary)}
-.gbar-diff .gbar-line.gbar-del{background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent)}
+.gbar-diff .gbar-line.gbar-del{background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent);box-shadow:inset 2px 0 0 color-mix(in srgb,var(--dsw-alias-state-error-primary) 50%,transparent)}
 .gbar-diff .gbar-line.gbar-del .gbar-ln{color:var(--dsw-alias-state-error-primary)}
 .gbar-diff .gbar-line.gbar-ctx .gbar-code{color:var(--dsw-alias-label-secondary)}
-.gbar-diff .gbar-empty{padding:18px 16px;font-size:12px;color:var(--dsw-alias-label-tertiary)}
+.gbar-diff .gbar-empty{display:flex;align-items:center;justify-content:center;min-height:140px;font-size:12px;color:var(--dsw-alias-label-tertiary)}
 /* The hairline above the foot is drawn by the commit splitter that precedes it. */
 .gbar-side-foot{flex:none;padding:8px 14px;font-size:11.5px;color:var(--dsw-alias-label-tertiary);display:flex;gap:8px;align-items:center}
 .gbar-side-foot .gbar-dot{width:6px;height:6px;border-radius:50%;background:var(--dsw-alias-state-warn-primary);flex:none}
@@ -1207,17 +1228,38 @@ export function GitBarDiff({ session, controller, t }: GitBarDiffProps) {
     return () => { document.removeEventListener('mousedown', onDown) }
   }, [diffOpen])
 
-  // Drag the panel's left edge to resize it.
+  // Drag the panel's left edge to resize it. A press WITHOUT any drag counts
+  // as a click: it snaps the panel to half the screen (or back to the width
+  // it had before expanding), so the edge doubles as a one-button maximize.
+  const prevWidthRef = useRef<number | null>(null)
+  const toggleHalfWidth = (): void => {
+    const half = Math.round(window.innerWidth / 2)
+    if (diffWidth >= half - 4) {
+      const restore = prevWidthRef.current ?? 440
+      prevWidthRef.current = null
+      setDiffWidth(restore)
+    } else {
+      prevWidthRef.current = diffWidth
+      setDiffWidth(half)
+    }
+  }
+
   const startResize = (event: { clientX: number; preventDefault: () => void }): void => {
     event.preventDefault()
     const startX = event.clientX
     const startWidth = diffWidth
+    // Manual drags may reach half the screen too — otherwise an expanded
+    // half-screen panel would instantly clamp back to the old 900px ceiling.
+    const maxWidth = Math.max(900, Math.round(window.innerWidth / 2))
+    let moved = false
     const onMove = (move: PointerEvent): void => {
-      setDiffWidth(Math.min(900, Math.max(320, startWidth - (move.clientX - startX))))
+      if (!moved && Math.abs(move.clientX - startX) > 3) moved = true
+      setDiffWidth(Math.min(maxWidth, Math.max(320, startWidth - (move.clientX - startX))))
     }
     const onUp = (): void => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
+      if (!moved) toggleHalfWidth()
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
@@ -1309,11 +1351,11 @@ export function GitBarDiff({ session, controller, t }: GitBarDiffProps) {
       {/* Diff side panel */}
       {diffOpen ? createPortal(
         <div className="gbar-side" role="dialog" aria-label={t('diffTitle')} style={{ width: `${diffWidth}px`, top: `${panelTop}px` }}>
-          <div className="gbar-resize" onPointerDown={startResize} title="拖动调整宽度" />
+          <div className="gbar-resize" onPointerDown={startResize} title="拖动调整宽度 · 点击展开到半屏" />
           <div className="gbar-side-head">
             <span className="gbar-title">{diffPath ?? t('diffTitle')}</span>
             <span className="gbar-sub">
-              {snapshot.files.length} {t('diffFiles')} · +{snapshot.totalAdded} −{snapshot.totalDeleted}
+              {snapshot.files.length} {t('diffFiles')} · <span className="gbar-a">+{snapshot.totalAdded}</span> <span className="gbar-d">−{snapshot.totalDeleted}</span>
             </span>
             <span className="gbar-spacer" />
             <div className="gbar-seg" role="group">
@@ -1331,6 +1373,11 @@ export function GitBarDiff({ session, controller, t }: GitBarDiffProps) {
             >
               {snapshot.files.map(file => {
                 const isExcluded = excluded.has(file.path)
+                // Split the path so the directory renders dim and the filename
+                // bright — the eye scans by filename, not by folder.
+                const slash = file.path.lastIndexOf('/')
+                const dir = slash >= 0 ? file.path.slice(0, slash + 1) : ''
+                const base = slash >= 0 ? file.path.slice(slash + 1) : file.path
                 return (
                   <div key={file.path} className={'gbar-file' + (diffPath === file.path ? ' gbar-on' : '') + (isExcluded ? ' gbar-excl' : '')}>
                     <button
@@ -1345,9 +1392,10 @@ export function GitBarDiff({ session, controller, t }: GitBarDiffProps) {
                       type="button"
                       className="gbar-file-main"
                       onClick={() => { selectDiffFile(file.path) }}
+                      title={file.path}
                     >
                       <span className={'gbar-st ' + statusClass(file.status)}>{statusLetter(file.status)}</span>
-                      <span className="gbar-path">{file.path}</span>
+                      <span className="gbar-path">{dir !== '' ? <span className="gbar-dir">{dir}</span> : null}<span>{base}</span></span>
                       <span className="gbar-nums">
                         <span className="gbar-a">+{file.added}</span> <span className="gbar-d">−{file.deleted}</span>
                       </span>
