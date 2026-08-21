@@ -44,6 +44,19 @@ export const TIMELINE_PROJECTION_KEY = 'dshChatTimeline'
 /** Gap between the rail and the message area's right edge, in px. */
 const EDGE_GAP = 12
 
+/** Expanded panel width — keep in sync with `.dutl-wrap.dutl-show` (240px). */
+const PANEL_WIDTH = 240
+
+/**
+ * Horizontal slot of the detail bubble: this many px left of the EXPANDED
+ * panel's left edge. Computed from constants instead of measuring the hovered
+ * row — the row's rect mid-expansion-animation (first hover!) reflects the
+ * still-narrow panel, which made the bubble hug the rail on first hover and
+ * then jump left once the animation settled. A constant slot is stable from
+ * the very first frame.
+ */
+const BUBBLE_GAP = 14
+
 /** Locale keys the rail reads off the `ui-tweaks` dictionary. */
 type RailLabelKey = 'railLabel' | 'roleUser' | 'noText'
 type Translate = (key: RailLabelKey) => string
@@ -265,7 +278,7 @@ export function TimelineRail({ useProjection, sessionId, sessionsService, contro
   const [activeIndex, setActiveIndex] = useState(-1)
   const [show, setShow] = useState(false)
   const [anchor, setAnchor] = useState<{ top: number; right: number } | null>(null)
-  const [bubble, setBubble] = useState<{ top: number; right: number; entry: TimelineEntryLike } | null>(null)
+  const [bubble, setBubble] = useState<{ top: number; entry: TimelineEntryLike } | null>(null)
   const pageRef = useRef<HTMLDivElement | null>(null)
 
   // Keep the active (blue) line visible. With many messages the rail page
@@ -447,9 +460,13 @@ export function TimelineRail({ useProjection, sessionId, sessionsService, contro
 
   if (!enabled || sessionId === undefined || messages.length < 2) return null
 
+  const railRight = anchor === null ? EDGE_GAP : anchor.right
   const railStyle: CSSProperties = anchor === null
     ? { top: '50%', right: EDGE_GAP, transform: 'translateY(-50%)' }
     : { top: anchor.top, right: anchor.right, transform: 'translateY(-50%)' }
+  // Stable horizontal slot: always left of the fully-expanded panel, never
+  // measured from the animating rows (see BUBBLE_GAP above).
+  const bubbleStyle: CSSProperties = { top: bubble === null ? 0 : bubble.top, right: railRight + PANEL_WIDTH + BUBBLE_GAP }
 
   return createPortal(
     <>
@@ -474,10 +491,12 @@ export function TimelineRail({ useProjection, sessionId, sessionsService, contro
                   aria-current={activeIndex === i ? 'location' : undefined}
                   onClick={() => { if (key !== undefined) void jumpToMessage(sessionsService, sessionId, key).catch(() => {}) }}
                   onMouseEnter={(event) => {
+                    // Vertical: follow the hovered row (clamped into the
+                    // viewport). Horizontal: the constant slot next to the
+                    // expanded panel — identical on first hover and after.
                     const rect = event.currentTarget.getBoundingClientRect()
                     const top = Math.min(Math.max(rect.top + rect.height / 2, 150), window.innerHeight - 150)
-                    const right = Math.max(0, window.innerWidth - rect.left + 14)
-                    setBubble({ top, right, entry: m })
+                    setBubble({ top, entry: m })
                   }}
                   onMouseLeave={() => { setBubble(null) }}
                 >
@@ -492,13 +511,16 @@ export function TimelineRail({ useProjection, sessionId, sessionsService, contro
         </div>
       </div>
       {/* Detail bubble: replaces the native title tooltip with a themed
-          bubble (user label + timestamp + message text) beside the hovered
-          point. Only while the panel is open — a collapsed rail isn't meant
+          bubble (user label + timestamp + message text). Horizontally it
+          occupies a FIXED slot just left of the expanded panel — stable from
+          the first hover, never covering the list; vertically it follows the
+          hovered row so the bubble stays associated with the point under the
+          cursor. Only while the panel is open — a collapsed rail isn't meant
           for point-level browsing. */}
       {bubble !== null && show ? (
         <div
           className="dutl-bubble"
-          style={{ top: bubble.top, right: bubble.right }}
+          style={bubbleStyle}
           role="tooltip"
         >
           <div className="dutl-bubble-head">
