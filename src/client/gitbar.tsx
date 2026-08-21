@@ -209,36 +209,59 @@ export const GITBAR_CSS = `
   .gbar-pill .gbar-caret{display:none}
 }
 
-/* branch popup — opens upward so the composer below stays uncovered */
+/* branch popup — opens upward so the composer below stays uncovered. Pinned
+   header (current branch + worktree state) and pinned action bar surround a
+   freely scrolling branch list. */
 .gbar-pop{
   position:absolute;left:0;bottom:calc(100% + 6px);z-index:90;
-  width:286px;max-height:min(360px,calc(100vh - 140px));overflow:hidden auto;
+  width:300px;
   background:var(--dsw-alias-bg-layer-1);
   border:1px solid var(--dsw-alias-border-l2);border-radius:14px;
   box-shadow:var(--dsw-shadow-lv2);
-  padding:6px;display:flex;flex-direction:column;gap:1px;
+  display:flex;flex-direction:column;overflow:hidden;
 }
-.gbar-pop .gbar-sec{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--dsw-alias-label-tertiary);padding:7px 9px 3px}
+.gbar-pop-head{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-module-platform)}
+.gbar-pop-head .gbar-bicon{width:14px;height:14px;flex:none}
+.gbar-pop-head .gbar-curname{display:flex;align-items:center;gap:7px;min-width:0;font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary)}
+.gbar-pop-head .gbar-curname .gbar-bicon{color:var(--dsw-alias-state-business-primary)}
+.gbar-pop-head .gbar-curname>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gbar-pop-head .gbar-state{margin-left:auto;flex:none;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
+.gbar-pop-head .gbar-dot{width:6px;height:6px;border-radius:50%;flex:none}
+.gbar-pop-head .gbar-dot.gbar-dirty{background:var(--dsw-alias-state-warn-primary)}
+.gbar-pop-head .gbar-dot.gbar-clean{background:var(--dsw-alias-state-success-primary)}
+.gbar-pop-body{max-height:min(330px,calc(100vh - 250px));overflow-y:auto;padding:3px 6px 5px;scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--dsw-alias-label-tertiary) 35%,transparent) transparent}
+.gbar-pop-body::-webkit-scrollbar{width:5px}
+.gbar-pop-body::-webkit-scrollbar-track{background:transparent}
+.gbar-pop-body::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--dsw-alias-label-tertiary) 35%,transparent);border-radius:4px}
+.gbar-pop .gbar-sec{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--dsw-alias-label-tertiary);padding:8px 9px 3px}
+.gbar-pop .gbar-sec .gbar-count{margin-left:auto;font-size:10px;font-weight:500;letter-spacing:0;line-height:15px;color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-bg-module-platform);border-radius:999px;padding:0 7px}
+.gbar-pop .gbar-loading{display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 9px;font-size:12px;color:var(--dsw-alias-label-tertiary)}
 .gbar-pop .gbar-row{
   display:flex;align-items:center;gap:8px;width:100%;
-  padding:7px 9px;border:none;border-radius:8px;
+  padding:6px 8px;border:none;border-radius:8px;
   background:transparent;color:var(--dsw-alias-label-primary);
-  font:inherit;font-size:13px;cursor:pointer;text-align:left;
+  font:inherit;font-size:12.5px;cursor:pointer;text-align:left;
+  transition:background .12s ease;
 }
 .gbar-pop .gbar-row:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .gbar-pop .gbar-row.gbar-cur{color:var(--dsw-alias-state-business-primary);font-weight:600}
+.gbar-pop .gbar-row .gbar-bicon{width:13px;height:13px;flex:none;color:var(--dsw-alias-label-tertiary);opacity:.85}
+.gbar-pop .gbar-row.gbar-cur .gbar-bicon{color:var(--dsw-alias-state-business-primary);opacity:1}
 .gbar-pop .gbar-row .gbar-check{margin-left:auto;color:var(--dsw-alias-state-business-primary);font-weight:700}
-.gbar-pop .gbar-row .gbar-rm{font-size:10.5px;color:var(--dsw-alias-label-tertiary);flex:none}
+.gbar-pop .gbar-row .gbar-rm{flex:none;font-size:10px;line-height:15px;color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-bg-module-platform);border-radius:999px;padding:0 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:90px}
 /* branch row wrapper: main switch button + delete button */
-.gbar-pop .gbar-rowwrap{display:flex;align-items:center;gap:2px;border-radius:8px}
+.gbar-pop .gbar-rowwrap{display:flex;align-items:center;gap:2px;border-radius:8px;transition:background .12s ease}
 .gbar-pop .gbar-rowwrap:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .gbar-pop .gbar-rowwrap .gbar-row{background:transparent}
 .gbar-pop .gbar-del{
-  flex:none;border:none;background:transparent;color:var(--dsw-alias-label-tertiary);
-  font:inherit;font-size:12px;cursor:pointer;padding:6px 8px;border-radius:6px;margin-right:3px;
+  flex:none;display:inline-flex;align-items:center;justify-content:center;
+  width:26px;height:26px;border:none;background:transparent;color:var(--dsw-alias-label-tertiary);
+  font:inherit;font-size:10.5px;cursor:pointer;border-radius:7px;margin-right:4px;
+  transition:color .12s ease,background .12s ease;
 }
+.gbar-pop .gbar-del svg{width:13px;height:13px;display:block}
 .gbar-pop .gbar-del:hover{color:var(--dsw-alias-state-error-primary);background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent)}
-.gbar-pop .gbar-del.gbar-arm{color:var(--dsw-alias-state-error-primary);font-weight:600}
+.gbar-pop .gbar-del.gbar-arm{width:auto;padding:0 8px;color:var(--dsw-alias-state-error-primary);font-weight:600;background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent)}
 .gbar-pushrow{display:flex;align-items:center;gap:7px;padding:0 8px 7px}
 .gbar-pushrow .gbar-pushlabel{font-size:12px;color:var(--dsw-alias-label-secondary)}
 .gbar-pop .gbar-newrow{display:flex;gap:6px;padding:8px 6px 6px}
@@ -258,8 +281,9 @@ export const GITBAR_CSS = `
 .gbar-mini:hover{opacity:.92}
 .gbar-mini:disabled{opacity:.5;cursor:default}
 
-/* branch popup action entries (new branch / graph) */
-.gbar-actions{display:flex;gap:6px;padding:8px 6px 4px;border-top:1px solid var(--dsw-alias-border-l1);margin-top:4px}
+/* branch popup action entries (new branch / graph) — pinned below the
+   scrolling list; the border-top separates it from the body. */
+.gbar-actions{display:flex;gap:6px;padding:8px;border-top:1px solid var(--dsw-alias-border-l1)}
 .gbar-act{
   flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;
   height:34px;border:none;border-radius:10px;
@@ -286,7 +310,10 @@ export const GITBAR_CSS = `
 }
 .gbar-modal input:focus{border-color:var(--dsw-alias-state-business-primary)}
 .gbar-modal input::placeholder{color:var(--dsw-alias-label-tertiary)}
-.gbar-modal .gbar-pushrow{padding:0}
+.gbar-modal .gbar-head{padding-bottom:10px;border-bottom:1px solid var(--dsw-alias-border-l1)}
+/* "push to remote" row becomes an inset card so it reads as one option group. */
+.gbar-modal .gbar-pushrow{padding:9px 11px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}
+.gbar-modal .gbar-pushrow .gbar-pushlabel{font-size:12.5px;color:var(--dsw-alias-label-primary)}
 .gbar-x:disabled{opacity:.5;cursor:default}
 /* commit-graph dialog */
 .gbar-modal.gbar-graph-modal{width:min(760px,calc(100vw - 40px));gap:10px}
@@ -298,12 +325,14 @@ export const GITBAR_CSS = `
 .gbar-modal.gbar-graph-modal .gbar-x svg{width:15px;height:15px;display:block}
 .gbar-graph-empty{padding:28px 12px;text-align:center;font-size:13px;color:var(--dsw-alias-label-tertiary)}
 .gbar-graph-table{display:flex;flex-direction:column;max-height:min(60vh,540px);overflow:auto;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-bg-layer-2)}
-.gbar-graph-row{display:grid;grid-template-columns:62px 1fr 96px 90px;align-items:center;gap:8px;padding:5px 12px;border-bottom:1px solid var(--dsw-alias-border-l1)}
+.gbar-graph-row{display:grid;grid-template-columns:62px 1fr 96px 90px;align-items:center;gap:8px;padding:5px 12px;border-bottom:1px solid var(--dsw-alias-border-l1);transition:background .12s ease}
 .gbar-graph-row:last-child{border-bottom:none}
-.gbar-graph-row:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.gbar-graph-head{position:sticky;top:0;background:var(--dsw-alias-bg-module-platform);font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--dsw-alias-label-tertiary);z-index:1}
-.gbar-graph-head:hover{background:var(--dsw-alias-bg-module-platform)}
-.gbar-c-hash code{font-family:var(--dsw-font-markdown-code-font-family,"SF Mono",Consolas,monospace);font-size:11px;color:var(--dsw-alias-label-secondary)}
+/* Zebra striping for scanability; the hover rule matches its specificity and
+   comes later in the sheet, so pointing at a row still wins. */
+.gbar-graph-row:not(.gbar-graph-head):nth-child(odd){background:color-mix(in srgb,var(--dsw-alias-bg-module-platform) 35%,transparent)}
+.gbar-graph-row:not(.gbar-graph-head):hover{background:var(--dsw-alias-interactive-bg-hover)}
+.gbar-graph-head{position:sticky;top:0;background:var(--dsw-alias-bg-module-platform);font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--dsw-alias-label-tertiary);z-index:1;border-bottom:1px solid var(--dsw-alias-border-l1)}
+.gbar-c-hash code{font-family:var(--dsw-font-markdown-code-font-family,"SF Mono",Consolas,monospace);font-size:11px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-module-platform);border-radius:6px;padding:2px 6px}
 .gbar-c-subject{min-width:0;display:flex;align-items:center;gap:8px}
 .gbar-subject{font-size:12.5px;color:var(--dsw-alias-label-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .gbar-refs{flex:none;font-size:10.5px;color:var(--dsw-alias-state-business-primary);background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);border-radius:999px;padding:1px 8px;white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis}
@@ -795,55 +824,98 @@ export function GitBarBranch({ session, controller, t }: GitBarBranchProps) {
         <span className="gbar-caret" aria-hidden>▾</span>
       </button>
 
-      {/* Branch popup — branch list + action entries (new branch / graph) */}
+      {/* Branch popup — pinned header (current branch + worktree state),
+          scrolling local/remote lists, pinned action entries */}
       {branchOpen ? (
         <div className="gbar-pop" role="menu" aria-label={snapshot.branch ?? 'git'} ref={branchPopRef}>
-          <div className="gbar-sec">{t('branchLocal')}</div>
-          {branches?.local.map(name => (
-            <div key={name} className="gbar-rowwrap">
-              <button
-                type="button"
-                className={'gbar-row' + (name === branches.current ? ' gbar-cur' : '')}
-                onClick={() => { pickBranch(name) }}
-              >
-                <span>{name}</span>
-                {name === branches.current ? <span className="gbar-check" aria-hidden>✓</span> : null}
-              </button>
-              {name !== branches.current && !isProtectedBranch(name) ? (
+          <div className="gbar-pop-head">
+            <span className="gbar-curname" title={dirty ? t('dirty') : t('clean')}>
+              <svg className="gbar-bicon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <circle cx="4.5" cy="3.5" r="1.8" />
+                <circle cx="4.5" cy="12.5" r="1.8" />
+                <circle cx="12" cy="5.5" r="1.8" />
+                <path d="M4.5 5.3v5.4" />
+                <path d="M12 7.3c0 3-3.5 4.8-7.5 3.4" />
+              </svg>
+              <span>{snapshot.branch ?? snapshot.detachedHead ?? '—'}</span>
+            </span>
+            <span className="gbar-state">
+              <span className={'gbar-dot ' + (dirty ? 'gbar-dirty' : 'gbar-clean')} aria-hidden />
+              {snapshot.ahead > 0 ? <span>↑{snapshot.ahead}</span> : null}
+              {snapshot.behind > 0 ? <span>↓{snapshot.behind}</span> : null}
+            </span>
+          </div>
+          <div className="gbar-pop-body">
+            <div className="gbar-sec">{t('branchLocal')}{branches !== null ? <span className="gbar-count">{branches.local.length}</span> : null}</div>
+            {branches === null ? (
+              <div className="gbar-loading"><span className="gbar-spin" />{t('loading')}</div>
+            ) : branches.local.map(name => (
+              <div key={name} className="gbar-rowwrap">
                 <button
                   type="button"
-                  className={'gbar-del' + (confirmDelete === name ? ' gbar-arm' : '')}
-                  onClick={() => { deleteBranch(name) }}
-                  title={t('branchDelete')}
+                  className={'gbar-row' + (name === branches.current ? ' gbar-cur' : '')}
+                  onClick={() => { pickBranch(name) }}
                 >
-                  {confirmDelete === name ? t('branchDeleteConfirm') : '🗑'}
+                  <svg className="gbar-bicon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <circle cx="4.5" cy="3.5" r="1.8" />
+                    <circle cx="4.5" cy="12.5" r="1.8" />
+                    <path d="M4.5 5.3v5.4" />
+                    <path d="M11.5 3.7v3a2.6 2.6 0 0 1-2.6 2.6H4.5" />
+                  </svg>
+                  <span>{name}</span>
+                  {name === branches.current ? <span className="gbar-check" aria-hidden>✓</span> : null}
                 </button>
-              ) : null}
-            </div>
-          ))}
-          <div className="gbar-sec">{t('branchRemote')}</div>
-          {branches?.remote.map(name => (
-            <div key={name} className="gbar-rowwrap">
-              <button
-                type="button"
-                className={'gbar-row' + (name === branches.current ? ' gbar-cur' : '')}
-                onClick={() => { pickBranch(name) }}
-              >
-                <span>{shortBranch(name)}</span>
-                <span className="gbar-rm">{name.split('/')[0]}</span>
-              </button>
-              {!isProtectedBranch(shortBranch(name)) ? (
+                {name !== branches.current && !isProtectedBranch(name) ? (
+                  <button
+                    type="button"
+                    className={'gbar-del' + (confirmDelete === name ? ' gbar-arm' : '')}
+                    onClick={() => { deleteBranch(name) }}
+                    title={t('branchDelete')}
+                  >
+                    {confirmDelete === name ? t('branchDeleteConfirm') : (
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <path d="M2.5 4.5h11" />
+                        <path d="M5.5 4.5V3.3c0-.44.36-.8.8-.8h3.4c.44 0 .8.36.8.8v1.2" />
+                        <path d="M4 4.5l.6 8.2c.04.5.45.8.95.8h4.9c.5 0 .91-.3.95-.8l.6-8.2" />
+                      </svg>
+                    )}
+                  </button>
+                ) : null}
+              </div>
+            ))}
+            <div className="gbar-sec">{t('branchRemote')}{branches !== null ? <span className="gbar-count">{branches.remote.length}</span> : null}</div>
+            {branches?.remote.map(name => (
+              <div key={name} className="gbar-rowwrap">
                 <button
                   type="button"
-                  className={'gbar-del' + (confirmDelete === name ? ' gbar-arm' : '')}
-                  onClick={() => { deleteRemoteBranch(name) }}
-                  title={t('branchRemoteDelete')}
+                  className={'gbar-row' + (name === branches.current ? ' gbar-cur' : '')}
+                  onClick={() => { pickBranch(name) }}
                 >
-                  {confirmDelete === name ? t('branchDeleteConfirm') : '🗑'}
+                  <svg className="gbar-bicon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M5.2 13a3.2 3.2 0 1 1 .5-6.36 4 4 0 0 1 7.75 1.06 2.65 2.65 0 0 1-.55 5.3H5.2Z" />
+                  </svg>
+                  <span>{shortBranch(name)}</span>
+                  <span className="gbar-rm">{name.split('/')[0]}</span>
                 </button>
-              ) : null}
-            </div>
-          ))}
+                {!isProtectedBranch(shortBranch(name)) ? (
+                  <button
+                    type="button"
+                    className={'gbar-del' + (confirmDelete === name ? ' gbar-arm' : '')}
+                    onClick={() => { deleteRemoteBranch(name) }}
+                    title={t('branchRemoteDelete')}
+                  >
+                    {confirmDelete === name ? t('branchDeleteConfirm') : (
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <path d="M2.5 4.5h11" />
+                        <path d="M5.5 4.5V3.3c0-.44.36-.8.8-.8h3.4c.44 0 .8.36.8.8v1.2" />
+                        <path d="M4 4.5l.6 8.2c.04.5.45.8.95.8h4.9c.5 0 .91-.3.95-.8l.6-8.2" />
+                      </svg>
+                    )}
+                  </button>
+                ) : null}
+              </div>
+            ))}
+          </div>
           <div className="gbar-actions">
             <button type="button" className="gbar-act" onClick={openNewBranch}>
               <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden>
