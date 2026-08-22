@@ -29,6 +29,7 @@ import { createPortal } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import type { ConversationSnapshot, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { SettingsClient } from './index.tsx'
+import { APP_ICONS } from './appicons.ts'
 
 /** Route prefix matching the host half (src/git-web.ts). */
 const GIT_ROUTE = '/_dsh/ui-tweaks/git'
@@ -58,7 +59,8 @@ type GitBarLabelKey =
   | 'branchRefresh' | 'branchCancel' | 'graphTitle'
   | 'graphColGraph' | 'graphColCommit' | 'graphColSubject' | 'graphColAuthor' | 'graphColDate'
   | 'openProject' | 'terminal' | 'openExplorer' | 'openVscode' | 'openIdea'
-  | 'copyPath' | 'copyPathDone' | 'copyPathFail' | 'termWelcome'
+  | 'openGoland' | 'openWebstorm' | 'openPycharm'
+  | 'termConnecting' | 'termExited' | 'termUnavailable' | 'termLost'
 
 type Translate = (key: GitBarLabelKey) => string
 
@@ -612,37 +614,46 @@ export const GITBAR_CSS = `
    slot (beside "Session log"), but they belong in the view-tabs row (对话 /
    轨迹) right below it. The session header is their containing block: anchor
    them to the right edge, vertically centred on the 16px tab text line that
-   starts right under the 32px title row (12px header top padding + 32px title
-   row + 4px tab margin). The :has() guard keeps the in-flow position for the
-   rare header without a tablist, and z-index keeps them above the tabs' own
-   stacking context. */
+   starts under the 32px title row (12px header top padding + 32px title row
+   + 4px tab margin). The 24px button starts exactly at the title row's
+   bottom edge so its hover surface never touches "Session log" above. The
+   :has() guard keeps the in-flow position for the rare header without a
+   tablist, and z-index keeps them above the tabs' own stacking context. */
 header:has([role="tablist"]) .gbar-hicons{
   position:absolute;
-  top:calc(12px + 32px + 4px + (16px - 28px)/2);
+  top:calc(12px + 32px + 4px + (16px - 24px)/2);
   right:28px;
   z-index:2;
 }
-.gbar-hicon{position:relative;width:32px;height:28px;display:inline-flex;align-items:center;justify-content:center;
-  border:none;background:transparent;border-radius:9px;color:var(--dsw-alias-label-secondary);cursor:pointer;
+.gbar-hicon{position:relative;width:32px;height:24px;display:inline-flex;align-items:center;justify-content:center;
+  border:none;background:transparent;border-radius:8px;color:var(--dsw-alias-label-secondary);cursor:pointer;
   transition:background .14s ease,color .14s ease}
 .gbar-hicon:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .gbar-hicon.gbar-on{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);color:var(--dsw-alias-state-business-primary)}
 .gbar-hicon svg{width:16px;height:16px}
+/* uncommitted-changes dot on the diff icon — warn-primary, the same color
+   the branch chip / diff footer use for the dirty state */
+.gbar-hicon-dot{position:absolute;top:2.5px;right:2.5px;width:6px;height:6px;border-radius:50%;
+  background:var(--dsw-alias-state-warn-primary);pointer-events:none}
 
-/* 「打开项目」menu — hangs below its icon, right-aligned */
-.gbar-openmenu{position:absolute;top:calc(100% + 8px);right:0;width:240px;z-index:130;
-  background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:12px;
-  box-shadow:var(--dsw-shadow-lv2);padding:5px;text-align:left;animation:gpop-down .16s cubic-bezier(.32,.72,0,1)}
-.gbar-openmenu::before{content:"";position:absolute;top:-5px;right:16px;width:9px;height:9px;
-  background:var(--dsw-alias-bg-layer-1);border-left:1px solid var(--dsw-alias-border-l2);
-  border-top:1px solid var(--dsw-alias-border-l2);transform:rotate(45deg)}
-.gbar-omrow{display:flex;align-items:center;gap:9px;width:100%;padding:7px 9px;border:none;border-radius:8px;
-  background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;cursor:pointer;text-align:left}
+/* 「打开项目」menu — a flat dropdown opening leftward from the icon group:
+   right edge sits 20px inside the window (the group anchors 28px from the
+   edge, so right:-8px), no bubble tail, compact rows, width fits content */
+.gbar-openmenu{position:absolute;top:calc(100% + 6px);right:-8px;min-width:150px;max-width:260px;width:max-content;z-index:130;
+  background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;
+  box-shadow:var(--dsw-shadow-lv2);padding:4px;text-align:left;animation:gpop-down .16s cubic-bezier(.32,.72,0,1)}
+.gbar-omrow{display:flex;align-items:center;gap:9px;width:100%;padding:5px 8px;border:none;border-radius:7px;
+  background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;line-height:1.2;cursor:pointer;text-align:left;
+  white-space:nowrap}
 .gbar-omrow:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.gbar-omrow svg{width:14px;height:14px;color:var(--dsw-alias-label-tertiary);flex:none}
+/* brand app icons (official full-color SVGs) — fixed slot, sized by CSS */
+.gbar-omrow .gbar-aicon{width:15px;height:15px;flex:none;display:inline-flex}
+.gbar-aicon svg{width:100%;height:100%;display:block}
 
-/* terminal panel body — always-dark scrollback with an inline prompt input */
-.gbar-term{flex:1;min-height:0;background:#16161b;color:#d6d6dc;cursor:text;
+/* terminal panel body — follows the app theme surface (tokens live on body,
+   and the panel portal renders inside body, so the var resolves); the xterm
+   viewport is transparent, so this is also the terminal's own backdrop */
+.gbar-term{flex:1;min-height:0;background:var(--dsw-alias-bg-base,#16161b);color:var(--dsw-alias-label-primary,#d6d6dc);cursor:text;
   font-family:var(--dsw-font-markdown-code-font-family,"SF Mono",Consolas,monospace);font-size:12px;line-height:1.75;
   padding:10px 14px;overflow:auto;scrollbar-width:thin}
 .gbar-term:focus-visible{outline:none}
@@ -654,6 +665,22 @@ header:has([role="tablist"]) .gbar-hicons{
 .gbar-term .gbar-tin{display:flex;align-items:baseline}
 .gbar-term .gbar-tin input{flex:1;min-width:0;background:transparent;border:none;outline:none;color:#ffffff;
   font:inherit;font-size:12px;line-height:1.75;caret-color:#7d94ff;padding:0}
+
+/* xterm host variant — the emulator fills the body and sizes itself via the
+   fit addon, so the container clips instead of scrolling. */
+.gbar-xterm{padding:4px 6px;overflow:hidden;cursor:normal}
+.gbar-xterm .xterm{height:100%}
+.gbar-xterm .xterm .xterm-viewport{background:transparent !important}
+
+/* fatal terminal error banner (pty unavailable / socket refused) */
+.gbar-term-error{position:absolute;left:12px;right:12px;bottom:12px;z-index:6;display:flex;align-items:center;gap:10px;
+  padding:9px 12px;border-radius:10px;border:1px solid color-mix(in srgb,#ef6b70 45%,transparent);
+  background:var(--dsw-alias-bg-base,#16161b);box-shadow:0 8px 24px rgba(0,0,0,.25)}
+.gbar-term-error-text{flex:1;min-width:0;font-size:12px;color:var(--dsw-alias-label-primary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gbar-term-error button{border:1px solid var(--dsw-alias-border-l1);background:transparent;border-radius:7px;
+  color:var(--dsw-alias-label-secondary);width:26px;height:26px;cursor:pointer;flex:none;font-size:13px}
+.gbar-term-error button:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 
 /* half-screen toggle button in side-panel heads */
 .gbar-side-half{border:1px solid var(--dsw-alias-border-l1);background:transparent;color:var(--dsw-alias-label-tertiary);
@@ -711,24 +738,37 @@ function statusClass(status: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Git status polling hook (shared by both pills).
+// Git status polling hook (shared by both pills and both panels).
 // ---------------------------------------------------------------------------
+
+/**
+ * Module-level snapshot cache keyed by target. Every useGitStatus instance
+ * (header icons, diff panel, terminal panel) reads and writes through it, so
+ * a panel mounting on click starts from the warm snapshot the header poller
+ * already fetched instead of a blank state — this is what makes the diff
+ * panel paint instantly instead of waiting for its own /status round-trip.
+ */
+const snapshotCache = new Map<string, GitSnapshot>()
 
 /** Load the git snapshot on session change, then poll; returns [snapshot, refresh]. */
 function useGitStatus(enabled: boolean, target: GitTarget): [GitSnapshot | null, () => Promise<void>] {
-  const [snapshot, setSnapshot] = useState<GitSnapshot | null>(null)
   const key = target.session ?? target.ws ?? ''
+  // Lazy initializer: a freshly mounted panel is warm on its very first render.
+  const [snapshot, setSnapshot] = useState<GitSnapshot | null>(() => snapshotCache.get(key) ?? null)
 
   useEffect(() => {
     if (!enabled || key === '') {
       setSnapshot(null)
       return
     }
+    // A remount (panel open) must not regress to blank when the cache is warm.
+    setSnapshot(snapshotCache.get(key) ?? null)
     let cancelled = false
     let timer: number | undefined
     const refresh = async (): Promise<void> => {
       try {
         const next = await apiGet<GitSnapshot>(`${GIT_ROUTE}/status?${targetQuery(target)}`)
+        snapshotCache.set(key, next)
         if (!cancelled) setSnapshot(next)
       } catch {
         // Transient git failure: keep the previous snapshot.
@@ -747,7 +787,9 @@ function useGitStatus(enabled: boolean, target: GitTarget): [GitSnapshot | null,
   const refresh = useCallback(async (): Promise<void> => {
     if (key === '') return
     try {
-      setSnapshot(await apiGet<GitSnapshot>(`${GIT_ROUTE}/status?${targetQuery(target)}`))
+      const next = await apiGet<GitSnapshot>(`${GIT_ROUTE}/status?${targetQuery(target)}`)
+      snapshotCache.set(key, next)
+      setSnapshot(next)
     } catch {
       // Keep the previous snapshot on transient failures.
     }
@@ -1218,6 +1260,51 @@ export interface DiffPanelProps {
   onClose: () => void
 }
 
+/**
+ * Shared side-panel layout: anchor the panel below the session header, and
+ * while it is open push ONLY the message area (the conversation scrollport)
+ * left by `width`. Never touch `#root`: in the DSH 0.1.1 column grid `#root`
+ * wraps the whole app (left sidebar + center + details), so a `#root` margin
+ * collapses the left sidebar and shoves the top header — the "showing the
+ * panel moves the top" bug. The scrollport is the center column's message
+ * region; pushing only it leaves the sidebar and header untouched, and the
+ * timeline rail (anchored to the scrollport right edge) stays visible.
+ *
+ * @param width - panel width; the scrollport gets this much right margin.
+ * @param active - whether the panel is actually showing; when false (e.g. a
+ *   non-repo session opened the diff icon) no layout is pushed.
+ * @returns the panel top (scrollport top) for `style.top`.
+ */
+function useSidePanelLayout(width: number, active = true): number {
+  const [panelTop, setPanelTop] = useState(0)
+
+  useEffect(() => {
+    const measure = (): void => {
+      const sp = document.querySelector('[data-conversation-scroll]')
+      const top = sp === null ? 0 : Math.round(sp.getBoundingClientRect().top)
+      setPanelTop(prev => Math.abs(prev - top) < 2 ? prev : top)
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    const observer = new ResizeObserver(measure)
+    const sp = document.querySelector('[data-conversation-scroll]')
+    if (sp !== null) observer.observe(sp)
+    return () => {
+      window.removeEventListener('resize', measure)
+      observer.disconnect()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!active) return
+    const scrollport = document.querySelector('[data-conversation-scroll]') as HTMLElement | null
+    if (scrollport !== null) scrollport.style.marginRight = `${width}px`
+    return () => { if (scrollport !== null) scrollport.style.marginRight = '' }
+  }, [width, active])
+
+  return panelTop
+}
+
 export function DiffPanel({ sessionId, useSession, controller, t, onClose }: DiffPanelProps) {
   const settingsState = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
   const enabled = settingsState.value?.gitBarEnabled ?? true
@@ -1233,7 +1320,7 @@ export function DiffPanel({ sessionId, useSession, controller, t, onClose }: Dif
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set())
   const [diffWidth, setDiffWidth] = useState(440)
-  const [panelTop, setPanelTop] = useState(0)
+  const panelTop = useSidePanelLayout(diffWidth, enabled && sessionStr !== undefined && snapshot !== null && snapshot.isRepo)
   const [filesHeight, setFilesHeight] = useState<number | null>(null)
   const [commitHeight, setCommitHeight] = useState<number | null>(null)
   const [dragging, setDragging] = useState<'files' | 'commit' | null>(null)
@@ -1266,13 +1353,18 @@ export function DiffPanel({ sessionId, useSession, controller, t, onClose }: Dif
     })
   }
 
-  // Auto-select the first changed file so the panel opens with a diff.
+  // Auto-select the first changed file so the panel opens with a diff. Runs
+  // when the snapshot first arrives (it is null on mount), and again only if
+  // the user has not picked a file yet.
   useEffect(() => {
     void refresh()
-    setDiffPath(current => current ?? snapshot?.files[0]?.path ?? null)
-    // Run once on mount; later file changes keep the user's selection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    setDiffPath(current => current ?? snapshot?.files[0]?.path ?? null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshot])
 
   const selectDiffFile = (path: string): void => {
     setDiffPath(path)
@@ -1319,31 +1411,17 @@ export function DiffPanel({ sessionId, useSession, controller, t, onClose }: Dif
     })
   }
 
-  // The panel never covers the session header / message-area top edge: anchor
-  // its top to the message scrollport's top.
-  useEffect(() => {
-    const measure = (): void => {
-      const sp = document.querySelector('[data-conversation-scroll]')
-      const top = sp === null ? 0 : Math.round(sp.getBoundingClientRect().top)
-      setPanelTop(prev => Math.abs(prev - top) < 2 ? prev : top)
-    }
-    measure()
-    window.addEventListener('resize', measure)
-    const observer = new ResizeObserver(measure)
-    const sp = document.querySelector('[data-conversation-scroll]')
-    if (sp !== null) observer.observe(sp)
-    return () => {
-      window.removeEventListener('resize', measure)
-      observer.disconnect()
-    }
-  }, [])
-
   // Close the diff panel when clicking outside it (the 差异 icon toggles).
+  // The icon lives in `.gbar-hicons`, which is NOT a descendant of `.gbar`,
+  // so that container must be excluded too — otherwise mousedown on the icon
+  // fires onClose() and the following click re-opens the panel ("sometimes
+  // it opens by itself").
   useEffect(() => {
     const onDown = (event: MouseEvent): void => {
       const target = event.target as Node | null
       if (target === null) return
       if (document.querySelector('.gbar-side')?.contains(target)) return
+      if (document.querySelector('.gbar-hicons')?.contains(target)) return
       if (document.querySelector('.gbar')?.contains(target)) return
       onClose()
     }
@@ -1428,16 +1506,30 @@ export function DiffPanel({ sessionId, useSession, controller, t, onClose }: Dif
     window.addEventListener('pointerup', onUp)
   }
 
-  // Push the conversation column left while the panel is open, so the user's
-  // timeline rail (anchored to the message-area right edge) stays visible.
-  useEffect(() => {
-    const root = document.querySelector('#root') as HTMLElement | null
-    if (root !== null) root.style.marginRight = `${diffWidth}px`
-    return () => { if (root !== null) root.style.marginRight = '' }
-  }, [diffWidth])
-
   if (!enabled || sessionStr === undefined) return null
-  if (snapshot === null || !snapshot.isRepo) return null
+  // Not a repo: no panel at all (the pills hide for non-repos too).
+  if (snapshot !== null && !snapshot.isRepo) return null
+
+  // Cold start (no cached snapshot yet): paint the panel SHELL at once with a
+  // loading body instead of returning null — the click must give immediate
+  // feedback even while the first /status round-trip is in flight. With the
+  // shared snapshot cache this state is rare and brief.
+  if (snapshot === null) {
+    return createPortal(
+      <div className="gbar-side" role="dialog" aria-label={t('diffTitle')} style={{ width: `${diffWidth}px`, top: `${panelTop}px` }}>
+        <div className="gbar-resize" onPointerDown={startResize} title="拖动调整宽度 · 点击展开到半屏" />
+        <div className="gbar-side-head">
+          <span className="gbar-title">{t('diffTitle')}</span>
+          <span className="gbar-spacer" />
+          <button type="button" className="gbar-side-x" onClick={onClose} aria-label="✕">✕</button>
+        </div>
+        <div className="gbar-side-body">
+          <div className="gbar-diff"><div className="gbar-empty"><span className="gbar-spin" /> {t('loading')}</div></div>
+        </div>
+      </div>,
+      document.body,
+    )
+  }
 
   const dirty = !snapshot.clean
   const halfActive = diffWidth >= Math.round(window.innerWidth / 2) - 4
@@ -1603,12 +1695,159 @@ export function DiffPanel({ sessionId, useSession, controller, t, onClose }: Dif
   }
 
 // ---------------------------------------------------------------------------
-// Terminal panel — opened from the header utilities' terminal icon. Same
-// slide-over skeleton as the diff panel; the scrollback IS the input (click
-// anywhere to focus, type at the prompt, Enter runs, ↑↓ walks history).
+// Terminal panel — a REAL terminal: xterm.js in the browser over a WebSocket
+// to the host's persistent node-pty shell (the dsh-better-sidebar design,
+// its src/pty-manager.ts + TerminalView.tsx). Full emulation: colors, cursor
+// control, Ctrl+C, command history, interactive apps. The xterm UMD builds
+// and stylesheet are vendored by the plugin and lazy-loaded on first panel
+// open, so the always-resident GitBar bundle stays lean.
+//
+// Session lifetime mirrors better-sidebar tabs: closing the panel only drops
+// the socket — the host keeps the shell alive behind a reconnect grace, so
+// re-opening the panel reattaches to the SAME session with its transcript
+// replayed. Page refreshes recover the same way.
 // ---------------------------------------------------------------------------
 
-interface TermLine { kind: 'cmd' | 'out' | 'err' | 'info'; text: string }
+/** Vendored xterm assets served by the host half (src/git-web.ts). */
+const VENDOR_BASE = `${GIT_ROUTE}/vendor`
+
+/** Duck-typed face of the xterm Terminal instance this panel touches. */
+interface XTermLike {
+  cols: number
+  rows: number
+  /** Live option updates (`theme` re-render is supported by xterm 5). */
+  options: { theme?: Record<string, string> | undefined }
+  open(host: HTMLElement): void
+  write(data: string): void
+  focus(): void
+  resize(cols: number, rows: number): void
+  dispose(): void
+  loadAddon(addon: unknown): void
+  onData(listener: (data: string) => void): { dispose(): void }
+  onResize(listener: (dims: { cols: number; rows: number }) => void): { dispose(): void }
+}
+
+/** Duck-typed face of @xterm/addon-fit. */
+interface FitAddonLike {
+  fit(): void
+}
+
+type XTermCtor = new (options: Record<string, unknown>) => XTermLike
+type FitAddonCtor = new () => FitAddonLike
+
+interface XTermGlobals { Terminal: XTermCtor; FitAddon: FitAddonCtor }
+
+let xtermGlobalsPromise: Promise<XTermGlobals> | null = null
+
+/** Inject one vendored script exactly once; resolves on load, rejects on error. */
+function loadVendorScript(src: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[data-gbar-vendor="${CSS.escape(src)}"]`)
+    if (existing !== null) {
+      // An already-complete script never fires `load` again.
+      if (existing.getAttribute('data-gbar-loaded') === '1') {
+        resolve()
+        return
+      }
+      existing.addEventListener('load', () => resolve())
+      existing.addEventListener('error', () => reject(new Error(`failed to load ${src}`)))
+      return
+    }
+    const script = document.createElement('script')
+    script.src = src
+    script.async = true
+    script.dataset.gbarVendor = src
+    script.addEventListener('load', () => {
+      script.setAttribute('data-gbar-loaded', '1')
+      resolve()
+    })
+    script.addEventListener('error', () => reject(new Error(`failed to load ${src}`)))
+    document.head.appendChild(script)
+  })
+}
+
+/** Load the vendored xterm UMD builds once per page; caches the globals. */
+function loadXterm(): Promise<XTermGlobals> {
+  xtermGlobalsPromise ??= (async () => {
+    try {
+      if (document.querySelector('link[data-gbar-xterm-css]') === null) {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = `${VENDOR_BASE}/xterm.css`
+        link.dataset.gbarXtermCss = '1'
+        document.head.appendChild(link)
+      }
+      await loadVendorScript(`${VENDOR_BASE}/xterm.js`)
+      await loadVendorScript(`${VENDOR_BASE}/addon-fit.js`)
+      const win = window as unknown as Record<string, unknown>
+      const TerminalCtor = win.Terminal as XTermCtor | undefined
+      const fitNamespace = win.FitAddon as { FitAddon?: FitAddonCtor } | undefined
+      if (typeof TerminalCtor !== 'function' || typeof fitNamespace?.FitAddon !== 'function') {
+        throw new Error('xterm assets loaded but globals are missing')
+      }
+      return { Terminal: TerminalCtor, FitAddon: fitNamespace.FitAddon }
+    } catch (cause) {
+      // Allow a retry on the next panel open instead of caching the failure.
+      xtermGlobalsPromise = null
+      throw cause
+    }
+  })()
+  return xtermGlobalsPromise
+}
+
+// Curated ANSI palettes (one-dark / one-light families), matching the
+// dsh-better-sidebar terminal so both plugins render shells identically.
+const ANSI_DARK: Record<string, string> = {
+  black: '#282c34', red: '#e06c75', green: '#98c379', yellow: '#e5c07b',
+  blue: '#61afef', magenta: '#c678dd', cyan: '#56b6c2', white: '#abb2bf',
+  brightBlack: '#5c6370', brightRed: '#e06c75', brightGreen: '#98c379',
+  brightYellow: '#e5c07b', brightBlue: '#61afef', brightMagenta: '#c678dd',
+  brightCyan: '#56b6c2', brightWhite: '#ffffff',
+}
+const ANSI_LIGHT: Record<string, string> = {
+  black: '#383a42', red: '#e45649', green: '#50a14f', yellow: '#c18401',
+  blue: '#0184bc', magenta: '#a626a4', cyan: '#0997b3', white: '#a0a1a7',
+  brightBlack: '#4f525e', brightRed: '#e45649', brightGreen: '#50a14f',
+  brightYellow: '#c18401', brightBlue: '#0184bc', brightMagenta: '#a626a4',
+  brightCyan: '#0997b3', brightWhite: '#fafafa',
+}
+
+/**
+ * Whether the DSH app is currently in its dark theme. The real switch is the
+ * `data-ds-dark-theme` attribute the theme plugin puts on <body> — the same
+ * signal the DSW token stylesheet keys on (`body[data-ds-dark-theme]{…}`), so
+ * it is correct no matter how the theme was chosen (app setting or system
+ * follow). Tokens being readable without the attribute means the light block
+ * is active; only a composition with neither falls back to the system media
+ * query.
+ */
+function isDarkScheme(): boolean {
+  if (document.body.hasAttribute('data-ds-dark-theme')) return true
+  const style = getComputedStyle(document.body)
+  if (style.getPropertyValue('--dsw-alias-bg-base').trim() !== '') return false
+  return window.matchMedia('(prefers-color-scheme: dark)').matches
+}
+
+/**
+ * The xterm theme for the current scheme (surface from tokens, curated ANSI).
+ * The DSW alias tokens are defined on <body> (not :root), and custom
+ * properties inherit downward only — reading them off documentElement always
+ * yields '', so read the body's computed values.
+ */
+function xtermTheme(): Record<string, string> & { background: string; foreground: string } {
+  const dark = isDarkScheme()
+  const style = getComputedStyle(document.body)
+  const background = style.getPropertyValue('--dsw-alias-bg-base').trim() || (dark ? '#151517' : '#ffffff')
+  const foreground = style.getPropertyValue('--dsw-alias-label-primary').trim() || (dark ? '#e6e6e6' : '#1a1a1a')
+  return {
+    background,
+    foreground,
+    cursor: foreground,
+    cursorAccent: background,
+    selectionBackground: dark ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.12)',
+    ...(dark ? ANSI_DARK : ANSI_LIGHT),
+  }
+}
 
 export function TerminalPanel({ sessionId, controller, t, onClose }: {
   sessionId: SessionId
@@ -1619,26 +1858,15 @@ export function TerminalPanel({ sessionId, controller, t, onClose }: {
   const settingsState = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
   const enabled = settingsState.value?.gitBarEnabled ?? true
   const target: GitTarget = { session: String(sessionId) }
+  // Warm from the shared snapshot cache, so the cwd label paints instantly.
   const [snapshot] = useGitStatus(enabled, target)
-  const [lines, setLines] = useState<TermLine[]>([])
-  const [value, setValue] = useState('')
-  const [running, setRunning] = useState(false)
   const [width, setWidth] = useState(520)
+  const [status, setStatus] = useState<'boot' | 'connecting' | 'live' | 'exited' | 'error'>('boot')
+  const [errorText, setErrorText] = useState('')
+  const [retryNonce, setRetryNonce] = useState(0)
+  const panelTop = useSidePanelLayout(width, enabled)
   const prevWidthRef = useRef<number | null>(null)
-  const historyRef = useRef<string[]>([])
-  const histIdxRef = useRef(-1)
-  const bodyRef = useRef<HTMLDivElement | null>(null)
-  const inputRef = useRef<HTMLInputElement | null>(null)
-
-  useEffect(() => {
-    setLines([{ kind: 'info', text: t('termWelcome') }])
-    inputRef.current?.focus()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-  useEffect(() => {
-    const body = bodyRef.current
-    if (body !== null) body.scrollTop = body.scrollHeight
-  }, [lines])
+  const hostRef = useRef<HTMLDivElement | null>(null)
 
   const toggleHalfWidth = (): void => {
     const half = Math.round(window.innerWidth / 2)
@@ -1652,42 +1880,131 @@ export function TerminalPanel({ sessionId, controller, t, onClose }: {
     }
   }
 
-  const run = async (): Promise<void> => {
-    const command = value.trim()
-    if (command === '' || running) return
-    historyRef.current.push(command)
-    histIdxRef.current = -1
-    setValue('')
-    setRunning(true)
-    setLines(prev => [...prev, { kind: 'cmd', text: command }])
-    try {
-      const result = await apiPost<{ code: number; stdout: string; stderr: string }>(
-        `${GIT_ROUTE}/terminal`,
-        { ...targetFields(target), command },
-      )
-      setLines(prev => {
-        const next = [...prev]
-        if (result.stdout !== '') next.push({ kind: 'out', text: result.stdout.replace(/\n$/, '') })
-        if (result.stderr !== '') next.push({ kind: 'err', text: result.stderr.replace(/\n$/, '') })
-        if (result.code !== 0) next.push({ kind: 'err', text: `[exit ${result.code}]` })
-        return next
-      })
-    } catch (cause) {
-      setLines(prev => [...prev, { kind: 'err', text: cause instanceof Error ? cause.message : String(cause) }])
-    } finally {
-      setRunning(false)
-      inputRef.current?.focus()
+  // Attach xterm + the WebSocket bridge. Re-runs on retryNonce (manual retry
+  // after a fatal error). Teardown closes the socket WITHOUT a close frame,
+  // so the host's reconnect grace keeps the shell alive for the next panel
+  // open — exactly like switching tabs in dsh-better-sidebar.
+  useEffect(() => {
+    const host = hostRef.current
+    if (!enabled || host === null) return
+    let disposed = false
+    let socket: WebSocket | null = null
+    let retryTimer: number | undefined
+    let failures = 0
+    let term: XTermLike | null = null
+    const cleanups: Array<() => void> = []
+
+    const sendFrame = (frame: Record<string, unknown>): void => {
+      if (socket !== null && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(frame))
     }
-  }
+
+    const connect = (): void => {
+      if (disposed || term === null) return
+      setStatus('connecting')
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
+      socket = new WebSocket(`${proto}//${location.host}${GIT_ROUTE}/terminal-ws?${targetQuery(target)}&cols=${term.cols}&rows=${term.rows}`)
+      socket.onopen = () => {
+        failures = 0
+        setStatus('live')
+        setErrorText('')
+        if (term !== null) sendFrame({ type: 'resize', cols: term.cols, rows: term.rows })
+      }
+      socket.onmessage = (event) => {
+        if (typeof event.data !== 'string' || term === null) return
+        if (event.data.startsWith('{')) {
+          try {
+            const frame = JSON.parse(event.data) as { type?: unknown }
+            if (frame.type === 'exit') {
+              setStatus('exited')
+              return
+            }
+          } catch {
+            // Literal braces typed into the shell — render them.
+          }
+        }
+        term.write(event.data)
+      }
+      socket.onclose = (event) => {
+        socket = null
+        if (disposed) return
+        // A reasoned 1011 refusal is fatal (spawn failure / pty missing);
+        // every other drop recovers with backoff — the host replays the
+        // transcript on reconnect, so the retry is seamless.
+        if (event.code === 1011 && event.reason !== '') {
+          setStatus('error')
+          setErrorText(event.reason === 'pty-unavailable' ? t('termUnavailable') : event.reason)
+          return
+        }
+        failures += 1
+        if (failures > 5) {
+          setStatus('error')
+          setErrorText(`${t('termLost')} (${event.code})`)
+          return
+        }
+        retryTimer = window.setTimeout(connect, Math.min(8000, 400 * failures))
+      }
+    }
+
+    void (async () => {
+      try {
+        const globals = await loadXterm()
+        if (disposed) return
+        // Surface colors track the app theme: the host backdrop matches the
+        // theme background exactly (the xterm viewport is transparent), and a
+        // theme flip while the panel is open re-applies live.
+        const applyTheme = (): void => {
+          const theme = xtermTheme()
+          host.style.backgroundColor = theme.background
+          if (term !== null) term.options.theme = theme
+        }
+        term = new globals.Terminal({
+          cursorBlink: true,
+          fontSize: 12.5,
+          fontFamily: '"SF Mono",ui-monospace,Consolas,"Courier New",monospace',
+          scrollback: 4000,
+          theme: xtermTheme(),
+        })
+        applyTheme()
+        const fit = new globals.FitAddon()
+        term.loadAddon(fit)
+        term.open(host)
+        try { fit.fit() } catch { /* zero-size host before layout settles */ }
+        term.onData(data => sendFrame({ type: 'input', data }))
+        term.onResize(dims => sendFrame({ type: 'resize', cols: dims.cols, rows: dims.rows }))
+        const observer = new ResizeObserver(() => { try { fit.fit() } catch { /* mid-layout */ } })
+        observer.observe(host)
+        // DSH flips themes by toggling body's data-ds-dark-theme attribute.
+        const themeObserver = new MutationObserver(applyTheme)
+        themeObserver.observe(document.body, { attributes: true, attributeFilter: ['data-ds-dark-theme'] })
+        cleanups.push(() => observer.disconnect(), () => themeObserver.disconnect(), () => term?.dispose())
+        connect()
+      } catch (cause) {
+        if (disposed) return
+        setStatus('error')
+        setErrorText(cause instanceof Error ? cause.message : String(cause))
+      }
+    })()
+
+    return () => {
+      disposed = true
+      if (retryTimer !== undefined) clearTimeout(retryTimer)
+      socket?.close()
+      for (const cleanup of cleanups.reverse()) cleanup()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, retryNonce])
 
   if (!enabled) return null
 
   return createPortal(
-    <div className="gbar-side" role="dialog" aria-label={t('terminal')} style={{ width: `${width}px` }}>
+    <div className="gbar-side" role="dialog" aria-label={t('terminal')} style={{ width: `${width}px`, top: `${panelTop}px` }}>
       <div className="side-head gbar-side-head">
         <span className="stitle gbar-title">{t('terminal')}</span>
         <span className="ssub gbar-sub" style={{ fontFamily: '"SF Mono",ui-monospace,Consolas,monospace' }}>{basenameOf(snapshot?.cwd)}</span>
         <span className="sp gbar-spacer" />
+        {status !== 'live' && status !== 'error' ? (
+          <span className="ssub gbar-sub">{status === 'exited' ? t('termExited') : t('loading')}</span>
+        ) : null}
         <button
           type="button"
           className={'gbar-side-half' + (width >= Math.round(window.innerWidth / 2) - 4 ? ' gbar-on' : '')}
@@ -1700,53 +2017,13 @@ export function TerminalPanel({ sessionId, controller, t, onClose }: {
         </button>
         <button type="button" className="gbar-side-x" onClick={onClose} aria-label="✕">✕</button>
       </div>
-      <div className="gbar-term" ref={bodyRef} onClick={() => { inputRef.current?.focus() }}>
-        {lines.map((line, i) => {
-          if (line.kind === 'cmd') {
-            return (
-              <div key={i}>
-                <span className="gbar-ps1">PS&gt;&nbsp;</span>
-                <span className="gbar-tcmd">{line.text}</span>
-              </div>
-            )
-          }
-          if (line.kind === 'info') return <div key={i} className="gbar-tdim">{line.text}</div>
-          if (line.kind === 'err') return <div key={i} className="gbar-tout gbar-terr">{line.text}</div>
-          return <div key={i} className="gbar-tout">{line.text}</div>
-        })}
-        <div className="gbar-tin">
-          <span className="gbar-ps1">PS&gt;</span>
-          <input
-            ref={inputRef}
-            value={value}
-            spellCheck={false}
-            aria-label={t('terminal')}
-            onChange={event => { setValue(event.target.value) }}
-            onKeyDown={event => {
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                void run()
-              } else if (event.key === 'ArrowUp') {
-                event.preventDefault()
-                const history = historyRef.current
-                if (history.length === 0) return
-                histIdxRef.current = histIdxRef.current === -1 ? history.length - 1 : Math.max(0, histIdxRef.current - 1)
-                setValue(history[histIdxRef.current] ?? '')
-              } else if (event.key === 'ArrowDown') {
-                event.preventDefault()
-                if (histIdxRef.current === -1) return
-                histIdxRef.current += 1
-                if (histIdxRef.current >= historyRef.current.length) {
-                  histIdxRef.current = -1
-                  setValue('')
-                } else {
-                  setValue(historyRef.current[histIdxRef.current] ?? '')
-                }
-              }
-            }}
-          />
+      <div className="gbar-term gbar-xterm" ref={hostRef} />
+      {status === 'error' ? (
+        <div className="gbar-term-error" role="alert">
+          <span className="gbar-term-error-text">{errorText}</span>
+          <button type="button" onClick={() => { setStatus('boot'); setErrorText(''); setRetryNonce(n => n + 1) }}>↻</button>
         </div>
-      </div>
+      ) : null}
     </div>,
     document.body,
   )
@@ -1778,6 +2055,7 @@ export function HeaderUtilities({ sessionId, useSession, controller, t }: Header
   const wrapRef = useRef<HTMLSpanElement | null>(null)
   const iconRef = useRef<HTMLButtonElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const dirty = snapshot !== null && snapshot.isRepo && !snapshot.clean
 
   // Close the open-project menu on outside click / Escape.
   useEffect(() => {
@@ -1804,24 +2082,13 @@ export function HeaderUtilities({ sessionId, useSession, controller, t }: Header
     window.setTimeout(() => setNotice(null), 4000)
   }
 
-  const runOpen = async (app: 'explorer' | 'vscode' | 'idea'): Promise<void> => {
+  const runOpen = async (app: 'explorer' | 'vscode' | 'idea' | 'goland' | 'webstorm' | 'pycharm'): Promise<void> => {
     try {
       await apiPost(`${GIT_ROUTE}/open`, { ...targetFields(target), target: app })
       setOpenMenu(false)
       showNotice('ok', `✓ ${app}`)
     } catch (cause) {
       showNotice('err', cause instanceof Error ? cause.message : String(cause))
-    }
-  }
-
-  const copyPath = async (): Promise<void> => {
-    const cwd = snapshot?.cwd ?? ''
-    try {
-      await navigator.clipboard.writeText(cwd)
-      setOpenMenu(false)
-      showNotice('ok', t('copyPathDone'))
-    } catch {
-      showNotice('err', t('copyPathFail'))
     }
   }
 
@@ -1833,7 +2100,7 @@ export function HeaderUtilities({ sessionId, useSession, controller, t }: Header
         type="button"
         ref={iconRef}
         className={'gbar-hicon' + (openMenu ? ' gbar-on' : '')}
-        onClick={() => { setOpenMenu(value => !value) }}
+        onClick={() => { setOpenMenu(value => !value); setTermOpen(false); setDiffOpen(false) }}
         title={t('openProject')}
         aria-expanded={openMenu}
       >
@@ -1845,11 +2112,11 @@ export function HeaderUtilities({ sessionId, useSession, controller, t }: Header
       <button
         type="button"
         className={'gbar-hicon' + (termOpen ? ' gbar-on' : '')}
-        onClick={() => { setTermOpen(value => !value) }}
+        onClick={() => { setTermOpen(value => !value); setDiffOpen(false); setOpenMenu(false) }}
         title={t('terminal')}
         aria-expanded={termOpen}
       >
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" strokeLinecap="round" strokeLinejoin="round">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
           <rect x="1.5" y="2.5" width="13" height="11" rx="2" />
           <path d="M4.5 6l2.5 2-2.5 2" />
           <path d="M8.5 10h3" />
@@ -1858,7 +2125,7 @@ export function HeaderUtilities({ sessionId, useSession, controller, t }: Header
       <button
         type="button"
         className={'gbar-hicon' + (diffOpen ? ' gbar-on' : '')}
-        onClick={() => { setDiffOpen(value => !value) }}
+        onClick={() => { setDiffOpen(value => !value); setTermOpen(false); setOpenMenu(false) }}
         title={t('diffTitle')}
         aria-expanded={diffOpen}
       >
@@ -1867,25 +2134,37 @@ export function HeaderUtilities({ sessionId, useSession, controller, t }: Header
           <path d="M9.5 1.5V5.5h4" />
           <path d="M5.75 10h4.5M5.75 7.5h2" />
         </svg>
+        {/* Uncommitted-changes dot — the same dirty signal the branch chip's
+            tooltip carries, surfaced on the icon so the state reads at a
+            glance without hovering or opening the diff panel. */}
+        {dirty ? <span className="gbar-hicon-dot" aria-hidden /> : null}
       </button>
 
       {openMenu ? (
         <div className="gbar-openmenu" ref={menuRef} role="menu">
           <button type="button" className="gbar-omrow" onClick={() => { void runOpen('explorer') }}>
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><path d="M1.5 4A1.5 1.5 0 0 1 3 2.5h3l1.5 2H13A1.5 1.5 0 0 1 14.5 6v6A1.5 1.5 0 0 1 13 13.5H3A1.5 1.5 0 0 1 1.5 12V4Z" /></svg>
+            <span className="gbar-aicon" aria-hidden dangerouslySetInnerHTML={{ __html: APP_ICONS.explorer }} />
             {t('openExplorer')}
           </button>
           <button type="button" className="gbar-omrow" onClick={() => { void runOpen('vscode') }}>
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><path d="M5.5 2.5 2 8l3.5 5.5" /><path d="M10.5 2.5 14 8l-3.5 5.5" /></svg>
+            <span className="gbar-aicon" aria-hidden dangerouslySetInnerHTML={{ __html: APP_ICONS.vscode }} />
             {t('openVscode')}
           </button>
           <button type="button" className="gbar-omrow" onClick={() => { void runOpen('idea') }}>
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="12" height="12" rx="2.5" /><path d="M5 11V5h2l2 3 2-3h2v6" /></svg>
+            <span className="gbar-aicon" aria-hidden dangerouslySetInnerHTML={{ __html: APP_ICONS.idea }} />
             {t('openIdea')}
           </button>
-          <button type="button" className="gbar-omrow" onClick={() => { void copyPath() }}>
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><rect x="5.5" y="5.5" width="9" height="9" rx="1.5" /><path d="M10.5 5.5V3A1.5 1.5 0 0 0 9 1.5H3A1.5 1.5 0 0 0 1.5 3v6A1.5 1.5 0 0 0 3 10.5h2.5" /></svg>
-            {t('copyPath')}
+          <button type="button" className="gbar-omrow" onClick={() => { void runOpen('goland') }}>
+            <span className="gbar-aicon" aria-hidden dangerouslySetInnerHTML={{ __html: APP_ICONS.goland }} />
+            {t('openGoland')}
+          </button>
+          <button type="button" className="gbar-omrow" onClick={() => { void runOpen('webstorm') }}>
+            <span className="gbar-aicon" aria-hidden dangerouslySetInnerHTML={{ __html: APP_ICONS.webstorm }} />
+            {t('openWebstorm')}
+          </button>
+          <button type="button" className="gbar-omrow" onClick={() => { void runOpen('pycharm') }}>
+            <span className="gbar-aicon" aria-hidden dangerouslySetInnerHTML={{ __html: APP_ICONS.pycharm }} />
+            {t('openPycharm')}
           </button>
         </div>
       ) : null}

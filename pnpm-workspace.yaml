@@ -1,3 +1,7 @@
+# Allow node-pty's native build script (compiles the ConPTY binding on
+# Windows) — the terminal panel's PTY backend needs it.
+allowBuilds:
+  node-pty: true
 # Disable pnpm 11's default 24h minimum-release-age gate (only allows packages
 # published >24h ago); 0 means no age check for this project.
 minimumReleaseAge: 0

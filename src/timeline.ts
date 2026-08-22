@@ -33,6 +33,10 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
     /** Enumeration of direct user-sent messages, for the timeline rail. */
     dshChatTimeline: TimelineProjectionValue
   }
+  interface SessionProjectionStateMap {
+    /** Host fold state for the timeline key (same shape as the wire value). */
+    dshChatTimeline: TimelineProjectionValue
+  }
 }
 
 /** One timeline entry: ordering, time, short preview, and jump identity. */
@@ -77,10 +81,21 @@ const messageIndexSchema = {
   parse: (value: unknown) => value as TimelineProjectionValue,
 } as ZodType<TimelineProjectionValue>
 
+/**
+ * Registration-ready unit type: the client-visible `register` overload demands
+ * a present `wire` block, so narrow the optional field away up front.
+ */
+type TimelineProjectionUnit = Omit<
+  ProjectionDefinition<'dshChatTimeline', TimelineProjectionValue>,
+  'wire'
+> & {
+  wire: NonNullable<ProjectionDefinition<'dshChatTimeline', TimelineProjectionValue>['wire']>
+}
+
 /** The `dshChatTimeline` projection unit: fold user messages over the log. */
-export const timelineProjectionDefinition: ProjectionDefinition<'dshChatTimeline', TimelineProjectionValue> = {
+export const timelineProjectionDefinition: TimelineProjectionUnit = {
   key: TIMELINE_PROJECTION_KEY,
-  schema: messageIndexSchema,
+  stateSchema: messageIndexSchema,
   init: () => ({ messages: [] }),
   apply: (state, event) => {
     // Only DIRECT user-sent messages shape the timeline. Plugin- and
@@ -100,7 +115,10 @@ export const timelineProjectionDefinition: ProjectionDefinition<'dshChatTimeline
     }
     return { messages: [...state.messages, entry] }
   },
-  view: (state) => state,
+  wire: {
+    viewSchema: messageIndexSchema,
+    view: (state) => state,
+  },
   stateVersion: 5,
 }
 

@@ -12,12 +12,19 @@
  * as an argv array, cwd pinned, bounded timeout, abort propagation — so
  * repo-controlled strings cannot escape into a shell and a hung remote cannot
  * wedge the plugin.
+ *
+ * The terminal panel additionally runs a PERSISTENT REAL PTY per target
+ * (node-pty — conpty on Windows), streamed to the browser over a WebSocket
+ * and rendered with xterm.js: shell state, colors, Ctrl+C and interactive
+ * apps work exactly like the DSH-better-sidebar terminal, whose pty-manager
+ * design (transcript ring replay + reconnect grace) this follows.
  * @module dsh-ui-tweaks/git
  */
 
 import { execFile, spawn } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { open } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
@@ -126,6 +133,9 @@ const NO_REPO: GitSnapshot = {
 const MAX_COUNT_FILE_BYTES = 512 * 1024
 const MAX_DIFF_FILE_BYTES = 1024 * 1024
 const MAX_FULL_LINES = 20000
+/** Diff panel: upper bound on rendered hunk lines (a huge pnpm-lock.yaml diff
+ *  can exceed 3000 lines, which freezes the GUI). */
+const MAX_DIFF_ROWS = 500
 
 const GIT_TIMEOUT_MS = 10000
 const LLM_TIMEOUT_MS = 20000
@@ -577,10 +587,15 @@ function buildSuggestPrompt(snapshot: GitSnapshot, diff: { text: string; truncat
  * @param readConfig - reads the plugin config for the `suggestModel` override.
  */
 export class GitBackend {
+  /** Persistent PTY shell sessions for the terminal panel (WebSocket-streamed). */
+  readonly terminals: TerminalSessionManager
+
   constructor(
     private readonly ctx: Context,
     private readonly readConfig: () => UITweaksConfig,
-  ) {}
+  ) {
+    this.terminals = new TerminalSessionManager()
+  }
 
   /** Resolve the session's working directory, or undefined when absent. */
   resolveCwd(sessionId: string | undefined): string | undefined {
@@ -617,50 +632,24 @@ export class GitBackend {
   }
 
   /**
-   * Run one shell command in the project directory for the terminal panel.
-   * Non-interactive by design (no TTY): each invocation is a fresh
-   * `powershell -Command` / `sh -c` with bounded timeout and capped output;
-   * a non-zero exit is a RESULT (code + stderr), not a rejection, so the
-   * scrollback can show it like a real terminal would.
-   */
-  async runTerminal(cwd: string, command: string): Promise<{ code: number; stdout: string; stderr: string }> {
-    const isWin = process.platform === 'win32'
-    const file = isWin ? 'powershell.exe' : 'sh'
-    const args = isWin ? ['-NoProfile', '-NonInteractive', '-Command', command] : ['-c', command]
-    return new Promise((resolvePromise) => {
-      execFile(file, args, { cwd, timeout: 120_000, maxBuffer: 4 * 1024 * 1024 }, (error, stdout, stderr) => {
-        if (error === null) {
-          resolvePromise({ code: 0, stdout: stdout.toString(), stderr: stderr.toString() })
-          return
-        }
-        // Non-zero exit carries its code on the error; spawn failures (missing
-        // shell) surface as string codes — map those to 127 like a shell would.
-        const raw = error.code
-        resolvePromise({
-          code: typeof raw === 'number' ? raw : 127,
-          stdout: stdout.toString(),
-          stderr: stderr.toString() !== '' ? stderr.toString() : error.message,
-        })
-      })
-    })
-  }
-
-  /**
-   * Open the project folder in an external app (explorer / VS Code / IDEA).
+   * Open the project folder in an external app (explorer / editors). The
+   * editor targets launch through their CLI shims (code / idea / goland /
+   * webstorm / pycharm — Toolbox puts the JetBrains ones on PATH).
    * Fire-and-forget GUI launches: explorer exits non-zero even on success, so
    * only a spawn FAILURE rejects; app shims missing from PATH reject with a
    * user-visible hint instead of crashing the route.
    */
-  async openFolder(cwd: string, target: 'explorer' | 'vscode' | 'idea'): Promise<void> {
+  async openFolder(cwd: string, target: 'explorer' | 'vscode' | 'idea' | 'goland' | 'webstorm' | 'pycharm'): Promise<void> {
     const launch = (file: string, args: readonly string[]): Promise<void> =>
       new Promise((resolvePromise, rejectPromise) => {
         const child = spawn(file, args, { cwd, stdio: 'ignore', detached: true })
         child.once('error', rejectPromise)
         child.once('spawn', () => { child.unref(); resolvePromise() })
       })
+    const shims: Record<string, string> = { vscode: 'code', idea: 'idea', goland: 'goland', webstorm: 'webstorm', pycharm: 'pycharm' }
+    const shim = shims[target]
     if (process.platform === 'win32') {
-      if (target === 'explorer') return launch('explorer.exe', [cwd])
-      const shim = target === 'vscode' ? 'code' : 'idea'
+      if (shim === undefined) return launch('explorer.exe', [cwd])
       return new Promise((resolvePromise, rejectPromise) => {
         const child = spawn('cmd.exe', ['/c', shim, '.'], { cwd, stdio: 'ignore' })
         child.once('error', rejectPromise)
@@ -670,11 +659,10 @@ export class GitBackend {
         })
       })
     }
-    if (target === 'explorer') {
+    if (shim === undefined) {
       const opener = process.platform === 'darwin' ? 'open' : 'xdg-open'
       return launch(opener, [cwd])
     }
-    const shim = target === 'vscode' ? 'code' : 'idea'
     return launch(shim, [cwd])
   }
 
@@ -890,6 +878,17 @@ export class GitBackend {
         }))
         if (lines.length > 0 && lines[lines.length - 1]?.text === '') lines.pop()
         return { path, mode, lines, truncated }
+      }
+      if (hunkLines.length > MAX_DIFF_ROWS) {
+        // Cap the DOM the panel renders — a >3000-line lockfile diff freezes
+        // the GUI. Keep the head hunks (what the eye reads first) and a
+        // trailing marker, like git's own pager truncation.
+        return {
+          path,
+          mode,
+          lines: [...hunkLines.slice(0, MAX_DIFF_ROWS), { type: 'hunk', old: null, new: null, text: `… diff truncated (${hunkLines.length} lines)` }],
+          truncated: true,
+        }
       }
       return { path, mode, lines: hunkLines, truncated: false }
     }
@@ -1243,6 +1242,272 @@ export class GitBackend {
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Terminal sessions — one REAL PTY per target key, following the
+// dsh-better-sidebar design (src/pty-manager.ts): node-pty spawns the shell,
+// output is mirrored into a bounded transcript ring that is replayed to every
+// newly attached socket before live data, processes survive socket drops
+// (page refresh, panel toggle) behind a reconnect grace, and an explicit
+// close frame / plugin teardown kills the shell. The browser half renders the
+// stream with xterm.js over a WebSocket — full emulation, colors, Ctrl+C and
+// interactive apps work exactly like a local terminal.
+// ---------------------------------------------------------------------------
+
+/**
+ * Duck-typed face of the `node-pty` module — only what this plugin touches.
+ * Kept structural so a broken native install degrades into a clear
+ * "pty unavailable" error instead of crashing plugin activation.
+ */
+interface NodePtyModule {
+  spawn(file: string, args: readonly string[], options: {
+    name: string
+    cols: number
+    rows: number
+    cwd: string
+    env: NodeJS.ProcessEnv
+  }): IPtyLike
+}
+
+/** Duck-typed face of one node-pty terminal handle. */
+interface IPtyLike {
+  pid: number
+  write(data: string): void
+  resize(cols: number, rows: number): void
+  kill(): void
+  onData(listener: (data: string) => void): unknown
+  onExit(listener: (event: { exitCode: number; signal?: number }) => void): unknown
+}
+
+/** Load the native pty module; undefined when missing or unloadable. */
+function loadNodePty(): NodePtyModule | undefined {
+  try {
+    return createRequire(import.meta.url)('node-pty') as NodePtyModule
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Resolve the login shell. Windows prefers pwsh (PowerShell 7+) from PATH or
+ * the well-known install dirs, falling back to Windows PowerShell; POSIX uses
+ * $SHELL, then bash, then sh. Resolved per spawn so a mid-session install of
+ * pwsh is picked up without a host restart. No -NoLogo: the version banner
+ * gives the panel the familiar "real terminal" opening frame.
+ */
+function resolveShell(): { file: string; args: readonly string[] } {
+  if (process.platform === 'win32') {
+    const dirs: string[] = []
+    for (const entry of (process.env.PATH ?? '').split(';')) {
+      const trimmed = entry.trim()
+      if (trimmed !== '') dirs.push(trimmed)
+    }
+    for (const root of [process.env.ProgramW6432, process.env.ProgramFiles]) {
+      if (root === undefined || root === '') continue
+      dirs.push(resolve(root, 'PowerShell', '7'), resolve(root, 'PowerShell', '7-preview'))
+    }
+    for (const dir of dirs) {
+      const candidate = resolve(dir, 'pwsh.exe')
+      if (existsSync(candidate)) return { file: candidate, args: [] }
+    }
+    return { file: 'powershell.exe', args: [] }
+  }
+  const shell = process.env.SHELL
+  if (shell !== undefined && shell !== '') return { file: shell, args: [] }
+  for (const candidate of ['/bin/bash', '/bin/sh']) {
+    if (existsSync(candidate)) return { file: candidate, args: [] }
+  }
+  return { file: 'sh', args: [] }
+}
+
+/** Per-terminal transcript bound (bytes kept for replay), mirroring better-sidebar. */
+const TRANSCRIPT_LIMIT = 1 << 20
+
+/** Upper bound on concurrent shells across all targets. */
+const MAX_SESSIONS = 16
+
+/** A browser socket attached to one terminal (the WebSocket adapter). */
+export interface TerminalClient {
+  /** Push one chunk to the browser: raw pty bytes or a JSON control frame. */
+  send(text: string): void
+  /** Whether the connection can still carry frames. */
+  readonly alive: boolean
+}
+
+interface TerminalSession {
+  key: string
+  cwd: string
+  pty: IPtyLike
+  /** Output accumulated since spawn (bounded; head dropped when over the limit). */
+  transcript: string
+  exited: boolean
+  exitCode: number | null
+  clients: Set<TerminalClient>
+  closeTimer: ReturnType<typeof setTimeout> | null
+}
+
+/**
+ * Owns the terminal shells, keyed by target (`session:<id>` / `ws:<name>`).
+ * One live process per key: re-attach reuses it (transcript replay makes the
+ * panel reopen seamless), an exited or cwd-changed handle is replaced with a
+ * fresh spawn. Socket drops schedule a grace close that a timely re-attach
+ * cancels; only the explicit close frame and teardown kill immediately.
+ */
+export class TerminalSessionManager {
+  private readonly sessions = new Map<string, TerminalSession>()
+  private readonly nodePty: NodePtyModule | undefined
+
+  constructor(loadPty: () => NodePtyModule | undefined = loadNodePty) {
+    this.nodePty = loadPty()
+  }
+
+  /** Whether the native pty module could not be loaded (degraded mode). */
+  get unavailable(): boolean {
+    return this.nodePty === undefined
+  }
+
+  /**
+   * Attach one browser client to the target's terminal, opening (or replacing)
+   * the underlying shell as needed.
+   * @returns the session whose `transcript` must be replayed to the client
+   *   before live data (empty on a fresh spawn).
+   */
+  attach(key: string, cwd: string, cols: number, rows: number, client: TerminalClient): TerminalSession {
+    let session = this.sessions.get(key)
+    // A dead shell must not become an input sink, and a shell sitting in a
+    // stale directory (session cwd changed) is respawned — same rules as
+    // better-sidebar's PtyManager.open.
+    if (session !== undefined && (session.exited || session.cwd !== cwd)) {
+      this.close(key)
+      session = undefined
+    }
+    if (session === undefined) {
+      this.evictForNewSession()
+      session = this.spawn(key, cwd, cols, rows)
+      this.sessions.set(key, session)
+    }
+    this.cancelClose(key)
+    session.clients.add(client)
+    return session
+  }
+
+  /** Remove one client; when the last one leaves, arm the reconnect grace. */
+  detach(key: string, client: TerminalClient): void {
+    const session = this.sessions.get(key)
+    if (session === undefined) return
+    session.clients.delete(client)
+    if (session.clients.size === 0 && !session.exited) this.scheduleClose(key, SOCKET_DROP_GRACE_MS)
+  }
+
+  /** Forward raw stdin bytes from the browser to the shell. */
+  input(key: string, data: string): void {
+    this.sessions.get(key)?.pty.write(data)
+  }
+
+  /** Propagate the xterm viewport size to the pty. */
+  resize(key: string, cols: number, rows: number): void {
+    const session = this.sessions.get(key)
+    if (session === undefined || session.exited) return
+    try {
+      session.pty.resize(Math.max(2, Math.floor(cols)), Math.max(2, Math.floor(rows)))
+    } catch {
+      // A resize racing an exit throws inside node-pty; harmless.
+    }
+  }
+
+  /** Kill the target's shell now (explicit close frame / teardown path). */
+  close(key: string): void {
+    this.cancelClose(key)
+    const session = this.sessions.get(key)
+    if (session === undefined) return
+    this.sessions.delete(key)
+    try {
+      session.pty.kill()
+    } catch {
+      // Already exited or gone; nothing left to kill.
+    }
+  }
+
+  /** Kill every shell (plugin teardown). */
+  disposeAll(): void {
+    for (const key of [...this.sessions.keys()]) this.close(key)
+  }
+
+  private spawn(key: string, cwd: string, cols: number, rows: number): TerminalSession {
+    if (this.nodePty === undefined) throw new Error('pty-unavailable')
+    const shell = resolveShell()
+    const pty = this.nodePty.spawn(shell.file, [...shell.args], {
+      name: 'xterm-256color',
+      cols: Math.max(2, Math.floor(cols)),
+      rows: Math.max(2, Math.floor(rows)),
+      cwd,
+      env: { ...process.env },
+    })
+    const session: TerminalSession = { key, cwd, pty, transcript: '', exited: false, exitCode: null, clients: new Set(), closeTimer: null }
+    pty.onData((data) => {
+      session.transcript += data
+      if (session.transcript.length > TRANSCRIPT_LIMIT) {
+        session.transcript = session.transcript.slice(session.transcript.length - TRANSCRIPT_LIMIT)
+      }
+      this.broadcast(session, data)
+    })
+    pty.onExit(({ exitCode }) => {
+      session.exited = true
+      session.exitCode = exitCode
+      this.broadcast(session, `${JSON.stringify({ type: 'exit', code: exitCode })}\n`)
+      // Nobody is watching an exited shell — drop the record at once so the
+      // next attach spawns a fresh prompt instead of replaying a corpse.
+      if (session.clients.size === 0) this.close(key)
+    })
+    return session
+  }
+
+  /** Fan one pty chunk out to every attached, still-open client. */
+  private broadcast(session: TerminalSession, text: string): void {
+    for (const client of session.clients) {
+      if (!client.alive) continue
+      try {
+        client.send(text)
+      } catch {
+        // A throwing socket must not kill the pump loop.
+      }
+    }
+  }
+
+  /** Make room for a new shell: drop exited records first, then detached ones. */
+  private evictForNewSession(): void {
+    if (this.sessions.size < MAX_SESSIONS) return
+    const candidates = [...this.sessions.entries()].filter(([, s]) => s.clients.size === 0)
+    candidates.sort((a, b) => a[0].localeCompare(b[0]))
+    const exited = candidates.find(([, s]) => s.exited)
+    const detached = exited ?? candidates[0]
+    if (detached !== undefined) {
+      this.close(detached[0])
+      return
+    }
+    throw new Error(`terminal limit reached (${MAX_SESSIONS})`)
+  }
+
+  /** Arm (or re-arm) the delayed destruction used for bare socket drops. */
+  private scheduleClose(key: string, delayMs: number): void {
+    this.cancelClose(key)
+    const session = this.sessions.get(key)
+    if (session === undefined) return
+    session.closeTimer = setTimeout(() => { this.close(key) }, delayMs)
+  }
+
+  /** Cancel a pending scheduled close (a client re-attached in time). */
+  private cancelClose(key: string): void {
+    const session = this.sessions.get(key)
+    if (session?.closeTimer !== null && session?.closeTimer !== undefined) {
+      clearTimeout(session.closeTimer)
+      session.closeTimer = null
+    }
+  }
+}
+
+/** How long a shell survives after its last browser socket drops. */
+const SOCKET_DROP_GRACE_MS = 120_000
 
 function isAbortError(error: unknown): boolean {
   return error !== null && typeof error === 'object' && 'aborted' in error && (error as { aborted?: unknown }).aborted === true
