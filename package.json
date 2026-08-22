@@ -1,6 +1,6 @@
 {
   "name": "dsh-ui-tweaks",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "DSH web plugin: live-tune the conversation UI — message font size (px input), markdown table style (Claude Desktop look), dialog width (default / wide), an optional conversation timeline rail, a GitBar (branch / diff pills inside the composer tool row, with branch management, per-file diff, and commit & push from the diff panel), a real PTY terminal side panel (xterm.js over a WebSocket to a persistent node-pty shell, theme-following colors, six-way project launcher menu with official app icons), a whale working indicator perched on the composer corner (swims while the model works, drifting blue waves), and an /init slash command that submits an AGENTS.md bootstrap prompt (Chinese or English) into the current session — from the Settings panel.",
   "keywords": [
     "dsh",

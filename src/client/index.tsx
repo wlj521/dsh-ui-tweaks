@@ -548,6 +548,10 @@ div[data-slot="conversation.chat.node"] table{
   border-collapse:separate !important;
   border-spacing:3px !important;
   width:100% !important;
+  /* Fill the column like Claude Desktop, but never squeeze below the natural
+     (no-wrap) width: a table too wide to fit keeps its real width and scrolls
+     inside the stock table wrapper instead of hiding columns. */
+  min-width:max-content !important;
   border:none !important;
   font-size:var(--dsw-font-markdown-base-font-size) !important;
 }
@@ -653,10 +657,20 @@ function buildRuntimeCss(value: ResolvedTweaks): string {
   }
   if (value.dialogWidth !== DEFAULT_DIALOG_WIDTH) {
     const width = value.dialogWidth
-    rules.push(`[data-chat-flow]{max-width:${width}px !important}`)
+    // Widen the message column AND tell the stock wide-table bleed math about
+    // it: DSH sizes a wide table's side overhang from --dsh-chat-content-width
+    // (pinned to 748px on the conversation root). Widening the column without
+    // syncing the var pushes every wide table (W − 748)/2 px past the message
+    // area's right edge.
+    rules.push(`[data-chat-flow]{max-width:${width}px !important;--dsh-chat-content-width:${width}px}`)
     // The composer card carries the same column + 32px padding (748→780);
     // widen it through its stable data attribute so the input bar matches.
     rules.push(`[data-composer-card="true"]{max-width:${width + 32}px !important}`)
+    // The conversation root redefines --dsh-composer-card-max-width locally,
+    // so a :root override never reaches inside it; re-declare it on the
+    // composer seat (stable anchor, covers the composer stack incl. plugins)
+    // so width-derived consumers there agree with the widened card.
+    rules.push(`[data-composer-seat]{--dsh-composer-card-max-width:${width + 32}px}`)
     // The conversation stats line under the composer (conversation.composer.dock)
     // keeps its own 748px column; widen it together with the dialog.
     rules.push(`[data-slot="conversation.composer.dock"] > div{max-width:${width + 32}px !important}`)
