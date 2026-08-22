@@ -26,6 +26,7 @@ import { TimelineRail, installTimelineStyles } from './timeline.tsx'
 import { BranchChipEntry, HeaderUtilities, installGitBarStyles, installHeroChip } from './gitbar.tsx'
 import { ArchiveSection, installArchiveStyles } from './archive.tsx'
 import { McpSection, installMcpStyles } from './mcp.tsx'
+import { WhaleIndicator, installWhaleStyles } from './whale.tsx'
 
 const NS = 'ui-tweaks'
 const SETTINGS_ROUTE = '/_dsh/ui-tweaks/settings'
@@ -69,6 +70,8 @@ interface TweaksValue {
   mcpManagerEnabled?: boolean
   /** Whether the /init slash command (AGENTS.md bootstrap prompt) is registered. */
   initCommandEnabled?: boolean
+  /** Whether the whale working indicator above the input is shown. */
+  whaleIndicatorEnabled?: boolean
 }
 
 interface ResolvedTweaks {
@@ -83,6 +86,7 @@ interface ResolvedTweaks {
   archiveManagerEnabled: boolean
   mcpManagerEnabled: boolean
   initCommandEnabled: boolean
+  whaleIndicatorEnabled: boolean
 }
 
 interface UITweaksSnapshot {
@@ -182,6 +186,10 @@ const en = {
   initCommandHint: 'The /init slash command: pick a prompt language and the agent analyzes the project and writes AGENTS.md.',
   initCommandOn: 'On',
   initCommandOff: 'Off',
+  whaleIndicator: 'Whale indicator',
+  whaleIndicatorHint: 'A little whale above the input box: translucent while idle, swimming while the model works.',
+  whaleIndicatorOn: 'On',
+  whaleIndicatorOff: 'Off',
   mcpServerDetail: 'Configured in the profile cordis.patch.yml as @deepseek-ai/dsh-mcp-client instances; add / edit / disable / delete write to that file and apply live.',
   archiveNav: 'Archive',
   archiveTitle: 'Archived sessions',
@@ -358,6 +366,10 @@ const zh: Record<LocaleKey, string> = {
   initCommandHint: '注册 /init 斜杠命令：选择提示词语言后，让代理分析项目并生成 AGENTS.md。',
   initCommandOn: '开启',
   initCommandOff: '关闭',
+  whaleIndicator: '鲸鱼指示器',
+  whaleIndicatorHint: '输入框上方的小鲸鱼：空闲时半透明静止，模型工作时开始游泳动画。',
+  whaleIndicatorOn: '开启',
+  whaleIndicatorOff: '关闭',
   mcpServerDetail: 'MCP 服务器配置在 profile 的 cordis.patch.yml（@deepseek-ai/dsh-mcp-client 实例）；添加 / 编辑 / 停用 / 删除会写入该文件，改动实时生效。',
   archiveNav: '归档',
   archiveTitle: '已归档会话',
@@ -477,6 +489,7 @@ function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
     archiveManagerEnabled: value?.archiveManagerEnabled ?? false,
     mcpManagerEnabled: value?.mcpManagerEnabled ?? false,
     initCommandEnabled: value?.initCommandEnabled ?? false,
+    whaleIndicatorEnabled: value?.whaleIndicatorEnabled ?? false,
   }
 }
 
@@ -973,6 +986,10 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     void controller.set('initCommandEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
+  const setWhaleIndicator = (value: boolean): void => {
+    void controller.set('whaleIndicatorEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
+  }
+
   const reset = (field: 'fontSize' | 'lineHeight' | 'tableStyle' | 'dialogWidth' | 'timelineEnabled' | 'gitBarEnabled' | 'archiveManagerEnabled' | 'mcpManagerEnabled'): void => {
     void controller.unset(field).then(() => { setStatus('resetDone') }).catch(() => { setStatus('unavailable') })
   }
@@ -1179,6 +1196,17 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
               <div className="dut-seg">
                 <button type="button" className={resolved.initCommandEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setInitCommand(true) }}>{t('initCommandOn')}</button>
                 <button type="button" className={!resolved.initCommandEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setInitCommand(false) }}>{t('initCommandOff')}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="dut-field">
+          <div className="dut-field-top">
+            <span className="dut-label">{t('whaleIndicator')}<Hint text={t('whaleIndicatorHint')} /></span>
+            <div className="dut-controls">
+              <div className="dut-seg">
+                <button type="button" className={resolved.whaleIndicatorEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setWhaleIndicator(true) }}>{t('whaleIndicatorOn')}</button>
+                <button type="button" className={!resolved.whaleIndicatorEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setWhaleIndicator(false) }}>{t('whaleIndicatorOff')}</button>
               </div>
             </div>
           </div>
@@ -1401,4 +1429,33 @@ export function apply(ctx: ClientContext): void {
     sync()
     return controller.subscribe(sync)
   }, 'dsh-ui-tweaks: /init command')
+
+  // Whale working indicator: the brand whale centered above the composer
+  // card — translucent and still while idle, swimming while the model works.
+  // The dock entry is registered only while the whaleIndicatorEnabled toggle
+  // is on, so off costs nothing; styles ride the same toggle so an unused
+  // keyframes rule never lingers in <head>.
+  ctx.effect(() => {
+    let disposeEntry: (() => void) | undefined
+    let disposeStyles: (() => void) | undefined
+    const sync = (): void => {
+      const enabled = controller.getSnapshot().value?.whaleIndicatorEnabled === true
+      if (enabled && disposeEntry === undefined) {
+        disposeStyles = installWhaleStyles()
+        disposeEntry = ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+          name: 'conversation.input.dock',
+          id: 'whale',
+          order: 30,
+          inject: () => ({ sessionsService: ctx.sessions }),
+        }, WhaleIndicator))
+      } else if (!enabled && disposeEntry !== undefined) {
+        disposeEntry()
+        disposeEntry = undefined
+        disposeStyles?.()
+        disposeStyles = undefined
+      }
+    }
+    sync()
+    return controller.subscribe(sync)
+  }, 'dsh-ui-tweaks: whale indicator')
 }

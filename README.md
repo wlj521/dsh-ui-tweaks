@@ -9,9 +9,13 @@
 | ![对话时间线](assets/timeline.png) | ![Claude Desktop 表格样式](assets/table.png) |
 | **对话时间线**：右侧竖轨，悬停展开消息预览、点击跳转、随滚动高亮当前位置，自动避让右侧边栏 | **表格样式**：Claude Desktop 浅灰圆角卡片风格 |
 | ![对话框宽度](assets/dialog_box.png) | ![设置面板](assets/settings.png) |
-| **对话框宽度**：消息列、输入框、统计栏同步变宽 | **设置面板**：字体大小 / 表格样式 / 对话框宽度 / 时间线 / Git 状态栏 |
-| ![GitBar](assets/git.png) | |
-| **GitBar**：输入框工具行内的 git 状态胶囊（分支在权限旁、差异在模型前），支持分支切换、删除、推送到远程，差异面板内可直接提交 | |
+| **对话框宽度**：消息列、输入框、统计栏同步变宽 | **设置面板**：字体大小 / 代码字号 / 行高 / 表格样式 / 对话框宽度 / 时间线 / Git 状态栏 / 鲸鱼指示器等功能开关 |
+| ![GitBar](assets/git.png) | ![分支面板](assets/branch.png) |
+| **GitBar**：输入框工具行内的 git 状态胶囊（分支在权限旁、差异在模型前），支持分支切换、删除、推送到远程，差异面板内可直接提交 | **分支面板**：点击分支胶囊向上弹出——本地 / 远程分支列表，点击即切换，支持删除、推送远程，底部可新建分支 |
+| ![差异面板](assets/gitdiff.png) | ![终端面板](assets/terminal.png) |
+| **差异面板**：文件列表 + 逐文件 diff（默认只显示有差异的 hunk），底部提交区可提交 / 提交并推送，宽度可拖动 | **终端面板**：真 PTY 终端（xterm.js + WebSocket），完整终端交互，宽度可拖动、一键半屏 |
+| ![打开项目](assets/explorer.png) | |
+| **打开项目**：会话头部的图标菜单——用资源管理器 / VS Code / IDEA / GoLand / WebStorm / PyCharm 打开当前项目；旁边的终端、差异图标一键唤出对应面板 | |
 | ![归档管理](assets/archive.png) | ![MCP 管理](assets/mcp.png) |
 | **归档管理**：设置中的「归档」页面，列出所有已归档会话（标题 / 工作区 / 相对时间），支持恢复与彻底删除 | **MCP 管理**：设置中的「MCP 管理」页面，列出所有配置的 MCP 服务器及其运行状态，支持添加 / 编辑 / 启用停用 / 删除 / 重启 |
 
@@ -35,6 +39,7 @@
   - **启用 / 停用 / 删除 / 重启**：改动直接写入 profile 的 `cordis.patch.yml`（保持注释与结构），DSH 内置补丁监视器热重载加载器——被改动的那个服务器**实时**启动/停止/重启，不影响其它服务器；重启单独运行时生效、不改配置。环境变量值仅在本机浏览器可见，用于编辑。
   - 新增后请确认服务器能成功连接（状态为「运行中」并注册了工具）；启动失败的实例会显示「错误」并可重启重试。
 - **`/init` 斜杠命令（可开关，默认关闭）**：在输入框键入 `/init`（斜杠菜单中可见「分析当前项目并生成 AGENTS.md」），回车或点击后弹出语言选择——**中文提示词 / 英文提示词**，选中即向当前会话提交一段完整的 AGENTS.md 引导提示词：代理会自行探索项目（README、清单文件、构建脚本、关键目录），然后在仓库根目录**生成或改进**一份面向未来 AI 编码代理的 `AGENTS.md`（项目简介、常用命令、代码风格约定、目录导览、注意事项；已存在时原地改进不丢内容）。纯客户端实现；在「界面调整」中开启后生效。
+- **鲸鱼指示器（可开关，默认关闭）**：输入框卡片**右上角**停一只品牌小鲸鱼（侧边栏同款 FishLogo，Claude Desktop 小螃蟹的同款位置），身下有**蓝色海浪**缓缓漂移。鲸鱼**常驻原色**（主题主标签色，浅色模式即黑色）：**空闲时静静浮在海浪上，悬停或点击它也会游起来（彩蛋）**；**模型工作时开始游泳动画**（原地上下浮动 + 左右轻摆），直到干完活。模型工作状态取自当前会话的 `running` 标志，并叠加输入机的 claimed/submitting 阶段，覆盖「按下回车到代理真正开跑」的间隙。鲸鱼几何为内置的 FishLogo 路径（与 DSH 主程序逐字节一致），挂载时仍会尝试从侧边栏实时徽标抓取最新版以跟随官方换标；动画纯 CSS、颜色走 DSH 主题变量（深浅色模式均正常），`prefers-reduced-motion` 时降级为静止。
 
 所有修改**即时生效**，无需刷新。同一份配置也可以直接在设置文档里手改：
 
@@ -47,6 +52,7 @@ ui-tweaks:
   gitBarEnabled: true     # 默认 false（关闭），设为 true 开启 GitBar
   archiveManagerEnabled: true   # 默认 false（关闭），设为 true 开启「归档」页面
   initCommandEnabled: true      # 默认 false（关闭），设为 true 开启 /init 斜杠命令
+  whaleIndicatorEnabled: true   # 默认 false（关闭），设为 true 开启鲸鱼指示器
   # suggestModel: 'provider:model'   # 可选：指定生成提交说明的模型
 ```
 
@@ -97,6 +103,7 @@ npx -y @deepseek-ai/dsh plugin --profile web add .        # 从本目录作为 b
 - **GitBar**（`src/client/gitbar.tsx`）：拆成两个组件，分别挂在 composer 工具行**内部**的 `conversation.input.left`（分支，位于权限控件之后）与 `conversation.input.right`（差异，位于模型选择之前）插槽——输入区不再有独立的一行胶囊。样式与输入框原生控件一致（28px 高、radius 24px、`--dsw-alias-label-secondary` 颜色、hover 用 `--dsw-alias-interactive-bg-hover`）。工具行是 DSH 的 inline-size 容器（`container-type:inline-size`），胶囊用 `@container` 查询做挤压降级：行宽 <700px 隐藏差异的“· K 个文件”元信息，<620px 全部收敛为纯图标，避免与权限 / 模型选择重叠；分支名另加 `text-overflow:ellipsis` 上限。差异面板展开时通过 `#root { margin-right }` 把对话区往左挤，时间线 rail（锚定消息区右缘）因此不被遮挡；面板内的高度分配采用「只给被拖的那一段显式高度、diff 段 `flex:1` 吃掉余量」的方式，配合 45% 上限，拖动永远不会撑破面板。独立 commit 胶囊已移除，提交保留在差异面板底部的提交区。
 - **归档管理**（服务端 `src/archive.ts` + 浏览器端 `src/client/archive.tsx`）：作为 `settings.section` 插槽（设置面板中的「归档」页面）。列表数据直接来自框架标准 hook `useSessions` + `useWorkspaces`（`archivedSessionIds`），无需额外查询；操作走同源路由 `/_dsh/ui-tweaks/archive`。**恢复**把会话 id 从工作区存储域的 `archivedSessionIds` 全局单例中移除（DSH 只暴露单向 `archiveSession`，无公开的取消归档 API，故直接写活体存储域句柄并同步工作区注册表的内存缓存）。**彻底删除**依次：拒绝正在运行的会话（agent `status === 'running'` 才拒绝，空闲会话先 `cancel` + `whenIdle`）→ 用持久化后端自身的 `findLog` 定位并 `rm` 会话日志目录 → 调用公开的 `WorkspaceEntity.detachSession` 摘除工作区记账 → 从归档集合移除并同步注册表内存缓存与 header 索引 → 清理 `session_projcache` → 从内存 SessionStore 摘除该会话（触发 `host/session-removed` 实时消失）。
 - **MCP 管理**（服务端 `src/mcp.ts` + 浏览器端 `src/client/mcp.tsx`）：同源路由 `/_dsh/ui-tweaks/mcp`。**列表**枚举 `ctx.loader.entries()` 中 `@deepseek-ai/dsh-mcp-client` 实例（id / config / fiber 状态：active=2、failed=3 等）并按 `mcp__<serverName>__` 前缀从工具注册表统计工具。**重启**调用 `entry.fiber.restart()`（仅运行时）。**添加 / 编辑 / 删除 / 启用停用**通过 `yaml`（eemeli）的 Document API 直接编辑 profile 的 `cordis.patch.yml`（保留注释与未知补丁结构，原子写 tmp+rename），随后由 DSH 内置的 `watchUserPatches` 热重载监视器重新应用补丁——`cordis-plugin-include` 对根组做**增量** `root.update`，因此只有被改动的 MCP 实例会重启，其它不受影响；环境变量值返回给同源浏览器（本机配置编辑需要），YAML 模式在服务端用 `yaml.parse` + 白名单校验。
+- **鲸鱼指示器**（`src/client/whale.tsx`）：挂在 `conversation.input.dock`（输入框卡片上方的整行插槽）。dock 行本身比卡片宽（卡片被 InputBar root 以 `--dsh-composer-card-max-width` 封顶居中、两侧留 `--dsh-composer-side-clearance`），因此鲸鱼行**复刻卡片的几何**——同 max-width、同样居中、同样侧留白——再右对齐 + 6px `translateY`，鲸鱼恰好「骑」在卡片右上角（Claude Desktop 小螃蟹位置），自定义对话框宽度时也自动跟随。开关走与 /init 相同的「按需注册」编排——`whaleIndicatorEnabled` 打开时才注册插槽与样式，关闭即卸载。工作状态 = 会话列表 feed 中当前会话的 `running`（`useSyncExternalStore` 直订）∪ 输入机 `phase` 的 claimed/submitting；鲸鱼 SVG 路径内置为常量，挂载时以 `[class*="brandMark"]` 从侧边栏实时徽标尝试刷新（class 前缀是构建哈希，按后缀匹配以抗版本变化），取不到则回退内置几何。
 
 ## 协议
 

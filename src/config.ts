@@ -80,6 +80,13 @@ export interface UITweaksConfig {
    */
   initCommandEnabled?: boolean
   /**
+   * Whether the whale working indicator is shown: a little brand whale
+   * centered above the input box — translucent and still while the model is
+   * idle, swimming while it works. Off by default; users turn it on in
+   * Settings.
+   */
+  whaleIndicatorEnabled?: boolean
+  /**
    * Optional explicit `provider:model` for generating commit messages with the
    * LLM (e.g. `jiyuanlvdong:deepseek-v4-flash-0731`). When unset, the first
    * registered provider/model is used; when the LLM service is unavailable or
@@ -126,6 +133,9 @@ export const DEFAULT_MCP_MANAGER_ENABLED = false
 /** The /init slash command defaults to off; users turn it on in Settings. */
 export const DEFAULT_INIT_COMMAND_ENABLED = false
 
+/** The whale working indicator defaults to off; users turn it on in Settings. */
+export const DEFAULT_WHALE_INDICATOR_ENABLED = false
+
 /** Configuration schema with documented defaults. */
 export const Config: Schema<UITweaksConfig> = z.object({
   fontSize: z.number().min(10).max(32).default(16),
@@ -139,6 +149,7 @@ export const Config: Schema<UITweaksConfig> = z.object({
   archiveManagerEnabled: z.boolean().default(DEFAULT_ARCHIVE_MANAGER_ENABLED),
   mcpManagerEnabled: z.boolean().default(DEFAULT_MCP_MANAGER_ENABLED),
   initCommandEnabled: z.boolean().default(DEFAULT_INIT_COMMAND_ENABLED),
+  whaleIndicatorEnabled: z.boolean().default(DEFAULT_WHALE_INDICATOR_ENABLED),
   suggestModel: z.string(),
 })
 
@@ -164,6 +175,8 @@ export interface ResolvedUITweaksConfig {
   mcpManagerEnabled: boolean
   /** Whether the /init slash command is registered. */
   initCommandEnabled: boolean
+  /** Whether the whale working indicator above the input is shown. */
+  whaleIndicatorEnabled: boolean
   /** Optional `provider:model` override for LLM commit-message generation. */
   suggestModel?: string
 }
@@ -192,7 +205,8 @@ export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConf
   const archiveManagerEnabled = config.archiveManagerEnabled ?? DEFAULT_ARCHIVE_MANAGER_ENABLED
   const mcpManagerEnabled = config.mcpManagerEnabled ?? DEFAULT_MCP_MANAGER_ENABLED
   const initCommandEnabled = config.initCommandEnabled ?? DEFAULT_INIT_COMMAND_ENABLED
-  const resolved: ResolvedUITweaksConfig = { fontSize, codeFontScale, codeFontSize, lineHeight, tableStyle, dialogWidth, timelineEnabled, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled }
+  const whaleIndicatorEnabled = config.whaleIndicatorEnabled ?? DEFAULT_WHALE_INDICATOR_ENABLED
+  const resolved: ResolvedUITweaksConfig = { fontSize, codeFontScale, codeFontSize, lineHeight, tableStyle, dialogWidth, timelineEnabled, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled, whaleIndicatorEnabled }
   if (typeof config.suggestModel === 'string' && config.suggestModel !== '') {
     resolved.suggestModel = config.suggestModel
   }
