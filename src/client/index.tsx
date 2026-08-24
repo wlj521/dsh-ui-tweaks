@@ -27,6 +27,7 @@ import { BranchChipEntry, HeaderUtilities, installGitBarStyles, installHeroChip 
 import { ArchiveSection, installArchiveStyles } from './archive.tsx'
 import { McpSection, installMcpStyles } from './mcp.tsx'
 import { WhaleIndicator, installWhaleStyles } from './whale.tsx'
+import { installTaskNotifier, previewAlerts, requestNotifyPermission } from './notifier.ts'
 
 const NS = 'ui-tweaks'
 const SETTINGS_ROUTE = '/_dsh/ui-tweaks/settings'
@@ -72,6 +73,20 @@ interface TweaksValue {
   initCommandEnabled?: boolean
   /** Whether the whale working indicator above the input is shown. */
   whaleIndicatorEnabled?: boolean
+  /** Whether task notifications are active. Keep in sync with src/config.ts. */
+  notificationsEnabled?: boolean
+  /** Alert only while the tab is hidden or unfocused. */
+  notifyOnlyWhenHidden?: boolean
+  /** Alert when a session completes its turn. */
+  notifyOnComplete?: boolean
+  /** Alert when a session blocks on an approval, plan review or question. */
+  notifyOnInteraction?: boolean
+  /** Blink an unread counter into the tab title. */
+  notifyTitleFlash?: boolean
+  /** Fire desktop-level Web Notifications. */
+  notifySystemNotification?: boolean
+  /** Play the synthesized two-note chime. */
+  notifySound?: boolean
 }
 
 interface ResolvedTweaks {
@@ -87,6 +102,13 @@ interface ResolvedTweaks {
   mcpManagerEnabled: boolean
   initCommandEnabled: boolean
   whaleIndicatorEnabled: boolean
+  notificationsEnabled: boolean
+  notifyOnlyWhenHidden: boolean
+  notifyOnComplete: boolean
+  notifyOnInteraction: boolean
+  notifyTitleFlash: boolean
+  notifySystemNotification: boolean
+  notifySound: boolean
 }
 
 interface UITweaksSnapshot {
@@ -190,6 +212,30 @@ const en = {
   whaleIndicatorHint: 'A little whale above the input box: translucent while idle, swimming while the model works.',
   whaleIndicatorOn: 'On',
   whaleIndicatorOff: 'Off',
+  sectionNotifications: 'Task alerts',
+  notifications: 'Enable alerts',
+  notificationsHint: 'Call you back while the tab is in the background: a session finishes its turn, or one starts waiting for your approval, plan review or answer. The switches below apply only while this is on.',
+  notifyOn: 'On',
+  notifyOff: 'Off',
+  notifyOnComplete: 'Alert on finish',
+  notifyOnCompleteHint: 'Fire when a session completes its turn — the one you watch or any running in the background.',
+  notifyOnInteraction: 'Alert on interaction',
+  notifyOnInteractionHint: 'Fire when a session waits on you: an approval, a plan review, or a question from the agent.',
+  notifyOnlyWhenHidden: 'Only when hidden',
+  notifyOnlyWhenHiddenHint: 'Stay quiet while you are looking at this page; alert only once the tab is hidden or unfocused.',
+  notifyTitleFlash: 'Tab title flash',
+  notifyTitleFlashHint: 'Blink an unread counter into the tab title until you come back.',
+  notifySystemNotification: 'System notifications',
+  notifySystemNotificationHint: 'Desktop-level notifications; click one to jump straight to that session. Permission is requested when enabled.',
+  notifySound: 'Chime',
+  notifySoundHint: 'A soft two-note motif — rising when work finishes, falling when it needs you.',
+  notifyTest: 'Test',
+  notifyTitleDone: 'Task finished',
+  notifyTitlePending: 'Needs you',
+  bodyComplete: '✅ {title} finished its turn.',
+  bodyApproval: '⏸ {title} is waiting for your approval.',
+  bodyPlan: '📋 {title} has a plan awaiting your review.',
+  bodyQuestion: '❓ {title} asked you a question.',
   mcpServerDetail: 'Configured in the profile cordis.patch.yml as @deepseek-ai/dsh-mcp-client instances; add / edit / disable / delete write to that file and apply live.',
   archiveNav: 'Archive',
   archiveTitle: 'Archived sessions',
@@ -370,6 +416,30 @@ const zh: Record<LocaleKey, string> = {
   whaleIndicatorHint: '输入框上方的小鲸鱼：空闲时半透明静止，模型工作时开始游泳动画。',
   whaleIndicatorOn: '开启',
   whaleIndicatorOff: '关闭',
+  sectionNotifications: '任务提醒',
+  notifications: '启用提醒',
+  notificationsHint: '标签页在后台时唤你回来：会话完成了任务，或开始等待你的审批、计划确认或回答。下方开关仅在总开关开启时生效。',
+  notifyOn: '开启',
+  notifyOff: '关闭',
+  notifyOnComplete: '完成提醒',
+  notifyOnCompleteHint: '会话结束一轮任务时提醒——无论你正看着它，还是它在后台运行。',
+  notifyOnInteraction: '交互提醒',
+  notifyOnInteractionHint: '会话等待你操作时提醒：审批、计划确认，或模型向你提问。',
+  notifyOnlyWhenHidden: '仅页面不可见时',
+  notifyOnlyWhenHiddenHint: '你正盯着本页时保持安静；切走标签页或最小化窗口后才开始提醒。',
+  notifyTitleFlash: '标题闪烁',
+  notifyTitleFlashHint: '在浏览器标签页标题中闪烁未读计数，直到你回到页面。',
+  notifySystemNotification: '系统通知',
+  notifySystemNotificationHint: '桌面级通知；点击通知可直达对应会话。开启时会向浏览器申请通知权限。',
+  notifySound: '提示音',
+  notifySoundHint: '轻柔的双音提示——上行表示完成，下行表示需要你处理。',
+  notifyTest: '测试',
+  notifyTitleDone: '任务完成',
+  notifyTitlePending: '需要你处理',
+  bodyComplete: '✅ 「{title}」的任务已完成。',
+  bodyApproval: '⏸ 「{title}」正在等待你的审批。',
+  bodyPlan: '📋 「{title}」有计划待确认。',
+  bodyQuestion: '❓ 「{title}」向你提问了。',
   mcpServerDetail: 'MCP 服务器配置在 profile 的 cordis.patch.yml（@deepseek-ai/dsh-mcp-client 实例）；添加 / 编辑 / 停用 / 删除会写入该文件，改动实时生效。',
   archiveNav: '归档',
   archiveTitle: '已归档会话',
@@ -490,6 +560,13 @@ function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
     mcpManagerEnabled: value?.mcpManagerEnabled ?? false,
     initCommandEnabled: value?.initCommandEnabled ?? false,
     whaleIndicatorEnabled: value?.whaleIndicatorEnabled ?? false,
+    notificationsEnabled: value?.notificationsEnabled ?? false,
+    notifyOnlyWhenHidden: value?.notifyOnlyWhenHidden ?? true,
+    notifyOnComplete: value?.notifyOnComplete ?? true,
+    notifyOnInteraction: value?.notifyOnInteraction ?? true,
+    notifyTitleFlash: value?.notifyTitleFlash ?? true,
+    notifySystemNotification: value?.notifySystemNotification ?? true,
+    notifySound: value?.notifySound ?? false,
   }
 }
 
@@ -710,6 +787,15 @@ const BASE_CSS = `
 .dut-grid>.dut-section-label{grid-column:1/-1;background:var(--dsw-alias-bg-layer-1)}
 .dut-grid .dut-field{background:var(--dsw-alias-bg-layer-1)}
 .dut-grid .dut-field+.dut-field{border-top:none}
+/* Subordinate rows (task-alert sub-toggles under the master switch): dimmed
+   whole-row so the dependency reads at a glance; buttons disable separately. */
+.dut-grid .dut-field.dut-sub-off{opacity:.5}
+/* Task-alerts section packs its six sub-toggle cells TWO per row (the master
+   row and the section label span all columns); very narrow panels fall back
+   to a single column so nothing squeezes. */
+.dut-grid.dut-grid-half{grid-template-columns:repeat(2,minmax(0,1fr))}
+.dut-grid .dut-field.dut-span-all{grid-column:1/-1}
+@media (max-width:640px){.dut-grid.dut-grid-half{grid-template-columns:minmax(0,1fr)}}
 .dut-field-top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .dut-field-top>span{font-size:13.5px;font-weight:600}
 .dut-label{display:inline-flex;align-items:center;gap:6px}
@@ -1004,6 +1090,37 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     void controller.set('whaleIndicatorEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
+  /** Master switch; enabling also asks for notification permission inside this click gesture. */
+  const setNotifications = (value: boolean): void => {
+    if (value) requestNotifyPermission()
+    void controller.set('notificationsEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
+  }
+
+  /** Channel/event toggles share one setter shape; the system-notification one requests permission too. */
+  const setNotifyField = (field: 'notifyOnlyWhenHidden' | 'notifyOnComplete' | 'notifyOnInteraction' | 'notifyTitleFlash' | 'notifySystemNotification' | 'notifySound', value: boolean): void => {
+    if (field === 'notifySystemNotification' && value) requestNotifyPermission()
+    void controller.set(field, value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
+  }
+
+  const testNotifications = (): void => {
+    requestNotifyPermission()
+    previewAlerts(
+      {
+        titleFlash: resolved.notifyTitleFlash,
+        systemNotification: resolved.notifySystemNotification,
+        sound: resolved.notifySound,
+      },
+      {
+        notifyTitleDone: t('notifyTitleDone'),
+        notifyTitlePending: t('notifyTitlePending'),
+        bodyComplete: t('bodyComplete'),
+        bodyApproval: t('bodyApproval'),
+        bodyPlan: t('bodyPlan'),
+        bodyQuestion: t('bodyQuestion'),
+      },
+    )
+  }
+
   const reset = (field: 'fontSize' | 'lineHeight' | 'tableStyle' | 'dialogWidth' | 'timelineEnabled' | 'gitBarEnabled' | 'archiveManagerEnabled' | 'mcpManagerEnabled'): void => {
     void controller.unset(field).then(() => { setStatus('resetDone') }).catch(() => { setStatus('unavailable') })
   }
@@ -1221,6 +1338,87 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
               <div className="dut-seg">
                 <button type="button" className={resolved.whaleIndicatorEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setWhaleIndicator(true) }}>{t('whaleIndicatorOn')}</button>
                 <button type="button" className={!resolved.whaleIndicatorEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setWhaleIndicator(false) }}>{t('whaleIndicatorOff')}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section className="dut-panel dut-grid dut-grid-half">
+        <div className="dut-section-label">{t('sectionNotifications')}</div>
+        <div className="dut-field dut-span-all">
+          <div className="dut-field-top">
+            <span className="dut-label">{t('notifications')}<Hint text={t('notificationsHint')} /></span>
+            <div className="dut-controls">
+              <div className="dut-seg">
+                <button type="button" className={resolved.notificationsEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setNotifications(true) }}>{t('notifyOn')}</button>
+                <button type="button" className={!resolved.notificationsEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setNotifications(false) }}>{t('notifyOff')}</button>
+              </div>
+              <button type="button" className="dut-btn" disabled={!resolved.notificationsEnabled} onClick={() => { testNotifications() }}>{t('notifyTest')}</button>
+            </div>
+          </div>
+        </div>
+        <div className={'dut-field' + (!resolved.notificationsEnabled ? ' dut-sub-off' : '')}>
+          <div className="dut-field-top">
+            <span className="dut-label">{t('notifyOnComplete')}<Hint text={t('notifyOnCompleteHint')} /></span>
+            <div className="dut-controls">
+              <div className="dut-seg">
+                <button type="button" className={resolved.notifyOnComplete ? 'dut-seg-active' : ''} disabled={!writable || !resolved.notificationsEnabled} onClick={() => { setNotifyField('notifyOnComplete', true) }}>{t('notifyOn')}</button>
+                <button type="button" className={!resolved.notifyOnComplete ? 'dut-seg-active' : ''} disabled={!writable || !resolved.notificationsEnabled} onClick={() => { setNotifyField('notifyOnComplete', false) }}>{t('notifyOff')}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className={'dut-field' + (!resolved.notificationsEnabled ? ' dut-sub-off' : '')}>
+          <div className="dut-field-top">
+            <span className="dut-label">{t('notifyOnInteraction')}<Hint text={t('notifyOnInteractionHint')} /></span>
+            <div className="dut-controls">
+              <div className="dut-seg">
+                <button type="button" className={resolved.notifyOnInteraction ? 'dut-seg-active' : ''} disabled={!writable || !resolved.notificationsEnabled} onClick={() => { setNotifyField('notifyOnInteraction', true) }}>{t('notifyOn')}</button>
+                <button type="button" className={!resolved.notifyOnInteraction ? 'dut-seg-active' : ''} disabled={!writable || !resolved.notificationsEnabled} onClick={() => { setNotifyField('notifyOnInteraction', false) }}>{t('notifyOff')}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className={'dut-field' + (!resolved.notificationsEnabled ? ' dut-sub-off' : '')}>
+          <div className="dut-field-top">
+            <span className="dut-label">{t('notifyOnlyWhenHidden')}<Hint text={t('notifyOnlyWhenHiddenHint')} /></span>
+            <div className="dut-controls">
+              <div className="dut-seg">
+                <button type="button" className={resolved.notifyOnlyWhenHidden ? 'dut-seg-active' : ''} disabled={!writable || !resolved.notificationsEnabled} onClick={() => { setNotifyField('notifyOnlyWhenHidden', true) }}>{t('notifyOn')}</button>
+                <button type="button" className={!resolved.notifyOnlyWhenHidden ? 'dut-seg-active' : ''} disabled={!writable || !resolved.notificationsEnabled} onClick={() => { setNotifyField('notifyOnlyWhenHidden', false) }}>{t('notifyOff')}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className={'dut-field' + (!resolved.notificationsEnabled ? ' dut-sub-off' : '')}>
+          <div className="dut-field-top">
+            <span className="dut-label">{t('notifyTitleFlash')}<Hint text={t('notifyTitleFlashHint')} /></span>
+            <div className="dut-controls">
+              <div className="dut-seg">
+                <button type="button" className={resolved.notifyTitleFlash ? 'dut-seg-active' : ''} disabled={!writable || !resolved.notificationsEnabled} onClick={() => { setNotifyField('notifyTitleFlash', true) }}>{t('notifyOn')}</button>
+                <button type="button" className={!resolved.notifyTitleFlash ? 'dut-seg-active' : ''} disabled={!writable || !resolved.notificationsEnabled} onClick={() => { setNotifyField('notifyTitleFlash', false) }}>{t('notifyOff')}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className={'dut-field' + (!resolved.notificationsEnabled ? ' dut-sub-off' : '')}>
+          <div className="dut-field-top">
+            <span className="dut-label">{t('notifySystemNotification')}<Hint text={t('notifySystemNotificationHint')} /></span>
+            <div className="dut-controls">
+              <div className="dut-seg">
+                <button type="button" className={resolved.notifySystemNotification ? 'dut-seg-active' : ''} disabled={!writable || !resolved.notificationsEnabled} onClick={() => { setNotifyField('notifySystemNotification', true) }}>{t('notifyOn')}</button>
+                <button type="button" className={!resolved.notifySystemNotification ? 'dut-seg-active' : ''} disabled={!writable || !resolved.notificationsEnabled} onClick={() => { setNotifyField('notifySystemNotification', false) }}>{t('notifyOff')}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className={'dut-field' + (!resolved.notificationsEnabled ? ' dut-sub-off' : '')}>
+          <div className="dut-field-top">
+            <span className="dut-label">{t('notifySound')}<Hint text={t('notifySoundHint')} /></span>
+            <div className="dut-controls">
+              <div className="dut-seg">
+                <button type="button" className={resolved.notifySound ? 'dut-seg-active' : ''} disabled={!writable || !resolved.notificationsEnabled} onClick={() => { setNotifyField('notifySound', true) }}>{t('notifyOn')}</button>
+                <button type="button" className={!resolved.notifySound ? 'dut-seg-active' : ''} disabled={!writable || !resolved.notificationsEnabled} onClick={() => { setNotifyField('notifySound', false) }}>{t('notifyOff')}</button>
               </div>
             </div>
           </div>
@@ -1472,4 +1670,49 @@ export function apply(ctx: ClientContext): void {
     sync()
     return controller.subscribe(sync)
   }, 'dsh-ui-tweaks: whale indicator')
+
+  // Task notifications: watch every session on the list feed and raise
+  // tab-title / system-notification / chime alerts when one finishes its turn
+  // or starts blocking on the user. Registered only while the master toggle
+  // is on; sub-toggles are re-read live through readState, so flipping them
+  // never reinstalls the watcher.
+  ctx.effect(() => {
+    let disposeNotifier: (() => void) | undefined
+    const sync = (): void => {
+      const enabled = controller.getSnapshot().value?.notificationsEnabled === true
+      if (enabled && disposeNotifier === undefined) {
+        disposeNotifier = installTaskNotifier({
+          sessionsService: ctx.sessions,
+          text: {
+            notifyTitleDone: t('notifyTitleDone'),
+            notifyTitlePending: t('notifyTitlePending'),
+            bodyComplete: t('bodyComplete'),
+            bodyApproval: t('bodyApproval'),
+            bodyPlan: t('bodyPlan'),
+            bodyQuestion: t('bodyQuestion'),
+          },
+          readState: () => {
+            const value = controller.getSnapshot().value
+            return {
+              options: {
+                onlyWhenHidden: value?.notifyOnlyWhenHidden ?? true,
+                onComplete: value?.notifyOnComplete ?? true,
+                onInteraction: value?.notifyOnInteraction ?? true,
+              },
+              channels: {
+                titleFlash: value?.notifyTitleFlash ?? true,
+                systemNotification: value?.notifySystemNotification ?? true,
+                sound: value?.notifySound ?? false,
+              },
+            }
+          },
+        })
+      } else if (!enabled && disposeNotifier !== undefined) {
+        disposeNotifier()
+        disposeNotifier = undefined
+      }
+    }
+    sync()
+    return controller.subscribe(sync)
+  }, 'dsh-ui-tweaks: task notifications')
 }

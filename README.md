@@ -1,6 +1,6 @@
 # dsh-ui-tweaks
 
-[DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/)（DSH）Web UI 插件：在设置面板中实时调整对话界面——字体大小、表格样式、对话框宽度、可开关的对话时间线、**GitBar**（输入框工具行内的 git 状态胶囊：分支在权限旁、差异在模型前），以及可开关的**归档管理**（设置中的「归档」页面：查看、恢复或彻底删除已归档会话）。
+[DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/)（DSH）Web UI 插件：在设置面板中实时调整对话界面——字体大小、表格样式、对话框宽度、可开关的对话时间线、**GitBar**（输入框工具行内的 git 状态胶囊：分支在权限旁、差异在模型前），可开关的**归档管理**（设置中的「归档」页面：查看、恢复或彻底删除已归档会话），以及可开关的**任务提醒**（会话完成或需要交互时，通过标签页标题闪烁 / 系统通知 / 提示音把你唤回来）。
 
 ## 预览
 
@@ -40,6 +40,11 @@
   - 新增后请确认服务器能成功连接（状态为「运行中」并注册了工具）；启动失败的实例会显示「错误」并可重启重试。
 - **`/init` 斜杠命令（可开关，默认关闭）**：在输入框键入 `/init`（斜杠菜单中可见「分析当前项目并生成 AGENTS.md」），回车或点击后弹出语言选择——**中文提示词 / 英文提示词**，选中即向当前会话提交一段完整的 AGENTS.md 引导提示词：代理会自行探索项目（README、清单文件、构建脚本、关键目录），然后在仓库根目录**生成或改进**一份面向未来 AI 编码代理的 `AGENTS.md`（项目简介、常用命令、代码风格约定、目录导览、注意事项；已存在时原地改进不丢内容）。纯客户端实现；在「界面调整」中开启后生效。
 - **鲸鱼指示器（可开关，默认关闭）**：输入框卡片**右上角**停一只品牌小鲸鱼（侧边栏同款 FishLogo，Claude Desktop 小螃蟹的同款位置），身下有**蓝色海浪**缓缓漂移。鲸鱼**常驻原色**（主题主标签色，浅色模式即黑色）：**空闲时静静浮在海浪上，悬停或点击它也会游起来（彩蛋）**；**模型工作时开始游泳动画**（原地上下浮动 + 左右轻摆），直到干完活。模型工作状态取自当前会话的 `running` 标志，并叠加输入机的 claimed/submitting 阶段，覆盖「按下回车到代理真正开跑」的间隙。鲸鱼几何为内置的 FishLogo 路径（与 DSH 主程序逐字节一致），挂载时仍会尝试从侧边栏实时徽标抓取最新版以跟随官方换标；动画纯 CSS、颜色走 DSH 主题变量（深浅色模式均正常），`prefers-reduced-motion` 时降级为静止。
+- **任务提醒（可开关，默认关闭）**：挂着任务切去干别的时，让浏览器把你喊回来。监听**所有会话**（含后台），两类事件：**完成提醒**（`running` 落下，或宿主 `completed` 绿点升沿）与**交互提醒**（会话开始等待你的审批 / 计划确认 / 模型提问——与侧边栏黄点同一数据源 `pendingInteraction`）。三个独立通道：
+  - **标题闪烁**：`(2) 🔔 原标题` 交替闪烁未读计数，回到页面自动恢复原标题并清零；
+  - **系统通知**（Web Notifications API）：桌面级通知，**点击直达对应会话**；权限申请挂在设置开关的点击手势上；系统响铃与自有提示音互斥，绝不双重响；
+  - **提示音**：WebAudio 现场合成的双音动机——上行=完成、下行=需要你处理，无音频资源文件。
+  - 「仅页面不可见时」默认开启（正盯着页面时不打扰）；首帧快照只武装不触发（刷新页面不刷屏）；只在跳变沿触发 + 同会话同类事件 2 秒冷却（防重连抖动）；子代理子会话不计（父会话承载整轮）。设置里有「测试」按钮，一键预览权限申请与通道效果。
 
 所有修改**即时生效**，无需刷新。同一份配置也可以直接在设置文档里手改：
 
@@ -53,6 +58,7 @@ ui-tweaks:
   archiveManagerEnabled: true   # 默认 false（关闭），设为 true 开启「归档」页面
   initCommandEnabled: true      # 默认 false（关闭），设为 true 开启 /init 斜杠命令
   whaleIndicatorEnabled: true   # 默认 false（关闭），设为 true 开启鲸鱼指示器
+  notificationsEnabled: true    # 默认 false（关闭），设为 true 开启任务提醒（事件过滤与三个通道在设置里逐项开关）
   # suggestModel: 'provider:model'   # 可选：指定生成提交说明的模型
 ```
 
@@ -104,6 +110,7 @@ npx -y @deepseek-ai/dsh plugin --profile web add .        # 从本目录作为 b
 - **归档管理**（服务端 `src/archive.ts` + 浏览器端 `src/client/archive.tsx`）：作为 `settings.section` 插槽（设置面板中的「归档」页面）。列表数据直接来自框架标准 hook `useSessions` + `useWorkspaces`（`archivedSessionIds`），无需额外查询；操作走同源路由 `/_dsh/ui-tweaks/archive`。**恢复**把会话 id 从工作区存储域的 `archivedSessionIds` 全局单例中移除（DSH 只暴露单向 `archiveSession`，无公开的取消归档 API，故直接写活体存储域句柄并同步工作区注册表的内存缓存）。**彻底删除**依次：拒绝正在运行的会话（agent `status === 'running'` 才拒绝，空闲会话先 `cancel` + `whenIdle`）→ 用持久化后端自身的 `findLog` 定位并 `rm` 会话日志目录 → 调用公开的 `WorkspaceEntity.detachSession` 摘除工作区记账 → 从归档集合移除并同步注册表内存缓存与 header 索引 → 清理 `session_projcache` → 从内存 SessionStore 摘除该会话（触发 `host/session-removed` 实时消失）。
 - **MCP 管理**（服务端 `src/mcp.ts` + 浏览器端 `src/client/mcp.tsx`）：同源路由 `/_dsh/ui-tweaks/mcp`。**列表**枚举 `ctx.loader.entries()` 中 `@deepseek-ai/dsh-mcp-client` 实例（id / config / fiber 状态：active=2、failed=3 等）并按 `mcp__<serverName>__` 前缀从工具注册表统计工具。**重启**调用 `entry.fiber.restart()`（仅运行时）。**添加 / 编辑 / 删除 / 启用停用**通过 `yaml`（eemeli）的 Document API 直接编辑 profile 的 `cordis.patch.yml`（保留注释与未知补丁结构，原子写 tmp+rename），随后由 DSH 内置的 `watchUserPatches` 热重载监视器重新应用补丁——`cordis-plugin-include` 对根组做**增量** `root.update`，因此只有被改动的 MCP 实例会重启，其它不受影响；环境变量值返回给同源浏览器（本机配置编辑需要），YAML 模式在服务端用 `yaml.parse` + 白名单校验。
 - **鲸鱼指示器**（`src/client/whale.tsx`）：挂在 `conversation.input.dock`（输入框卡片上方的整行插槽）。dock 行本身比卡片宽（卡片被 InputBar root 以 `--dsh-composer-card-max-width` 封顶居中、两侧留 `--dsh-composer-side-clearance`），因此鲸鱼行**复刻卡片的几何**——同 max-width、同样居中、同样侧留白——再右对齐 + 6px `translateY`，鲸鱼恰好「骑」在卡片右上角（Claude Desktop 小螃蟹位置），自定义对话框宽度时也自动跟随。开关走与 /init 相同的「按需注册」编排——`whaleIndicatorEnabled` 打开时才注册插槽与样式，关闭即卸载。工作状态 = 会话列表 feed 中当前会话的 `running`（`useSyncExternalStore` 直订）∪ 输入机 `phase` 的 claimed/submitting；鲸鱼 SVG 路径内置为常量，挂载时以 `[class*="brandMark"]` 从侧边栏实时徽标尝试刷新（class 前缀是构建哈希，按后缀匹配以抗版本变化），取不到则回退内置几何。
+- **任务提醒**（`src/client/notifier.ts`）：纯逻辑模块（无 React），在 `ctx.effect` 中直订 `ctx.sessions.list` 快照流（鲸鱼同款数据源），对全部非空、非子代理会话做前后对比：`running` true→false 且无挂起交互 → 完成事件；`pendingInteraction`（'approval' / 'plan-review' / 'question'，即侧边栏黄点分类）出现 → 交互事件；后台会话的宿主 `completed` 绿点升沿同样计为完成。三通道各自静默降级——标题闪烁用 `setInterval` 交替写 `document.title`，`focus`/`visibilitychange` 时恢复；系统通知带 `tag` 去重、`onclick` 里 `window.focus()` + `sessionsService.open(id)` 直达会话、`silent` 跟随提示音开关避免双重响铃；提示音由 WebAudio 振荡器现场合成双音包络。防打扰：首帧只武装基线、只在跳变沿触发、同会话同类 2s 冷却；「仅页面不可见时」等开关经 `readState` 每拍重读实时生效，改动无需重装监视器。
 
 ## 协议
 

@@ -37,6 +37,11 @@ A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH)
 - **MCP manager (toggleable, off by default)** — an **MCP** page in the Settings dialog listing every configured MCP server (`@deepseek-ai/dsh-mcp-client` loader entries) with its live status, command/url, env vars and registered tools, plus full management: **Add / Edit** (a structured form — instance id, name, stdio or HTTP type, timeout ms, command, args, env — OR raw YAML, both validated), **Enable / Disable / Delete**, and **Restart** (runtime-only). Changes persist to the profile's `cordis.patch.yml` and DSH's built-in patch watcher hot-reloads just that server.
 - **`/init` slash command (toggleable, off by default)** — type `/init` in the composer (the slash menu shows "Analyze this project and generate an AGENTS.md"), pick a prompt language from the popup (**Chinese / English**), and a complete AGENTS.md bootstrap prompt is submitted into the current session: the agent explores the project on its own (README, manifests, build scripts, key directories), then writes or improves a root `AGENTS.md` addressed to future AI coding agents (overview, common commands, conventions, directory guide, gotchas; existing files are improved in place). Pure client-side contribution; enable it in the UI Tweaks settings section.
 - **Whale indicator (toggleable, off by default)** — the brand whale perched on the composer card's **top-right corner** over drifting blue waves (the Claude Desktop crab spot). It stays in its original colour the whole time: idle it floats still (hover or click it to make it swim — an easter egg); while the model works it swims (bob + sway) until the turn finishes. Working state = the session's `running` flag plus the input machine's claimed/submitting phases, so the swim starts the moment you press Enter. Pure CSS animation on DSH theme tokens; honors `prefers-reduced-motion`.
+- **Task alerts (toggleable, off by default)** — call you back while the tab sits in the background. Watches **all sessions** (background included) for two event kinds: **finish** (the `running` flag drops, or the host's green `completed` reminder rises) and **interaction** (the session starts waiting for your approval / plan review / answer — the same `pendingInteraction` source as the sidebar amber dot). Three independent channels:
+  - **Tab title flash** — blinks an unread counter `(2) 🔔 …` into the tab title until you come back, then restores it;
+  - **System notifications** (Web Notifications API) — desktop-level; **click one to jump straight to that session**; permission is requested from the settings toggle's click gesture; the OS bark and the chime are mutually exclusive so they never double-ring;
+  - **Chime** — a two-note WebAudio motif synthesized in-process (rising = done, falling = needs you); no audio assets.
+  - "Only when hidden" defaults on (no nagging while you watch the page); the first snapshot only arms the baseline (a page reload never fires a burst); events fire on transitions with a 2s per-session+kind cooldown (reconnect flicker absorbed); subagent child rows are skipped (the parent carries the turn). A **Test** button in Settings previews permission and channels in one click.
 
 All changes apply **live** — no reload needed. The same values can be hand-edited in the settings document:
 
@@ -50,6 +55,7 @@ ui-tweaks:
   archiveManagerEnabled: true   # defaults to false (off); set true to show the Archive page
   initCommandEnabled: true      # defaults to false (off); set true to register the /init slash command
   whaleIndicatorEnabled: true   # defaults to false (off); set true to enable the whale indicator
+  notificationsEnabled: true    # defaults to false (off); set true to enable task alerts (event filters & channels are per-item toggles in Settings)
 ```
 
 Settings entry: **Settings → UI Tweaks**.

@@ -87,6 +87,25 @@ export interface UITweaksConfig {
    */
   whaleIndicatorEnabled?: boolean
   /**
+   * Master switch for task notifications: browser-side alerts (tab-title
+   * flash, system notification, chime) raised when a session finishes its
+   * turn or starts waiting on the user. Off by default; users turn it on in
+   * Settings.
+   */
+  notificationsEnabled?: boolean
+  /** Stay quiet while the page is visible and focused; alert only once hidden or unfocused. */
+  notifyOnlyWhenHidden?: boolean
+  /** Alert when a session completes its turn (watched or background). */
+  notifyOnComplete?: boolean
+  /** Alert when a session starts blocking on an approval, plan review or question. */
+  notifyOnInteraction?: boolean
+  /** Blink an unread counter into the tab title until the user returns. */
+  notifyTitleFlash?: boolean
+  /** Fire desktop-level Web Notifications; clicking one opens that session. */
+  notifySystemNotification?: boolean
+  /** Play a synthesized two-note chime (rising = done, falling = needs you). */
+  notifySound?: boolean
+  /**
    * Optional explicit `provider:model` for generating commit messages with the
    * LLM (e.g. `jiyuanlvdong:deepseek-v4-flash-0731`). When unset, the first
    * registered provider/model is used; when the LLM service is unavailable or
@@ -136,6 +155,19 @@ export const DEFAULT_INIT_COMMAND_ENABLED = false
 /** The whale working indicator defaults to off; users turn it on in Settings. */
 export const DEFAULT_WHALE_INDICATOR_ENABLED = false
 
+/** Task notifications default to off; users turn them on in Settings. */
+export const DEFAULT_NOTIFICATIONS_ENABLED = false
+
+/** Notification behavior defaults: quiet while watched, both event kinds on. */
+export const DEFAULT_NOTIFY_ONLY_WHEN_HIDDEN = true
+export const DEFAULT_NOTIFY_ON_COMPLETE = true
+export const DEFAULT_NOTIFY_ON_INTERACTION = true
+
+/** Notification channel defaults: title flash + system notification on, chime opt-in. */
+export const DEFAULT_NOTIFY_TITLE_FLASH = true
+export const DEFAULT_NOTIFY_SYSTEM_NOTIFICATION = true
+export const DEFAULT_NOTIFY_SOUND = false
+
 /** Configuration schema with documented defaults. */
 export const Config: Schema<UITweaksConfig> = z.object({
   fontSize: z.number().min(10).max(32).default(16),
@@ -150,6 +182,13 @@ export const Config: Schema<UITweaksConfig> = z.object({
   mcpManagerEnabled: z.boolean().default(DEFAULT_MCP_MANAGER_ENABLED),
   initCommandEnabled: z.boolean().default(DEFAULT_INIT_COMMAND_ENABLED),
   whaleIndicatorEnabled: z.boolean().default(DEFAULT_WHALE_INDICATOR_ENABLED),
+  notificationsEnabled: z.boolean().default(DEFAULT_NOTIFICATIONS_ENABLED),
+  notifyOnlyWhenHidden: z.boolean().default(DEFAULT_NOTIFY_ONLY_WHEN_HIDDEN),
+  notifyOnComplete: z.boolean().default(DEFAULT_NOTIFY_ON_COMPLETE),
+  notifyOnInteraction: z.boolean().default(DEFAULT_NOTIFY_ON_INTERACTION),
+  notifyTitleFlash: z.boolean().default(DEFAULT_NOTIFY_TITLE_FLASH),
+  notifySystemNotification: z.boolean().default(DEFAULT_NOTIFY_SYSTEM_NOTIFICATION),
+  notifySound: z.boolean().default(DEFAULT_NOTIFY_SOUND),
   suggestModel: z.string(),
 })
 
@@ -177,6 +216,20 @@ export interface ResolvedUITweaksConfig {
   initCommandEnabled: boolean
   /** Whether the whale working indicator above the input is shown. */
   whaleIndicatorEnabled: boolean
+  /** Whether task notifications (title flash / system notification / chime) are active. */
+  notificationsEnabled: boolean
+  /** Stay quiet while the page is visible and focused. */
+  notifyOnlyWhenHidden: boolean
+  /** Alert when a session completes its turn. */
+  notifyOnComplete: boolean
+  /** Alert when a session blocks on an approval, plan review or question. */
+  notifyOnInteraction: boolean
+  /** Blink an unread counter into the tab title. */
+  notifyTitleFlash: boolean
+  /** Fire desktop-level Web Notifications. */
+  notifySystemNotification: boolean
+  /** Play the synthesized two-note chime. */
+  notifySound: boolean
   /** Optional `provider:model` override for LLM commit-message generation. */
   suggestModel?: string
 }
@@ -206,7 +259,14 @@ export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConf
   const mcpManagerEnabled = config.mcpManagerEnabled ?? DEFAULT_MCP_MANAGER_ENABLED
   const initCommandEnabled = config.initCommandEnabled ?? DEFAULT_INIT_COMMAND_ENABLED
   const whaleIndicatorEnabled = config.whaleIndicatorEnabled ?? DEFAULT_WHALE_INDICATOR_ENABLED
-  const resolved: ResolvedUITweaksConfig = { fontSize, codeFontScale, codeFontSize, lineHeight, tableStyle, dialogWidth, timelineEnabled, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled, whaleIndicatorEnabled }
+  const notificationsEnabled = config.notificationsEnabled ?? DEFAULT_NOTIFICATIONS_ENABLED
+  const notifyOnlyWhenHidden = config.notifyOnlyWhenHidden ?? DEFAULT_NOTIFY_ONLY_WHEN_HIDDEN
+  const notifyOnComplete = config.notifyOnComplete ?? DEFAULT_NOTIFY_ON_COMPLETE
+  const notifyOnInteraction = config.notifyOnInteraction ?? DEFAULT_NOTIFY_ON_INTERACTION
+  const notifyTitleFlash = config.notifyTitleFlash ?? DEFAULT_NOTIFY_TITLE_FLASH
+  const notifySystemNotification = config.notifySystemNotification ?? DEFAULT_NOTIFY_SYSTEM_NOTIFICATION
+  const notifySound = config.notifySound ?? DEFAULT_NOTIFY_SOUND
+  const resolved: ResolvedUITweaksConfig = { fontSize, codeFontScale, codeFontSize, lineHeight, tableStyle, dialogWidth, timelineEnabled, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled, whaleIndicatorEnabled, notificationsEnabled, notifyOnlyWhenHidden, notifyOnComplete, notifyOnInteraction, notifyTitleFlash, notifySystemNotification, notifySound }
   if (typeof config.suggestModel === 'string' && config.suggestModel !== '') {
     resolved.suggestModel = config.suggestModel
   }
