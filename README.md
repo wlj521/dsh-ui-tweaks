@@ -1,6 +1,6 @@
 # dsh-ui-tweaks
 
-[DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/)（DSH）Web UI 插件：在设置面板中实时调整对话界面——字体大小、表格样式、对话框宽度、可开关的对话时间线、**GitBar**（输入框工具行内的 git 状态胶囊：分支在权限旁、差异在模型前），可开关的**归档管理**（设置中的「归档」页面：查看、恢复或彻底删除已归档会话），以及可开关的**任务提醒**（会话完成或需要交互时，通过标签页标题闪烁 / 系统通知 / 提示音把你唤回来）。
+[DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/)（DSH）Web UI 插件：在设置面板中实时调整对话界面——字体大小、表格样式、对话框宽度、可开关的对话时间线、**GitBar**（输入框工具行内的 git 状态胶囊：分支在权限旁、差异在模型前），可开关的**归档管理**（设置中的「归档」页面：查看、恢复或彻底删除已归档会话），可开关的**任务提醒**（会话完成或需要交互时，通过标签页标题闪烁 / 系统通知 / 提示音把你唤回来），以及**缓存命中率两位小数**（把输入框下方统计条的缓存命中百分比改写为精确值）。
 
 ## 预览
 
@@ -45,6 +45,7 @@
   - **系统通知**（Web Notifications API）：桌面级通知，**点击直达对应会话**；权限申请挂在设置开关的点击手势上；系统响铃与自有提示音互斥，绝不双重响；
   - **提示音**：WebAudio 现场合成的双音动机——上行=完成、下行=需要你处理，无音频资源文件。
   - 「仅页面不可见时」默认开启（正盯着页面时不打扰）；首帧快照只武装不触发（刷新页面不刷屏）；只在跳变沿触发 + 同会话同类事件 2 秒冷却（防重连抖动）；子代理子会话不计（父会话承载整轮）。设置里有「测试」按钮，一键预览权限申请与通道效果。
+- **缓存命中率两位小数（可开关，默认关闭）**：DSH 原生统计条里的缓存命中只显示整数百分比（如「缓存命中 96%」）。开启后改写为两位小数（如「缓存命中 96.35%」），且**直接用原始 token 数计算**——缓存读取 ÷ 计费输入（未缓存输入 + 缓存读取 + 缓存写入），与原生数字同源、但不再取整；完全命中显示 100.00%，无计费输入时该组本就不显示。开关位于设置的「布局」区，关闭即恢复原样。
 
 所有修改**即时生效**，无需刷新。同一份配置也可以直接在设置文档里手改：
 
@@ -58,6 +59,7 @@ ui-tweaks:
   archiveManagerEnabled: true   # 默认 false（关闭），设为 true 开启「归档」页面
   initCommandEnabled: true      # 默认 false（关闭），设为 true 开启 /init 斜杠命令
   whaleIndicatorEnabled: true   # 默认 false（关闭），设为 true 开启鲸鱼指示器
+  preciseCacheHitEnabled: true  # 默认 false（关闭），设为 true 开启缓存命中率两位小数
   notificationsEnabled: true    # 默认 false（关闭），设为 true 开启任务提醒（事件过滤与三个通道在设置里逐项开关）
   # suggestModel: 'provider:model'   # 可选：指定生成提交说明的模型
 ```
@@ -111,6 +113,7 @@ npx -y @deepseek-ai/dsh plugin --profile web add .        # 从本目录作为 b
 - **MCP 管理**（服务端 `src/mcp.ts` + 浏览器端 `src/client/mcp.tsx`）：同源路由 `/_dsh/ui-tweaks/mcp`。**列表**枚举 `ctx.loader.entries()` 中 `@deepseek-ai/dsh-mcp-client` 实例（id / config / fiber 状态：active=2、failed=3 等）并按 `mcp__<serverName>__` 前缀从工具注册表统计工具。**重启**调用 `entry.fiber.restart()`（仅运行时）。**添加 / 编辑 / 删除 / 启用停用**通过 `yaml`（eemeli）的 Document API 直接编辑 profile 的 `cordis.patch.yml`（保留注释与未知补丁结构，原子写 tmp+rename），随后由 DSH 内置的 `watchUserPatches` 热重载监视器重新应用补丁——`cordis-plugin-include` 对根组做**增量** `root.update`，因此只有被改动的 MCP 实例会重启，其它不受影响；环境变量值返回给同源浏览器（本机配置编辑需要），YAML 模式在服务端用 `yaml.parse` + 白名单校验。
 - **鲸鱼指示器**（`src/client/whale.tsx`）：挂在 `conversation.input.dock`（输入框卡片上方的整行插槽）。dock 行本身比卡片宽（卡片被 InputBar root 以 `--dsh-composer-card-max-width` 封顶居中、两侧留 `--dsh-composer-side-clearance`），因此鲸鱼行**复刻卡片的几何**——同 max-width、同样居中、同样侧留白——再右对齐 + 6px `translateY`，鲸鱼恰好「骑」在卡片右上角（Claude Desktop 小螃蟹位置），自定义对话框宽度时也自动跟随。开关走与 /init 相同的「按需注册」编排——`whaleIndicatorEnabled` 打开时才注册插槽与样式，关闭即卸载。工作状态 = 会话列表 feed 中当前会话的 `running`（`useSyncExternalStore` 直订）∪ 输入机 `phase` 的 claimed/submitting；鲸鱼 SVG 路径内置为常量，挂载时以 `[class*="brandMark"]` 从侧边栏实时徽标尝试刷新（class 前缀是构建哈希，按后缀匹配以抗版本变化），取不到则回退内置几何。
 - **任务提醒**（`src/client/notifier.ts`）：纯逻辑模块（无 React），在 `ctx.effect` 中直订 `ctx.sessions.list` 快照流（鲸鱼同款数据源），对全部非空、非子代理会话做前后对比：`running` true→false 且无挂起交互 → 完成事件；`pendingInteraction`（'approval' / 'plan-review' / 'question'，即侧边栏黄点分类）出现 → 交互事件；后台会话的宿主 `completed` 绿点升沿同样计为完成。三通道各自静默降级——标题闪烁用 `setInterval` 交替写 `document.title`，`focus`/`visibilitychange` 时恢复；系统通知带 `tag` 去重、`onclick` 里 `window.focus()` + `sessionsService.open(id)` 直达会话、`silent` 跟随提示音开关避免双重响铃；提示音由 WebAudio 振荡器现场合成双音包络。防打扰：首帧只武装基线、只在跳变沿触发、同会话同类 2s 冷却；「仅页面不可见时」等开关经 `readState` 每拍重读实时生效，改动无需重装监视器。
+- **缓存命中率两位小数**（`src/client/cachehit.tsx`）：挂在 `conversation.composer.dock`（输入框卡片下方承载原生统计条的横条）的**空渲染座位**——组件本身不画任何东西，只通过框架第五标准 hook `useProjection('tokenUsage')` 读取会话的 token 用量投影（未缓存输入 / 缓存读取 / 缓存写入 / 输出四个不相交桶），按 `缓存读取 ÷ (未缓存输入 + 缓存读取 + 缓存写入)` 算出精确占比后 `.toFixed(2)`，再把统计条里匹配「缓存命中 N%」/ "Cache hit N%" 的 span 原地改写为两位小数——布局、截断省略与 tooltip 行为全部保留 DSH 原样。一个 MutationObserver 监听统计条子树，React 重绘统计行时自动重打（写入幂等，改写一次后即收敛）；开关关闭或会话切换时恢复原始文本并断开监听。注册编排与鲸鱼一致：`preciseCacheHitEnabled` 打开才挂载，关闭即卸载。
 
 ## 协议
 

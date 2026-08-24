@@ -27,6 +27,7 @@ import { BranchChipEntry, GitWarmup, HeaderUtilities, installGitBarStyles, insta
 import { ArchiveSection, installArchiveStyles } from './archive.tsx'
 import { McpSection, installMcpStyles } from './mcp.tsx'
 import { WhaleIndicator, installWhaleStyles } from './whale.tsx'
+import { PreciseCacheHitEntry } from './cachehit.tsx'
 import { installTaskNotifier, previewAlerts, requestNotifyPermission } from './notifier.ts'
 
 const NS = 'ui-tweaks'
@@ -73,6 +74,8 @@ interface TweaksValue {
   initCommandEnabled?: boolean
   /** Whether the whale working indicator above the input is shown. */
   whaleIndicatorEnabled?: boolean
+  /** Whether the stats-line cache-hit figure keeps two decimals. Keep in sync with src/config.ts. */
+  preciseCacheHitEnabled?: boolean
   /** Whether task notifications are active. Keep in sync with src/config.ts. */
   notificationsEnabled?: boolean
   /** Alert only while the tab is hidden or unfocused. */
@@ -102,6 +105,7 @@ interface ResolvedTweaks {
   mcpManagerEnabled: boolean
   initCommandEnabled: boolean
   whaleIndicatorEnabled: boolean
+  preciseCacheHitEnabled: boolean
   notificationsEnabled: boolean
   notifyOnlyWhenHidden: boolean
   notifyOnComplete: boolean
@@ -212,6 +216,10 @@ const en = {
   whaleIndicatorHint: 'A little whale above the input box: translucent while idle, swimming while the model works.',
   whaleIndicatorOn: 'On',
   whaleIndicatorOff: 'Off',
+  preciseCacheHit: 'Precise cache hit',
+  preciseCacheHitHint: 'Rewrites the cache-hit figure in the stats line under the input box to two decimal places (e.g. 96.35%), computed from the raw cached-read / cached-write / uncached-input token buckets instead of the stock rounded integer.',
+  preciseCacheHitOn: 'On',
+  preciseCacheHitOff: 'Off',
   sectionNotifications: 'Task alerts',
   notifications: 'Enable alerts',
   notificationsHint: 'Call you back while the tab is in the background: a session finishes its turn, or one starts waiting for your approval, plan review or answer. The switches below apply only while this is on.',
@@ -416,6 +424,10 @@ const zh: Record<LocaleKey, string> = {
   whaleIndicatorHint: '输入框上方的小鲸鱼：空闲时半透明静止，模型工作时开始游泳动画。',
   whaleIndicatorOn: '开启',
   whaleIndicatorOff: '关闭',
+  preciseCacheHit: '缓存命中率两位小数',
+  preciseCacheHitHint: '把输入框下方统计条里的缓存命中百分比改写为两位小数（如 96.35%）——用原始 token 数（缓存读取 ÷ 计费输入）计算，而不是 DSH 取整后的整数。',
+  preciseCacheHitOn: '开启',
+  preciseCacheHitOff: '关闭',
   sectionNotifications: '任务提醒',
   notifications: '启用提醒',
   notificationsHint: '标签页在后台时唤你回来：会话完成了任务，或开始等待你的审批、计划确认或回答。下方开关仅在总开关开启时生效。',
@@ -560,6 +572,7 @@ function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
     mcpManagerEnabled: value?.mcpManagerEnabled ?? false,
     initCommandEnabled: value?.initCommandEnabled ?? false,
     whaleIndicatorEnabled: value?.whaleIndicatorEnabled ?? false,
+    preciseCacheHitEnabled: value?.preciseCacheHitEnabled ?? false,
     notificationsEnabled: value?.notificationsEnabled ?? false,
     notifyOnlyWhenHidden: value?.notifyOnlyWhenHidden ?? true,
     notifyOnComplete: value?.notifyOnComplete ?? true,
@@ -1090,6 +1103,10 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     void controller.set('whaleIndicatorEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
+  const setPreciseCacheHit = (value: boolean): void => {
+    void controller.set('preciseCacheHitEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
+  }
+
   /** Master switch; enabling also asks for notification permission inside this click gesture. */
   const setNotifications = (value: boolean): void => {
     if (value) requestNotifyPermission()
@@ -1269,6 +1286,17 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
               <button type="button" className={resolved.dialogWidth === 880 ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { applyWidthPreset(880) }}>{t('presetWide')} · 880</button>
               <button type="button" className={resolved.dialogWidth === 1024 ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { applyWidthPreset(1024) }}>{t('presetWideXl')} · 1024</button>
               <button type="button" className={resolved.dialogWidth === 748 ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { applyWidthPreset(748) }}>{t('presetDefault')} · 748</button>
+            </div>
+          </div>
+        </div>
+        <div className="dut-field">
+          <div className="dut-field-top">
+            <span className="dut-label">{t('preciseCacheHit')}<Hint text={t('preciseCacheHitHint')} /></span>
+            <div className="dut-controls">
+              <div className="dut-seg">
+                <button type="button" className={resolved.preciseCacheHitEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setPreciseCacheHit(true) }}>{t('preciseCacheHitOn')}</button>
+                <button type="button" className={!resolved.preciseCacheHitEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setPreciseCacheHit(false) }}>{t('preciseCacheHitOff')}</button>
+              </div>
             </div>
           </div>
         </div>
@@ -1682,6 +1710,31 @@ export function apply(ctx: ClientContext): void {
     sync()
     return controller.subscribe(sync)
   }, 'dsh-ui-tweaks: whale indicator')
+
+  // Precise cache hit: rewrites the stats line's cache-hit figure to two
+  // decimals from the raw tokenUsage projection. The composer-dock entry
+  // renders nothing itself — it is a live reader that patches the stock span
+  // in place — and it is registered only while the preciseCacheHitEnabled
+  // toggle is on, so off costs nothing and toggling restores the stock text.
+  ctx.effect(() => {
+    let disposeEntry: (() => void) | undefined
+    const sync = (): void => {
+      const enabled = controller.getSnapshot().value?.preciseCacheHitEnabled === true
+      if (enabled && disposeEntry === undefined) {
+        disposeEntry = ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({
+          name: 'conversation.composer.dock',
+          id: 'precise-cache-hit',
+          order: 90,
+          inject: () => ({}),
+        }, PreciseCacheHitEntry))
+      } else if (!enabled && disposeEntry !== undefined) {
+        disposeEntry()
+        disposeEntry = undefined
+      }
+    }
+    sync()
+    return controller.subscribe(sync)
+  }, 'dsh-ui-tweaks: precise cache hit')
 
   // Task notifications: watch every session on the list feed and raise
   // tab-title / system-notification / chime alerts when one finishes its turn

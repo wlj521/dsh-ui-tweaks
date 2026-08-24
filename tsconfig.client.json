@@ -33,7 +33,8 @@
       "@deepseek-ai/dsh-client-ui-settings/client": ["./node_modules/@deepseek-ai/dsh-client-ui-settings/lib/types/client/index.d.ts"],
       "@deepseek-ai/dsh-client-ui-conversation/client": ["./node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/types/client/index.d.ts"],
       "@deepseek-ai/dsh-client-ui-commands/client": ["./node_modules/@deepseek-ai/dsh-client-ui-commands/lib/types/client/index.d.ts"],
-      "@deepseek-ai/dsh-session-projection/types": ["./node_modules/@deepseek-ai/dsh-session-projection/lib/types/types.d.ts"]
+      "@deepseek-ai/dsh-session-projection/types": ["./node_modules/@deepseek-ai/dsh-session-projection/lib/types/types.d.ts"],
+      "@deepseek-ai/dsh-token-meter/client": ["./node_modules/@deepseek-ai/dsh-token-meter/lib/types/client.d.ts"]
     }
   },
   "include": ["src/client/**/*.ts", "src/client/**/*.tsx"],

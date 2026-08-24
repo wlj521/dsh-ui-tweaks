@@ -42,6 +42,7 @@ A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH)
   - **System notifications** (Web Notifications API) — desktop-level; **click one to jump straight to that session**; permission is requested from the settings toggle's click gesture; the OS bark and the chime are mutually exclusive so they never double-ring;
   - **Chime** — a two-note WebAudio motif synthesized in-process (rising = done, falling = needs you); no audio assets.
   - "Only when hidden" defaults on (no nagging while you watch the page); the first snapshot only arms the baseline (a page reload never fires a burst); events fire on transitions with a 2s per-session+kind cooldown (reconnect flicker absorbed); subagent child rows are skipped (the parent carries the turn). A **Test** button in Settings previews permission and channels in one click.
+- **Precise cache hit (toggleable, off by default)** — DSH's stats line shows the cache-hit share as a bare integer ("Cache hit 96%"). When enabled, the figure is rewritten to two decimals ("Cache hit 96.35%") and computed from the raw token buckets — cache reads ÷ billed input (uncached input + cache reads + cache writes) — the same source as the stock number, just unrounded; a full hit shows 100.00%, and with no billed input the group is absent anyway. The toggle lives in the Layout settings group; turning it off restores the stock figure.
 
 All changes apply **live** — no reload needed. The same values can be hand-edited in the settings document:
 
@@ -55,6 +56,7 @@ ui-tweaks:
   archiveManagerEnabled: true   # defaults to false (off); set true to show the Archive page
   initCommandEnabled: true      # defaults to false (off); set true to register the /init slash command
   whaleIndicatorEnabled: true   # defaults to false (off); set true to enable the whale indicator
+  preciseCacheHitEnabled: true  # defaults to false (off); set true to enable the two-decimal cache-hit figure
   notificationsEnabled: true    # defaults to false (off); set true to enable task alerts (event filters & channels are per-item toggles in Settings)
 ```
 
@@ -120,6 +122,19 @@ npx -y @deepseek-ai/dsh plugin --profile web add .        # bundle install from 
   column grid and any right-sidebar layout push (`#root` margin-right);
   colors ride DSH theme tokens (`--dsw-alias-*`) for correct light/dark
   rendering.
+- **Precise cache hit** (`src/client/cachehit.tsx`) mounts a null-rendering
+  seat in the `conversation.composer.dock` slot (the band hosting the stock
+  stats line) and reads the session's token usage through the framework's
+  fifth standard hook, `useProjection('tokenUsage')` — the disjoint
+  uncached-input / cache-read / cache-write / output buckets. It computes
+  `cache reads ÷ (uncached input + cache reads + cache writes)`, formats it
+  with `.toFixed(2)`, and rewrites the stats line's "Cache hit N%" /
+  「缓存命中 N%」span in place — layout, truncation and tooltip behavior stay
+  DSH's own. A MutationObserver on the band re-applies whenever React repaints
+  the line (writes are idempotent, so the loop settles immediately); toggling
+  off or switching sessions restores the original texts. Registration follows
+  the whale's on-demand choreography: mounted only while
+  `preciseCacheHitEnabled` is on.
 
 ## License
 
