@@ -27,7 +27,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import { createRoot } from 'react-dom/client'
-import type { ConversationSnapshot, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ConversationSnapshot, ISessions, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { SettingsClient } from './index.tsx'
 import { APP_ICONS } from './appicons.ts'
 
@@ -753,6 +753,44 @@ function statusClass(status: string): string {
  */
 const snapshotCache = new Map<string, GitSnapshot>()
 
+// A localStorage mirror of this cache existed briefly and was retired; sweep
+// away any copy an older build left behind in this browser.
+try { window.localStorage.removeItem('dsh-ui-tweaks.git.snapshots.v1') } catch { /* storage unavailable */ }
+
+/** In-flight warmups keyed by target, so the dock warmup and a mounting chip
+ *  never double-fetch the same target. */
+const warmInflight = new Map<string, Promise<void>>()
+
+/**
+ * Fetch a target's status into the shared cache WITHOUT rendering anything.
+ *
+ * The session-header chips mount only after the conversation projection
+ * finishes loading — seconds on large inactive sessions — so their own fetch
+ * would start just as late. This warmup runs from the input dock, which mounts
+ * immediately on session switch: by the time the header chip appears it reads
+ * a warm cache and paints folder+branch instantly.
+ */
+export function warmGitStatus(target: GitTarget): void {
+  const key = target.session ?? target.ws ?? ''
+  if (key === '' || snapshotCache.has(key) || warmInflight.has(key)) return
+  const flight = apiGet<GitSnapshot>(`${GIT_ROUTE}/status?${targetQuery(target)}`)
+    .then(next => { snapshotCache.set(key, next) })
+    .catch(() => {
+      // Warmup is best-effort; the mounting chip re-fetches anyway.
+    })
+    .finally(() => { warmInflight.delete(key) })
+  warmInflight.set(key, flight)
+}
+
+/** Input-dock seat for {@link warmGitStatus}: mounts immediately on session
+ *  switch (long before the session header does) and kicks off the prefetch. */
+export function GitWarmup({ sessionId }: { sessionId: SessionId }) {
+  useEffect(() => {
+    warmGitStatus({ session: String(sessionId) })
+  }, [sessionId])
+  return null
+}
+
 /** Load the git snapshot on session change, then poll; returns [snapshot, refresh]. */
 function useGitStatus(enabled: boolean, target: GitTarget): [GitSnapshot | null, () => Promise<void>] {
   const key = target.session ?? target.ws ?? ''
@@ -810,17 +848,30 @@ function useGitStatus(enabled: boolean, target: GitTarget): [GitSnapshot | null,
 export interface BranchChipProps {
   /** Framework session kit: the definite current session id. */
   sessionId: SessionId
+  /** Injected: the client sessions service (list feed carrying each row's cwd). */
+  sessionsService: ISessions
   /** Injected: the ui-tweaks settings store (reads `gitBarEnabled`). */
   controller: SettingsClient
   /** Locale-bound translator for the GitBar labels. */
   t: Translate
 }
 
-export function BranchChipEntry({ sessionId, controller, t }: BranchChipProps) {
+export function BranchChipEntry({ sessionId, sessionsService, controller, t }: BranchChipProps) {
   const settingsState = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
   const enabled = settingsState.value?.gitBarEnabled ?? true
   const sessionStr = String(sessionId)
   const target: GitTarget = { session: sessionStr }
+
+  // Folder straight off the live sessions list feed (the same rows the left
+  // sidebar shows) — zero network, correct from the very first paint even
+  // before /status answers.
+  const list = sessionsService.list
+  const subscribeList = useMemo(() => list.subscribe.bind(list), [list])
+  const feedCwd = useSyncExternalStore(
+    subscribeList,
+    () => list.getSnapshot().byId[sessionId]?.cwd,
+    () => undefined,
+  )
 
   const [snapshot, refresh] = useGitStatus(enabled, target)
   const [branchOpen, setBranchOpen] = useState(false)
@@ -989,18 +1040,36 @@ export function BranchChipEntry({ sessionId, controller, t }: BranchChipProps) {
   }, [branchOpen])
 
   if (!enabled || sessionStr === undefined) return null
-  if (snapshot === null || !snapshot.isRepo) return null
+  if (snapshot !== null && !snapshot.isRepo) return null
+
+  // While the first /status round-trip is in flight, paint the folder alone
+  // straight off the sessions-list feed (the sidebar's own rows — zero
+  // network) so the seat never sits empty; the branch capsule joins the
+  // moment the usually-pre-warmed snapshot lands.
+  if (snapshot === null) {
+    if (feedCwd === undefined || feedCwd === '') return null
+    return (
+      <span className="gbar" data-slot-plugin="dsh-ui-tweaks-gitbar">
+        <span className="gbar-fchip" title={feedCwd}>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M1.5 4A1.5 1.5 0 0 1 3 2.5h3l1.5 2H13A1.5 1.5 0 0 1 14.5 6v6A1.5 1.5 0 0 1 13 13.5H3A1.5 1.5 0 0 1 1.5 12V4Z" />
+          </svg>
+          <span className="gbar-folder">{basenameOf(feedCwd)}</span>
+        </span>
+      </span>
+    )
+  }
 
   const dirty = !snapshot.clean
 
   return (
     <span className="gbar" data-slot-plugin="dsh-ui-tweaks-gitbar">
       {/* Folder label — plain (no capsule), not clickable */}
-      <span className="gbar-fchip" title={snapshot.cwd}>
+      <span className="gbar-fchip" title={feedCwd ?? snapshot.cwd}>
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <path d="M1.5 4A1.5 1.5 0 0 1 3 2.5h3l1.5 2H13A1.5 1.5 0 0 1 14.5 6v6A1.5 1.5 0 0 1 13 13.5H3A1.5 1.5 0 0 1 1.5 12V4Z" />
         </svg>
-        <span className="gbar-folder">{basenameOf(snapshot.cwd)}</span>
+        <span className="gbar-folder">{basenameOf(feedCwd ?? snapshot.cwd)}</span>
       </span>
       {/* Branch capsule — clickable, opens the branch popup */}
       <span className="gbar-bwrap">

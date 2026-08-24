@@ -23,7 +23,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SelectOption } from '@deepseek-ai/dsh-client-ui-commands/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { TimelineRail, installTimelineStyles } from './timeline.tsx'
-import { BranchChipEntry, HeaderUtilities, installGitBarStyles, installHeroChip } from './gitbar.tsx'
+import { BranchChipEntry, GitWarmup, HeaderUtilities, installGitBarStyles, installHeroChip } from './gitbar.tsx'
 import { ArchiveSection, installArchiveStyles } from './archive.tsx'
 import { McpSection, installMcpStyles } from './mcp.tsx'
 import { WhaleIndicator, installWhaleStyles } from './whale.tsx'
@@ -1580,8 +1580,20 @@ export function apply(ctx: ClientContext): void {
     id: 'gitbar-branch',
     order: 10,
     locale: NS,
-    inject: () => ({ controller }),
+    inject: () => ({ controller, sessionsService: ctx.sessions }),
   }, BranchChipEntry))
+
+  // Warmup: the header chips mount only after the conversation projection
+  // finishes loading (seconds on large inactive sessions). The input dock
+  // mounts immediately on session switch, so a null-rendering seat there
+  // prefetches the status into the shared cache right away — the chips then
+  // paint folder+branch from the warm cache the moment they appear.
+  ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+    name: 'conversation.input.dock',
+    id: 'gitbar-warmup',
+    order: 41,
+    inject: () => ({}),
+  }, GitWarmup))
 
   ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
     name: 'conversation.session.header.utilities',
