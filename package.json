@@ -15,7 +15,7 @@
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "https://github.com/wlj521/dsh-ui-tweaks"
+    "url": "git+https://github.com/wlj521/dsh-ui-tweaks.git"
   },
   "publishConfig": {
     "access": "public"
