@@ -135,7 +135,12 @@ export class GitWebHandler {
       try {
         const cwd = this.backend.resolveTargetCwd({ session, ws })
         if (cwd === undefined) {
-          ok(res, { isRepo: false })
+          // Distinguish "target not resolvable YET" (right after a restart the
+          // host has not materialized its session/workspace store, so even a
+          // valid session id has no cwd) from a genuine non-repo directory.
+          // The browser half chases the former with a short backoff instead of
+          // caching it as final and sitting blank for a whole poll period.
+          ok(res, { isRepo: false, unresolved: true })
           return
         }
         if (path === `${GIT_ROUTE}/status`) {

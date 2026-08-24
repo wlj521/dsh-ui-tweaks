@@ -77,6 +77,10 @@ interface GitFileChange {
 
 interface GitSnapshot {
   isRepo: boolean
+  /** Server could not resolve the target to a cwd — transient (the host is
+   *  still materializing its session/workspace store right after a restart).
+   *  Never cached as final; the client retries on a short backoff. */
+  unresolved?: boolean
   cwd?: string
   branch: string | null
   detachedHead?: string
@@ -774,7 +778,11 @@ export function warmGitStatus(target: GitTarget): void {
   const key = target.session ?? target.ws ?? ''
   if (key === '' || snapshotCache.has(key) || warmInflight.has(key)) return
   const flight = apiGet<GitSnapshot>(`${GIT_ROUTE}/status?${targetQuery(target)}`)
-    .then(next => { snapshotCache.set(key, next) })
+    .then(next => {
+      // An unresolved answer (host still starting up) must not poison the
+      // cache as a final "not a repo"; the mounting chip re-fetches anyway.
+      if (!next.unresolved) snapshotCache.set(key, next)
+    })
     .catch(() => {
       // Warmup is best-effort; the mounting chip re-fetches anyway.
     })
@@ -791,6 +799,13 @@ export function GitWarmup({ sessionId }: { sessionId: SessionId }) {
   return null
 }
 
+/** Fast retry steps (ms) for the startup race: right after a restart the host
+ *  has not materialized its session/workspace store yet, so the first /status
+ *  answers `unresolved`. Without these the UI sat blank for a full POLL_MS. */
+const RETRY_DELAYS_MS = [400, 800, 1600, 3200] as const
+/** Upper bound on fast retries before falling back to the steady poll. */
+const FAST_RETRY_MAX = 6
+
 /** Load the git snapshot on session change, then poll; returns [snapshot, refresh]. */
 function useGitStatus(enabled: boolean, target: GitTarget): [GitSnapshot | null, () => Promise<void>] {
   const key = target.session ?? target.ws ?? ''
@@ -805,23 +820,58 @@ function useGitStatus(enabled: boolean, target: GitTarget): [GitSnapshot | null,
     // A remount (panel open) must not regress to blank when the cache is warm.
     setSnapshot(snapshotCache.get(key) ?? null)
     let cancelled = false
-    let timer: number | undefined
-    const refresh = async (): Promise<void> => {
+    let pollTimer: number | undefined
+    let retryTimer: number | undefined
+    let attempt = 0
+    // Whether a resolved snapshot exists for this target (cache or fetched).
+    // Drives the cold-start chase: fast backoff only while it is false.
+    let haveGood = snapshotCache.has(key)
+
+    /** Store one fetch result. An `unresolved` answer is transient — never
+     *  cached, never regressing an already-good snapshot. Returns whether a
+     *  resolved answer landed. */
+    const apply = (next: GitSnapshot): boolean => {
+      if (next.unresolved === true) {
+        if (!cancelled && !haveGood) setSnapshot(null)
+        return false
+      }
+      haveGood = true
+      attempt = 0
+      snapshotCache.set(key, next)
+      if (!cancelled) setSnapshot(next)
+      return true
+    }
+
+    const refreshOnce = async (): Promise<boolean> => {
       try {
-        const next = await apiGet<GitSnapshot>(`${GIT_ROUTE}/status?${targetQuery(target)}`)
-        snapshotCache.set(key, next)
-        if (!cancelled) setSnapshot(next)
+        return apply(await apiGet<GitSnapshot>(`${GIT_ROUTE}/status?${targetQuery(target)}`))
       } catch {
-        // Transient git failure: keep the previous snapshot.
+        // Transport/transient git failure: chase it too while no good snapshot
+        // exists; afterwards keep showing the old one until the next poll.
+        return haveGood
       }
     }
-    void refresh()
-    timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void refresh()
+
+    /** Cold-start chase: short backoff instead of idling a whole poll period. */
+    const scheduleRetry = (): void => {
+      if (cancelled || haveGood || attempt >= FAST_RETRY_MAX) return
+      const delay = RETRY_DELAYS_MS[Math.min(attempt, RETRY_DELAYS_MS.length - 1)] ?? 3200
+      attempt += 1
+      retryTimer = window.setTimeout(() => {
+        if (cancelled) return
+        void refreshOnce().then(settled => { if (!settled) scheduleRetry() })
+      }, delay)
+    }
+
+    void refreshOnce().then(settled => { if (!settled) scheduleRetry() })
+
+    pollTimer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refreshOnce()
     }, POLL_MS)
     return () => {
       cancelled = true
-      if (timer !== undefined) clearInterval(timer)
+      if (pollTimer !== undefined) clearInterval(pollTimer)
+      if (retryTimer !== undefined) clearTimeout(retryTimer)
     }
   }, [enabled, key])
 
@@ -829,8 +879,12 @@ function useGitStatus(enabled: boolean, target: GitTarget): [GitSnapshot | null,
     if (key === '') return
     try {
       const next = await apiGet<GitSnapshot>(`${GIT_ROUTE}/status?${targetQuery(target)}`)
-      snapshotCache.set(key, next)
-      setSnapshot(next)
+      // Same rule as the hook body: an unresolved answer is transient and must
+      // not evict a good snapshot or enter the cache.
+      if (!next.unresolved) {
+        snapshotCache.set(key, next)
+        setSnapshot(next)
+      }
     } catch {
       // Keep the previous snapshot on transient failures.
     }
@@ -1040,13 +1094,17 @@ export function BranchChipEntry({ sessionId, sessionsService, controller, t }: B
   }, [branchOpen])
 
   if (!enabled || sessionStr === undefined) return null
-  if (snapshot !== null && !snapshot.isRepo) return null
+  // A genuine non-repo directory hides the chip entirely. An UNRESOLVED target
+  // (host still materializing sessions right after a restart) is transient:
+  // fall through to the folder-only paint below instead of going blank.
+  if (snapshot !== null && snapshot.unresolved !== true && !snapshot.isRepo) return null
 
-  // While the first /status round-trip is in flight, paint the folder alone
-  // straight off the sessions-list feed (the sidebar's own rows — zero
-  // network) so the seat never sits empty; the branch capsule joins the
-  // moment the usually-pre-warmed snapshot lands.
-  if (snapshot === null) {
+  // While the first /status round-trip is in flight — or while the host has
+  // not resolved this session yet — paint the folder alone straight off the
+  // sessions-list feed (the sidebar's own rows — zero network, so it appears
+  // the moment the sidebar row does); the branch capsule joins as soon as the
+  // backoff chase lands a real snapshot.
+  if (snapshot === null || snapshot.unresolved === true) {
     if (feedCwd === undefined || feedCwd === '') return null
     return (
       <span className="gbar" data-slot-plugin="dsh-ui-tweaks-gitbar">
