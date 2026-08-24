@@ -383,7 +383,10 @@ export const GITBAR_CSS = `
 .gbar-side{
   position:fixed;right:0;top:0;bottom:0;z-index:80;
   display:flex;flex-direction:column;overflow:hidden;
-  background:var(--dsw-alias-bg-layer-1);
+  /* bg-base instead of bg-layer-1: in dark mode layer-1 (#232324) reads gray
+     next to the conversation's base (#151517); base matches it exactly, and in
+     light mode both aliases are #fff so nothing changes. */
+  background:var(--dsw-alias-bg-base);
   border-left:1px solid var(--dsw-alias-border-l2);
   box-shadow:var(--dsw-shadow-lv2);
   animation:gbar-in .18s cubic-bezier(.32,.72,0,1);
