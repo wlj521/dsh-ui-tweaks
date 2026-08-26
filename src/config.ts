@@ -102,7 +102,7 @@ export interface UITweaksConfig {
   notificationsEnabled?: boolean
   /** Stay quiet while the page is visible and focused; alert only once hidden or unfocused. */
   notifyOnlyWhenHidden?: boolean
-  /** Alert when a session completes its turn (watched or background). */
+  /** Alert when a session ends its turn — completed, interrupted or failed. */
   notifyOnComplete?: boolean
   /** Alert when a session starts blocking on an approval, plan review or question. */
   notifyOnInteraction?: boolean
@@ -233,7 +233,7 @@ export interface ResolvedUITweaksConfig {
   notificationsEnabled: boolean
   /** Stay quiet while the page is visible and focused. */
   notifyOnlyWhenHidden: boolean
-  /** Alert when a session completes its turn. */
+  /** Alert when a session ends its turn — completed, interrupted or failed. */
   notifyOnComplete: boolean
   /** Alert when a session blocks on an approval, plan review or question. */
   notifyOnInteraction: boolean

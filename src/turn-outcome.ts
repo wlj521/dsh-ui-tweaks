@@ -1,0 +1,105 @@
+/**
+ * dsh-ui-tweaks — turn outcome projection (host half).
+ *
+ * Registers the `dshTurnOutcome` session projection unit: the outcome of the
+ * session's most recent agent turn, folded from the log's `turn/end` events.
+ * The task notifier reads it off each sessions-list row (`projectionValues`)
+ * so it can announce WHY a turn ended — completed vs user-aborted vs failed —
+ * instead of announcing every running-drop as a plain finish.
+ *
+ * Whole-value rule: every `turn/end` replaces the previous value outright
+ * (last-wins), and `null` means no completed turn yet. Error turns keep a
+ * truncated copy of the structured failure message for notification bodies.
+ *
+ * `TurnEndReason` is merge-extensible upstream; unknown future kinds flow
+ * through as their literal kind string and the client falls back to a generic
+ * finish announcement.
+ * @module dsh-ui-tweaks/turn-outcome
+ */
+
+import type { Context } from '@deepseek-ai/cordis'
+import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
+import type { ZodType } from 'zod'
+
+/** Projection key the browser notifier reads through list-row `projectionValues`. */
+export const TURN_OUTCOME_PROJECTION_KEY = 'dshTurnOutcome'
+
+/** The stock `TurnEndReason` kinds (the map is merge-extensible upstream). */
+export type TurnOutcomeKind = 'completed' | 'aborted' | 'blocked' | 'error' | 'max-tokens' | 'interrupted'
+
+/** Whole projection value: why the latest turn ended. */
+export interface TurnOutcomeValue {
+  kind: TurnOutcomeKind
+  /** Unix epoch ms of the `turn/end` event. */
+  time: number
+  /** Turn number carried by the same event. */
+  turn?: number
+  /** Truncated human-readable failure text; present only on `error` outcomes. */
+  errorMessage?: string
+}
+
+/** Cap the embedded error message so projection payloads stay small. */
+const MAX_ERROR_CHARS = 160
+
+/**
+ * Wire-schema shim: the projection value is plain JSON by construction, and
+ * pulling the real zod dependency in just to re-validate it would be waste.
+ */
+const outcomeSchema = {
+  parse: (value: unknown) => value as TurnOutcomeValue | null,
+} as ZodType<TurnOutcomeValue | null>
+
+declare module '@deepseek-ai/dsh-session-projection/types' {
+  interface SessionProjectionMap {
+    /** Outcome of the session's most recent agent turn; null before the first one ends. */
+    dshTurnOutcome: TurnOutcomeValue | null
+  }
+  interface SessionProjectionStateMap {
+    /** Host fold state for the turn-outcome key (same shape as the wire value). */
+    dshTurnOutcome: TurnOutcomeValue | null
+  }
+}
+
+/** Registration-ready unit type with the client-visible `wire` block narrowed in. */
+type TurnOutcomeProjectionUnit = Omit<
+  ProjectionDefinition<'dshTurnOutcome', TurnOutcomeValue | null>,
+  'wire'
+> & {
+  wire: NonNullable<ProjectionDefinition<'dshTurnOutcome', TurnOutcomeValue | null>['wire']>
+}
+
+/** The `dshTurnOutcome` projection unit: last-wins fold over `turn/end`. */
+export const turnOutcomeProjectionDefinition: TurnOutcomeProjectionUnit = {
+  key: TURN_OUTCOME_PROJECTION_KEY,
+  stateSchema: outcomeSchema,
+  init: () => null,
+  apply: (_state, event) => {
+    if (event.type !== 'turn/end') return _state
+    const { reason } = event.data
+    const value: TurnOutcomeValue = {
+      kind: reason.kind,
+      time: event.time,
+      turn: event.data.turn,
+      ...(reason.kind === 'error' && reason.error.message !== ''
+        ? { errorMessage: reason.error.message.slice(0, MAX_ERROR_CHARS) }
+        : {}),
+    }
+    return value
+  },
+  wire: {
+    viewSchema: outcomeSchema,
+    view: (state) => state,
+  },
+  stateVersion: 1,
+}
+
+/**
+ * Register the projection whenever the `sessionProjections` service is
+ * present. Headless assemblies without the registry stay unaffected.
+ * @param ctx - plugin context owning the registration effect.
+ */
+export function installTurnOutcomeProjection(ctx: Context): void {
+  ctx.inject(['sessionProjections'], (projectionCtx) => {
+    projectionCtx.sessionProjections.register(turnOutcomeProjectionDefinition)
+  })
+}

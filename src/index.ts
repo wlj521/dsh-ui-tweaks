@@ -18,6 +18,7 @@ import {
   type UITweaksConfig,
 } from './config.ts'
 import { installTimelineProjection } from './timeline.ts'
+import { installTurnOutcomeProjection } from './turn-outcome.ts'
 import { UITweaksWebBackend, installUITweaksWeb } from './web.ts'
 import { GitBackend } from './git.ts'
 import { installGitWeb } from './git-web.ts'
@@ -37,6 +38,10 @@ export function apply(ctx: Context): void {
   // The conversation timeline rail enumerates user messages through this
   // session projection (registered when the projection service is present).
   installTimelineProjection(ctx)
+
+  // The task notifier classifies turn endings (completed / aborted / failed)
+  // through this session projection (same registration pattern as above).
+  installTurnOutcomeProjection(ctx)
 
   // The browser Settings panel talks to the namespace through this same-origin
   // route (the Web settings RPC only exposes a fixed allowlist since rc.6).

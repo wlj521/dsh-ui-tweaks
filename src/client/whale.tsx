@@ -5,8 +5,8 @@
  * card's top-right corner over drifting blue waves — Claude Desktop's little
  * crab, but a whale — resident the whole time the feature is on. Idle: the
  * whale keeps its original colour and floats still on the waves; hovering or
- * clicking it swims it too (easter egg). Working: it swims until the model
- * finishes.
+ * clicking it swims it too (easter egg). Working: it swims and breathes
+ * between its original colour and the waves' blue until the model finishes.
  *
  * - Mounted in `conversation.input.dock` (the full-width row stacked by the
  *   composer column right above the card), registered only while the
@@ -53,7 +53,8 @@ export const WHALE_CSS = `
 .duwi-row{box-sizing:border-box;width:100%;max-width:calc(var(--dsh-composer-card-max-width) + 2 * var(--dsh-composer-side-clearance, 0px));margin:0 auto;padding:0 calc(var(--dsh-composer-side-clearance, 0px) + 14px) 0 var(--dsh-composer-side-clearance, 0px);display:flex;align-items:flex-end;justify-content:flex-end;height:27px;pointer-events:none;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none}
 .duwi-stack{display:flex;flex-direction:column;align-items:center;transform:translateY(6px)}
 .duwi-whale{display:block;color:var(--dsw-alias-label-primary);transform-origin:50% 60%;pointer-events:auto;cursor:pointer}
-.duwi-row.duwi-swim .duwi-whale,.duwi-whale:hover{animation:duwi-swim 1.9s ease-in-out infinite}
+.duwi-row.duwi-swim .duwi-whale{animation:duwi-swim 1.9s ease-in-out infinite,duwi-breathe 1.9s ease-in-out infinite}
+.duwi-whale:hover{animation:duwi-swim 1.9s ease-in-out infinite}
 .duwi-waves{display:block;width:26px;height:9px;margin-top:-3px;overflow:hidden}
 .duwi-wave-back{stroke:#3d8bfd;opacity:.35}
 .duwi-wave-front{stroke:#3d8bfd;opacity:.8}
@@ -62,6 +63,10 @@ export const WHALE_CSS = `
 @keyframes duwi-swim{
 0%,100%{transform:translateY(0) rotate(-4deg)}
 50%{transform:translateY(-3.5px) rotate(4deg)}
+}
+@keyframes duwi-breathe{
+0%,100%{color:var(--dsw-alias-label-primary)}
+50%{color:#3d8bfd}
 }
 @keyframes duwi-drift-front{
 from{transform:translateX(0)}

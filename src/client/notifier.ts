@@ -8,7 +8,11 @@
  *
  * - "Finished" = a session's `running` flag drops (true → false) without an
  *   interaction taking over, or its host-tracked `completed` reminder rises
- *   (finished while not selected).
+ *   (finished while not selected). The host `dshTurnOutcome` session
+ *   projection (`src/turn-outcome.ts`, folded from `turn/end` reasons) says
+ *   WHY it finished, so the copy distinguishes a clean completion from a
+ *   user abort and from a failed request (with the error text); when the
+ *   projection is missing or stale, falls back to a plain-finish announce.
  * - "Interaction" = a session gains `pendingInteraction`
  *   ('approval' | 'plan-review' | 'question') — exactly the sidebar's
  *   amber-dot classification.
@@ -37,20 +41,50 @@
 
 import type { ISessions, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 
+/** Client-side view of the host `dshTurnOutcome` fold (see src/turn-outcome.ts). */
+interface TurnOutcomeSnapshot {
+  /** Literal `TurnEndReason` kind; unknown merged variants stay strings. */
+  kind: string
+  /** Unix epoch ms of the `turn/end` event. */
+  time: number
+  /** Truncated failure text; present only on error outcomes. */
+  errorMessage?: string
+}
+
+declare module '@deepseek-ai/dsh-session-projection/types' {
+  interface SessionProjectionMap {
+    dshTurnOutcome: TurnOutcomeSnapshot | null
+  }
+}
+
+/** List-row key carrying the turn outcome; keep in sync with src/turn-outcome.ts. */
+const TURN_OUTCOME_KEY = 'dshTurnOutcome'
+
 /** Interaction kinds the host reports while a session blocks on the user. */
 export type NotifyPendingKind = 'approval' | 'plan-review' | 'question'
 
 /** Event classes the notifier can raise. */
-type NotifyEventKind = 'complete' | 'interaction'
+type NotifyEventKind = 'complete' | 'aborted' | 'failed' | 'interaction'
+
+/** Terminal-turn announcement kinds — they all answer "your task ended". */
+const TERMINAL_KINDS = ['complete', 'aborted', 'failed'] as const
 
 /** Localized copy snapshot the notifier needs (resolved once at install). */
 export interface NotifierText {
   /** System-notification heading for completion events. */
   notifyTitleDone: string
+  /** System-notification heading for user-interrupted turns. */
+  notifyTitleAborted: string
+  /** System-notification heading for failed requests. */
+  notifyTitleFailed: string
   /** System-notification heading for interaction events. */
   notifyTitlePending: string
   /** Completion body template; `{title}` becomes the session display title. */
   bodyComplete: string
+  /** Interruption body template. */
+  bodyAborted: string
+  /** Failure body template; `{error}` becomes the truncated failure message. */
+  bodyFailed: string
   /** Approval body template. */
   bodyApproval: string
   /** Plan-review body template. */
@@ -94,6 +128,23 @@ interface WatchState {
   running: boolean
   pending: NotifyPendingKind | undefined
   completed: boolean
+  outcome: TurnOutcomeSnapshot | undefined
+}
+
+/**
+ * Map a logged `turn/end` reason onto an announcement kind. Unknown or absent
+ * outcomes (older host, projection lag) degrade to a plain completion.
+ */
+const classifyFinish = (outcome: TurnOutcomeSnapshot | undefined): 'complete' | 'aborted' | 'failed' => {
+  switch (outcome?.kind) {
+    case 'aborted':
+    case 'interrupted':
+      return 'aborted'
+    case 'error':
+      return 'failed'
+    default:
+      return 'complete'
+  }
 }
 
 /** Same event kind for one session never repeats inside this window. */
@@ -116,9 +167,9 @@ interface RealertableNotificationOptions extends NotificationOptions {
   renotify?: boolean
 }
 
-/** Replace the `{title}` placeholder (split/join — no regex escaping worries). */
-function fill(template: string, title: string): string {
-  return template.split('{title}').join(title)
+/** Replace the `{title}` / `{error}` placeholders (split/join — no regex escaping worries). */
+function fill(template: string, title: string, error: string | undefined): string {
+  return template.split('{error}').join(error ?? '').split('{title}').join(title)
 }
 
 /**
@@ -180,7 +231,7 @@ export function previewAlerts(channels: NotifierChannels, text: NotifierText): v
   if (!channels.systemNotification || typeof Notification === 'undefined') return
   if (Notification.permission !== 'granted') return
   try {
-    const sample = fill(text.bodyComplete, 'dsh-ui-tweaks')
+    const sample = fill(text.bodyComplete, 'dsh-ui-tweaks', undefined)
     new Notification(text.notifyTitleDone, { body: sample, tag: 'dsh-ui-tweaks:preview', silent: true })
   } catch {
     // Construction can throw on some platforms — degrade quietly.
@@ -316,6 +367,7 @@ export function installTaskNotifier(input: TaskNotifierInput): () => void {
     displayTitle: string,
     kind: NotifyEventKind,
     pending: NotifyPendingKind | undefined,
+    detail: string | undefined,
     channels: NotifierChannels,
     now: number,
   ): void => {
@@ -328,8 +380,18 @@ export function installTaskNotifier(input: TaskNotifierInput): () => void {
     if (channels.titleFlash) startTitleFlash()
     if (!channels.systemNotification && !channels.sound) return
 
-    const heading = kind === 'complete' ? text.notifyTitleDone : text.notifyTitlePending
-    let body = text.bodyComplete
+    const heading = kind === 'complete'
+      ? text.notifyTitleDone
+      : kind === 'aborted'
+        ? text.notifyTitleAborted
+        : kind === 'failed'
+          ? text.notifyTitleFailed
+          : text.notifyTitlePending
+    let body = kind === 'aborted'
+      ? text.bodyAborted
+      : kind === 'failed'
+        ? text.bodyFailed
+        : text.bodyComplete
     if (kind === 'interaction') {
       body = pending === 'approval'
         ? text.bodyApproval
@@ -337,7 +399,7 @@ export function installTaskNotifier(input: TaskNotifierInput): () => void {
           ? text.bodyPlan
           : text.bodyQuestion
     }
-    fireSystemNotification(kind, sessionId, heading, fill(body, displayTitle), channels.sound)
+    fireSystemNotification(kind, sessionId, heading, fill(body, displayTitle, detail), channels.sound)
     if (channels.sound) playChime(kind === 'complete' ? 'up' : 'down')
   }
 
@@ -347,7 +409,8 @@ export function installTaskNotifier(input: TaskNotifierInput): () => void {
     watch.clear()
     for (const row of Object.values(list.getSnapshot().byId)) {
       if (row.parentId !== undefined || row.blank) continue
-      watch.set(row.id, { running: row.running, pending: row.pendingInteraction, completed: row.completed === true })
+      const outcome = row.projectionValues?.[TURN_OUTCOME_KEY] ?? undefined
+      watch.set(row.id, { running: row.running, pending: row.pendingInteraction, completed: row.completed === true, outcome })
     }
   }
 
@@ -363,14 +426,15 @@ export function installTaskNotifier(input: TaskNotifierInput): () => void {
       if (row.parentId !== undefined || row.blank) continue
       seen.add(row.id)
       const prev = watch.get(row.id)
-      watch.set(row.id, { running: row.running, pending: row.pendingInteraction, completed: row.completed === true })
+      const outcome = row.projectionValues?.[TURN_OUTCOME_KEY] ?? undefined
+      watch.set(row.id, { running: row.running, pending: row.pendingInteraction, completed: row.completed === true, outcome })
       if (prev === undefined) continue
 
       // Interaction outranks completion: a turn ending ON a question must
       // announce the question, not a completion.
       if (prev.pending === undefined && row.pendingInteraction !== undefined) {
         if (options.onInteraction && deliverable) {
-          deliver(row.id, row.displayTitle, 'interaction', row.pendingInteraction, channels, now)
+          deliver(row.id, row.displayTitle, 'interaction', row.pendingInteraction, undefined, channels, now)
         }
         continue
       }
@@ -383,11 +447,21 @@ export function installTaskNotifier(input: TaskNotifierInput): () => void {
         // re-notify window it is a duplicate, not a new completion.
         let shouldFire = finished
         if (!shouldFire) {
-          const lastComplete = lastFired.get(`${row.id}:complete`)
-          shouldFire = lastComplete === undefined || now - lastComplete >= COMPLETE_RENOTIFY_MS
+          // Any recent terminal announcement (of any outcome kind) makes the
+          // green-dot reminder a duplicate of the same finish.
+          shouldFire = TERMINAL_KINDS.every((kind) => {
+            const last = lastFired.get(`${row.id}:${kind}`)
+            return last === undefined || now - last >= COMPLETE_RENOTIFY_MS
+          })
         }
         if (shouldFire && options.onComplete && deliverable) {
-          deliver(row.id, row.displayTitle, 'complete', undefined, channels, now)
+          // Trust the outcome only when it CHANGED on this very transition —
+          // a stale value from an earlier turn would mislabel the announce.
+          const fresh = prev.outcome === undefined
+            || outcome?.time !== prev.outcome.time
+            || outcome?.kind !== prev.outcome.kind
+          const announcement = fresh && outcome !== undefined ? classifyFinish(outcome) : 'complete'
+          deliver(row.id, row.displayTitle, announcement, undefined, outcome?.errorMessage, channels, now)
         }
       }
     }
