@@ -197,6 +197,12 @@ function anchorKeyOf(m: TimelineEntryLike): string | undefined {
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
+/** One animation frame, or a small timeout fallback when rAF is unavailable. */
+const nextFrame = (): Promise<void> =>
+  typeof requestAnimationFrame === 'function'
+    ? new Promise((resolve) => requestAnimationFrame(() => resolve()))
+    : delay(16)
+
 /** Compact, locale-aware timestamp for the detail bubble. */
 function formatTime(ms: number): string {
   const date = new Date(ms)
@@ -207,29 +213,152 @@ function formatTime(ms: number): string {
     : `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`
 }
 
-/** Ensure the message node is loaded into the window, then scroll to its row. */
-async function jumpToMessage(sessionsService: ISessions, sessionId: SessionId, key: string): Promise<boolean> {
-  const session = sessionsService.binding(sessionId)?.session
-  if (session === undefined) return false
-  let guard = 0
-  while (guard++ < 120) {
-    const snapshot = session.getSnapshot()
-    if (snapshot?.chat?.nodes?.get(key) !== undefined) break
-    if (snapshot?.hasMore !== true) return false
-    if (snapshot.loadingOlder === true) { await delay(50); continue }
-    await session.loadOlder()
+/** Resolvable jump target: durable anchor key when known, plus its log seq. */
+interface JumpTarget {
+  key?: string | undefined
+  seq?: number | undefined
+}
+
+/**
+ * Match a LOADED chat node to an id-less timeline entry by start seq. Very
+ * old sessions can hold user messages without durable ids; those entries
+ * cannot rebuild `13:input-message{id}`, so their click must fall back to
+ * identity-by-seq against whatever the store currently knows.
+ */
+function nodeKeyBySeq(snapshot: ConversationSnapshot | undefined, seq: number | undefined): string | undefined {
+  if (seq === undefined) return undefined
+  for (const node of snapshot?.chat?.nodes?.values() ?? []) {
+    if (node.anchorSeq === seq && typeof node.key === 'string' && node.key !== '') return node.key
   }
-  const scrollport = typeof document !== 'undefined' ? document.querySelector('[data-conversation-scroll]') : null
-  const row = scrollport === null ? null : scrollport.querySelector(`[data-chat-anchor-key="${CSS.escape(key)}"]`)
-  if (row === null || scrollport === null) return false
-  const reducedMotion = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  // Smooth only for nearby targets. Smooth-scrolling tens of thousands of
-  // pixels of a huge conversation reflows the whole page every frame for
-  // seconds — the exact "timeline is laggy" symptom — so long jumps snap
-  // instantly instead.
-  const distance = Math.abs(row.getBoundingClientRect().top - scrollport.getBoundingClientRect().top)
-  const far = distance > scrollport.clientHeight * 2
-  row.scrollIntoView({ behavior: reducedMotion || far ? 'auto' : 'smooth', block: 'center' })
+  return undefined
+}
+
+/** Ensure the message node is loaded, its row painted and stable, then scroll. */
+async function jumpToMessage(sessionsService: ISessions, sessionId: SessionId, target: JumpTarget): Promise<boolean> {
+  const session = sessionsService.binding(sessionId)?.session
+  // A missing binding is the expected transient around session switches — stay
+  // quiet so switch storms don't spam; every other failure below announces
+  // itself (this whole function's failure modes used to be totally silent).
+  if (session === undefined) return false
+  if (typeof document === 'undefined') return false
+
+  // Devtools aid: set window.__dutTimelineDebug = true to trace jump stages.
+  const dbg = Boolean((window as unknown as { __dutTimelineDebug?: unknown }).__dutTimelineDebug)
+  const log = (...args: unknown[]): void => { if (dbg) console.debug('[dsh-ui-tweaks timeline]', ...args) }
+
+  // Pull history pages until the target node exists in the store. Idle polls
+  // are NOT charged against the budget anymore: the old guard counted them
+  // together with real page loads against one shared limit, so long sessions
+  // hit the cap mid-load and silently aborted with the target still missing;
+  // only a second click worked because that retry reused data pulled in the
+  // meantime.
+  // Deep history pages arrive 50 events at a time over sequential round
+  // trips (dsh caps maxMessages: 50), so a far entry legitimately takes
+  // dozens of loads — budget generously instead of "two clicks then give up".
+  const deadline = Date.now() + 150_000
+  let key = target.key ?? nodeKeyBySeq(session.getSnapshot(), target.seq)
+  let loads = 0
+  while (Date.now() < deadline && loads < 2500) {
+    const snapshot = session.getSnapshot()
+    if (key === undefined) key = nodeKeyBySeq(snapshot, target.seq)
+    if (key !== undefined && snapshot?.chat?.nodes?.get(key) !== undefined) break
+    if (snapshot?.hasMore !== true) {
+      if (key === undefined) console.info('[dsh-ui-tweaks timeline] jump aborted: id-less entry never materialized', { seq: target.seq, loads })
+      else log('no more history', { loads })
+      return false
+    }
+    if (snapshot.loadingOlder === true) { await delay(60); continue }
+    loads += 1
+    await session.loadOlder()
+    log('loadOlder resolved', { loads })
+  }
+  const settledSnapshot = session.getSnapshot()
+  if (key === undefined) key = nodeKeyBySeq(settledSnapshot, target.seq)
+  if (key === undefined || settledSnapshot?.chat?.nodes?.get(key) === undefined) {
+    console.info('[dsh-ui-tweaks timeline] jump aborted: target still outside loaded window', { seq: target.seq, loads })
+    return false
+  }
+
+  // Wait for the painted row AND settled geometry. React paints new rows on
+  // a later commit than the store update, and after a big prepend the seats
+  // around the target keep growing over several hydration chunks — a
+  // measurement taken during that settle is stale by the next commit.
+  // Require the computed centering top to repeat across three consecutive
+  // frames before trusting it; this also outlives post-prepend anchors.
+  let frames = 0
+  let scrollport: HTMLElement | null = null
+  let row: Element | null = null
+  // `measuredTop` tracks the trusted landing position. It must never double as
+  // an "unset" sentinel: the FIRST message's centered scrollTop clamps to 0,
+  // and comparing that against a -1 sentinel looks like "unchanged" (|0-(-1)|=1),
+  // settling the loop without ever storing the position — then the `< 0`
+  // completeness check silently discarded the whole jump. That was exactly the
+  // "clicking the first timeline entry does nothing" defect.
+  let measuredTop = -1
+  let lastCandidate: number | null = null
+  let stableRuns = 0
+  let settled = false
+  while (frames++ < 360) {
+    scrollport = document.querySelector<HTMLElement>('[data-conversation-scroll]')
+    row = scrollport === null ? null : scrollport.querySelector(`[data-chat-anchor-key="${CSS.escape(key)}"]`)
+    if (scrollport === null || row === null) { stableRuns = 0; await nextFrame(); continue }
+    const spRect = scrollport.getBoundingClientRect()
+    const rowRect = row.getBoundingClientRect()
+    const candidate = Math.min(
+      Math.max(scrollport.scrollTop + (rowRect.top - spRect.top) - (spRect.height - rowRect.height) / 2, 0),
+      Math.max(0, scrollport.scrollHeight - scrollport.clientHeight),
+    )
+    if (lastCandidate !== null && Math.abs(candidate - lastCandidate) <= 1) {
+      stableRuns += 1
+    } else {
+      stableRuns = 0
+    }
+    // Record EVERY candidate — including 0 — so the settled value is always the
+    // real geometry, sentinel-free.
+    measuredTop = candidate
+    lastCandidate = candidate
+    if (stableRuns >= 2) { settled = true; break }
+    await nextFrame()
+  }
+  if (!settled) console.info('[dsh-ui-tweaks timeline] jump: layout did not settle in time, applying best effort', { frames })
+  if (row === null || scrollport === null || measuredTop < 0) {
+    console.info('[dsh-ui-tweaks timeline] jump aborted: layout never revealed the target row', { key, frames })
+    return false
+  }
+
+  // Position directly on the measured scrollport instead of relying on
+  // scrollIntoView: the DOM contract picks the nearest scrolling ancestor,
+  // which in deeply nested layouts can resolve to an inner overflow-clipped
+  // wrapper rather than the visible message scroller, moving nothing. Own
+  // geometry gives one deterministic target element per click.
+  const far = Math.abs(row.getBoundingClientRect().top - scrollport.getBoundingClientRect().top) > scrollport.clientHeight * 2
+  // Always apply as one instant write. Smooth animations keep producing
+  // frames AFTER later programmatic writes, silently retargeting the view;
+  // a synchronous scrollTo with behavior 'auto' also cancels any running
+  // smooth animation on this element first, so nothing can override the
+  // landing position afterwards. Quiescence was already verified above.
+  scrollport.scrollTo({ top: measuredTop, behavior: 'auto' })
+  // One self-check pass two frames later: anything that rewrites the view
+  // after our landing (a straggler at-bottom snap, a clamp transition after
+  // huge prepends, a late image decode shift) moves the row far off center.
+  // Recompute fresh and reassert once — invisible when everything behaved.
+  await nextFrame(); await nextFrame()
+  const verifySp = document.querySelector<HTMLElement>('[data-conversation-scroll]')
+  const verifyRow = verifySp === null ? null : verifySp.querySelector(`[data-chat-anchor-key="${CSS.escape(key)}"]`)
+  if (verifySp !== null && verifyRow !== null) {
+    const vRect = verifySp.getBoundingClientRect()
+    const rRect = verifyRow.getBoundingClientRect()
+    const offCenter = Math.abs((rRect.top + rRect.height / 2) - (vRect.top + vRect.height / 2))
+    if (offCenter > vRect.height * 0.5) {
+      const retargeted = Math.min(
+        Math.max(verifySp.scrollTop + (rRect.top - vRect.top) - (vRect.height - rRect.height) / 2, 0),
+        Math.max(0, verifySp.scrollHeight - verifySp.clientHeight),
+      )
+      verifySp.scrollTo({ top: retargeted, behavior: 'auto' })
+      log('self-check corrected', { top: retargeted })
+    }
+  }
+  log('jump applied', { far, loads, frames, top: measuredTop })
   return true
 }
 
@@ -280,31 +409,83 @@ export function TimelineRail({ useProjection, sessionId, sessionsService, contro
   const [anchor, setAnchor] = useState<{ top: number; right: number } | null>(null)
   const [bubble, setBubble] = useState<{ top: number; entry: TimelineEntryLike } | null>(null)
   const pageRef = useRef<HTMLDivElement | null>(null)
+  const navRef = useRef<HTMLDivElement | null>(null)
 
   // Keep the active (blue) line visible. With many messages the rail page
   // scrolls (max-height 340px), and a freshly remounted rail — e.g. after
   // switching away and back to a session — starts at scrollTop 0, leaving the
   // current item clipped below the fold. While the panel is collapsed (nothing
-  // fights the user's own scrolling) re-centre the page on the active item
-  // whenever it changes, like a scrollbar thumb following the reading
-  // position. The collapsed rail thus always shows the blue line, and
-  // hovering opens the panel already at the current item. The adjustment is
-  // deferred to the next frame and cancelled on a newer active change, so a
-  // fast scroll never issues more than one layout write per frame.
+  // fights the user's own scrolling) bring the active item into view whenever
+  // it changes.
+  //
+  // The adjustment is "nearest edge" (scroll just enough that the item fits),
+  // NOT re-centering: re-centering scrolls the page
+  // even while the active item is already visible, and near the end of a long
+  // conversation that shoves the EARLIEST entries out through the top clip —
+  // their pixels then belong to nothing (elementsFromPoint on a clipped row
+  // resolved to the chat scrollport behind the rail), so a trusted click on
+  // "the first entry" hit empty space / the conversation and never reached the
+  // button. Minimal scrolling keeps earlier entries on-panel far more often,
+  // and the wheel handler below guarantees reachability for what remains
+  // clipped anyway. Deferred to the next frame; cancelled on a newer change,
+  // so a fast scroll never issues more than one layout write per frame.
   useEffect(() => {
-    if (show || activeIndex < 0) return
+    if (activeIndex < 0) return
     const raf = requestAnimationFrame(() => {
       const page = pageRef.current
       if (page === null) return
+      if (page.scrollHeight <= page.clientHeight + 1) return
       const item = page.children[activeIndex] as HTMLElement | undefined
       if (item === undefined) return
       const pageRect = page.getBoundingClientRect()
       const itemRect = item.getBoundingClientRect()
-      if (itemRect.top >= pageRect.top - 1 && itemRect.bottom <= pageRect.bottom + 1) return
-      page.scrollTop += itemRect.top - pageRect.top - (pageRect.height - itemRect.height) / 2
+      // Pure nearest-edge fit (scrollIntoView block:'nearest' semantics): touch
+      // scrollTop only when the item is actually clipped, and only by the
+      // clipped amount. Any standing breathing-room margin here would betray
+      // terminal rows — guaranteeing a trailing gap below the LAST entry pins
+      // the page to its maximum on every re-run, re-clipping the first entries
+      // right after a manual scrub. Flush-at-edge is fine: rows are one hop in
+      // either direction.
+      if (itemRect.bottom > pageRect.bottom) {
+        page.scrollTop += itemRect.bottom - pageRect.bottom
+      } else if (itemRect.top < pageRect.top) {
+        page.scrollTop -= pageRect.top - itemRect.top
+      }
     })
     return () => { cancelAnimationFrame(raf) }
   }, [show, activeIndex])
+
+  // Wheel anywhere over the rail scrubs its internal page — collapsed strip
+  // included. The collapsed wrap is overflow:hidden, so a native wheel over it
+  // scrolled NOTHING and instead bubbled straight through the fixed rail into
+  // `[data-conversation-scroll]`, scrolling the chat BEHIND the cursor's rail
+  // position. Worse, any row pushed outside the 340px window by the follower
+  // above was permanently unreachable: its area belongs to the wrap's clip or
+  // whatever sits behind (see the follower comment), so no pointer action —
+  // hover to preview, click to jump — could ever address it. Manual scrubbing
+  // restores that access everywhere: wheel up/down moves the internal page,
+  // preventDefault keeps the gesture from leaking into the chat scroller, and
+  // hard ends fall through untouched. The listener is non-passive because
+  // preventDefault requires it.
+  const railRendered = enabled && sessionId !== undefined && messages.length >= 2
+  useEffect(() => {
+    const nav = navRef.current
+    if (!railRendered || nav === null) return
+    const onWheel = (event: WheelEvent): void => {
+      const page = pageRef.current
+      if (page === null || event.deltaY === 0) return
+      const max = page.scrollHeight - page.clientHeight
+      if (max <= 0) return
+      const before = page.scrollTop
+      const after = Math.min(max, Math.max(0, before + event.deltaY))
+      if (after === before) return
+      event.preventDefault()
+      event.stopPropagation()
+      page.scrollTop = after
+    }
+    nav.addEventListener('wheel', onWheel, { passive: false })
+    return () => { nav.removeEventListener('wheel', onWheel) }
+  }, [railRendered])
 
   // Background full-history load: follow the runtime's authoritative hasMore
   // flag, but STOP as soon as the projection delivers. Wait for the session's
@@ -474,6 +655,7 @@ export function TimelineRail({ useProjection, sessionId, sessionsService, contro
         className="dutl-nav"
         role="navigation"
         aria-label={t('railLabel')}
+        ref={navRef}
         onMouseEnter={() => { setShow(true) }}
         onMouseLeave={() => { setShow(false) }}
         style={railStyle}
@@ -481,7 +663,6 @@ export function TimelineRail({ useProjection, sessionId, sessionsService, contro
         <div className={'dutl-wrap' + (show ? ' dutl-show' : '')}>
           <div className="dutl-page" ref={pageRef}>
             {messages.map((m, i) => {
-              const key = anchorKeyOf(m)
               return (
                 <button
                   key={m.seq}
@@ -489,7 +670,7 @@ export function TimelineRail({ useProjection, sessionId, sessionsService, contro
                   className={'dutl-item' + (activeIndex === i ? ' dutl-active' : '')}
                   aria-label={`${t('roleUser')}: ${m.text.slice(0, 60) || t('noText')}`}
                   aria-current={activeIndex === i ? 'location' : undefined}
-                  onClick={() => { if (key !== undefined) void jumpToMessage(sessionsService, sessionId, key).catch(() => {}) }}
+                  onClick={() => { void jumpToMessage(sessionsService, sessionId, { key: anchorKeyOf(m), seq: m.seq }).catch(() => {}) }}
                   onMouseEnter={(event) => {
                     // Vertical: follow the hovered row (clamped into the
                     // viewport). Horizontal: the constant slot next to the
