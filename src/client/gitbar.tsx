@@ -383,7 +383,7 @@ export const GITBAR_CSS = `
 .gbar-c-date{font-size:11.5px;color:var(--dsw-alias-label-tertiary);text-align:right;white-space:nowrap}
 
 /* diff side panel — fixed on the right; the conversation is pushed left via
-   #root { margin-right } so the timeline rail stays visible. */
+   #root { margin-right } so the panel never overlaps the message column. */
 .gbar-side{
   position:fixed;right:0;top:0;bottom:0;z-index:80;
   display:flex;flex-direction:column;overflow:hidden;
@@ -1397,8 +1397,8 @@ export interface DiffPanelProps {
  * wraps the whole app (left sidebar + center + details), so a `#root` margin
  * collapses the left sidebar and shoves the top header — the "showing the
  * panel moves the top" bug. The scrollport is the center column's message
- * region; pushing only it leaves the sidebar and header untouched, and the
- * timeline rail (anchored to the scrollport right edge) stays visible.
+ * region; pushing only it leaves the sidebar and header untouched, and fixed
+ * overlays docked inside the scrollport stay visible.
  *
  * @param width - panel width; the scrollport gets this much right margin.
  * @param active - whether the panel is actually showing; when false (e.g. a

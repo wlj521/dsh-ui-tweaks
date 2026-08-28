@@ -1,15 +1,15 @@
 # dsh-ui-tweaks
 
-[DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/)（DSH）Web UI 插件：在设置面板中实时调整对话界面——字体大小、表格样式、对话框宽度、可开关的对话时间线、**GitBar**（输入框工具行内的 git 状态胶囊：分支在权限旁、差异在模型前），可开关的**归档管理**（设置中的「归档」页面：查看、恢复或彻底删除已归档会话），可开关的**任务提醒**（会话完成或需要交互时，通过标签页标题闪烁 / 系统通知 / 提示音把你唤回来），以及**缓存命中率两位小数**（把输入框下方统计条的缓存命中百分比改写为精确值）。
+> **版本要求**：本版本（v0.12.0）需要 **DSH v0.1.2-alpha.1 及以上**——对话时间线与对话框宽度已由 DSH 原生提供，插件因此移除了自带的重复实现。宿主暂未升级时，可指定安装旧版继续使用这两项功能：`npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks@0.11.2`。
+
+[DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/)（DSH）Web UI 插件：在设置面板中实时调整对话界面——字体大小、表格样式、**GitBar**（输入框工具行内的 git 状态胶囊：分支在权限旁、差异在模型前），可开关的**归档管理**（设置中的「归档」页面：查看、恢复或彻底删除已归档会话），可开关的**任务提醒**（会话完成或需要交互时，通过标签页标题闪烁 / 系统通知 / 提示音把你唤回来），以及**缓存命中率两位小数**（把输入框下方统计条的缓存命中百分比改写为精确值）。
 
 ## 预览
 
 | | |
 |---|---|
-| ![对话时间线](assets/timeline.png) | ![Claude Desktop 表格样式](assets/table.png) |
-| **对话时间线**：右侧竖轨，悬停展开消息预览、点击跳转、随滚动高亮当前位置，自动避让右侧边栏 | **表格样式**：Claude Desktop 浅灰圆角卡片风格 |
-| ![对话框宽度](assets/dialog_box.png) | ![设置面板](assets/settings.png) |
-| **对话框宽度**：消息列、输入框、统计栏同步变宽 | **设置面板**：字体大小 / 代码字号 / 行高 / 表格样式 / 对话框宽度 / 时间线 / Git 状态栏 / 鲸鱼指示器等功能开关 |
+| ![Claude Desktop 表格样式](assets/table.png) | ![设置面板](assets/settings.png) |
+| **表格样式**：Claude Desktop 浅灰圆角卡片风格 | **设置面板**：字体大小 / 代码字号 / 行高 / 表格样式 / Git 状态栏 / 鲸鱼指示器等功能开关 |
 | ![GitBar](assets/git.png) | ![分支面板](assets/branch.png) |
 | **GitBar**：输入框工具行内的 git 状态胶囊（分支在权限旁、差异在模型前），支持分支切换、删除、推送到远程，差异面板内可直接提交 | **分支面板**：点击分支胶囊向上弹出——本地 / 远程分支列表，点击即切换，支持删除、推送远程，底部可新建分支 |
 | ![差异面板](assets/gitdiff.png) | ![终端面板](assets/terminal.png) |
@@ -23,11 +23,9 @@
 
 - **消息字体大小（px）**：直接输入数字（10–32），作用于消息正文、标题、表格与代码。**代码字号**可单独设置（8–32px 绝对值，默认 13；行内代码按比例跟随）——旧版的百分比配置（`codeFontScale`）仍然兼容，一旦设置新的 px 值即以其为准。
 - **表格样式**：可选 `默认` 或 **Claude Desktop** 风格（浅灰圆角单元格卡片、单元格间有间隙、无边框、单元格与行内代码同底色、表头不加粗）。Claude 风格下表格默认撑满列宽；放不下的宽表保持自然宽度、在表格内横向滚动（悬停出现滚动条），不会被挤压换行或裁掉后面的列。
-- **对话框宽度（px）**：直接输入数字（600–1600）；消息列、输入框、输入框下方的统计栏（轮数/步数/耗时/tok/s）**三者同步变宽**，宽表格的两侧「出血」量也随列宽同步计算——表格最多贴到消息区边缘（悬停出滚动条），不会伸出屏幕。
-- **对话时间线（可开关，默认关闭）**：在消息区右侧显示细竖导航轨——每条用户消息一根指示线，悬停展开面板预览消息、随滚动高亮当前位置、点击平滑跳转到对应消息（自动加载更早历史）。**浅色/深色模式都正常显示**，且**始终贴在消息区右侧**：即使安装了右侧边栏（如 dsh-better-sidebar）并展开，时间线也会自动避让、不会与侧边栏重叠。会话中用户消息少于 2 条时自动隐藏。
 - **GitBar（默认关闭，可在设置中开启）**：当会话的工作目录是一个 git 仓库时，在**输入框工具行内**显示两颗与输入框原生控件（权限 / 模型选择）同款样式的紧凑胶囊——不再占用输入框上方单独一行，输入区因此更矮：
   - **分支胶囊**：位于权限（访问模式）控件之后；显示当前分支名（有未提交改动时在标题提示）。点击**向上**弹出分支面板——本地 / 远程分支列表（点击即 `git switch`），底部可**新建分支**（`git switch -c` 并自动切换）。
-  - **差异胶囊**：位于模型选择之前；显示 `+N −M · K 个文件`。点击从右侧滑出**差异面板**：文件列表 + 逐文件 diff（默认**只显示有差异的 hunk**，右上可切“完整文件”视图）。面板**支持拖动拉伸宽度**，展开时**自动把对话区往左挤**（不影响右侧时间线）；面板内三段（文件列表 / diff 内容 / 提交区）之间的分隔线**可上下拖动调整高度**（双击复位；提交说明框随提交区高度拉伸，可写多行，Shift+Enter 换行）。**提交区保留在差异面板底部**（提交 / 提交并推送，说明留空自动生成）——原来的独立 commit 胶囊已移除。
+  - **差异胶囊**：位于模型选择之前；显示 `+N −M · K 个文件`。点击从右侧滑出**差异面板**：文件列表 + 逐文件 diff（默认**只显示有差异的 hunk**，右上可切“完整文件”视图）。面板**支持拖动拉伸宽度**，展开时**自动把对话区往左挤**；面板内三段（文件列表 / diff 内容 / 提交区）之间的分隔线**可上下拖动调整高度**（双击复位；提交说明框随提交区高度拉伸，可写多行，Shift+Enter 换行）。**提交区保留在差异面板底部**（提交 / 提交并推送，说明留空自动生成）——原来的独立 commit 胶囊已移除。
   - **挤压自适应**：输入框工具行变窄时（例如差异面板拉宽把对话列挤小），胶囊像原生控件一样自动降级——先隐藏“· K 个文件”元信息，行再窄时**收敛为纯图标**，分支名与差异文字绝不会和权限、模型选择重叠。
   - 非 git 仓库或无会话 cwd 时胶囊自动隐藏；所有操作走服务端 `execFile('git', …)`（无 shell、带超时）。
 - **归档管理（可开关，默认关闭）**：设置面板中的「归档」页面，列出所有已归档会话（标题 / 所在工作区 / 相对时间），支持**恢复**与**彻底删除**：
@@ -53,8 +51,6 @@
 ui-tweaks:
   fontSize: 16
   tableStyle: claude
-  dialogWidth: 880
-  timelineEnabled: true   # 默认 false（关闭），设为 true 开启
   gitBarEnabled: true     # 默认 false（关闭），设为 true 开启 GitBar
   archiveManagerEnabled: true   # 默认 false（关闭），设为 true 开启「归档」页面
   initCommandEnabled: true      # 默认 false（关闭），设为 true 开启 /init 斜杠命令
@@ -74,6 +70,13 @@ npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks
 
 # 方式二：从 GitHub 仓库安装（源码，会运行自包含的 prepare 构建）
 npx -y @deepseek-ai/dsh plugin --profile web add github:wlj521/dsh-ui-tweaks
+```
+
+`add` 后面的包说明会**原样转发给 pnpm**，因此可以指定版本——npm 包用 `@版本号`，GitHub 源码用 `#tag`：
+
+```bash
+npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks@0.11.2                    # 锁定 npm 版本
+npx -y @deepseek-ai/dsh plugin --profile web add github:wlj521/dsh-ui-tweaks#v0.11.2     # 锁定 git tag
 ```
 
 从 GitHub 安装时，pnpm 可能要求批准该包的构建脚本——把提示的包键加进该 profile 的 `pnpm-workspace.yaml`：
@@ -104,14 +107,13 @@ npx -y @deepseek-ai/dsh plugin --profile web add .        # 从本目录作为 b
 
 ## 工作原理
 
-- **服务端**（`src/index.ts`）：注册 `ui-tweaks` 设置命名空间，并挂载同源路由 `/_dsh/ui-tweaks/settings`——自 rc.6 起，Web 设置 RPC 只暴露固定白名单命名空间，因此自定义路由是插件拥有配置页的方式。另在 `src/timeline.ts` 注册 `dshChatTimeline` 会话投影单元，持久化枚举用户消息。
+- **服务端**（`src/index.ts`）：注册 `ui-tweaks` 设置命名空间，并挂载同源路由 `/_dsh/ui-tweaks/settings`——自 rc.6 起，Web 设置 RPC 只暴露固定白名单命名空间，因此自定义路由是插件拥有配置页的方式。
 - **Git 后端**（`src/git.ts` + `src/git-web.ts`）：通过 `ctx.get('sessions')`（可选服务）解析会话 header 的 `cwd` 作为“当前项目”，用 `child_process.execFile('git', …)`（无 shell、cwd 固定、超时 + 中止传播）执行只读/写操作；同源路由 `/_dsh/ui-tweaks/git/*` 提供 status / branches / diff（hunk 或完整文件，含绝对行号）/ suggest / commit / push / checkout / create。提交说明生成优先走 `ctx.get('llm')`（可选服务，收集 `text-delta` 流），不可用时回退到启发式规则（按文件类型推断 conventional commit 类型与 scope）。
 - **浏览器端**（`src/client/index.tsx`）：读写该路由、渲染设置页，并通过运行时 `<style>` 元素实时应用样式，覆盖稳定的 DSH 锚点（`[data-chat-flow]`、`[data-composer-card]`、`body` 上的 markdown 字体 token、`[data-slot="conversation.chat.node"]` 内的 markdown 表格）。
-- **时间线**（`src/client/timeline.tsx`）：挂在 `conversation.input.dock` 插槽、portal 到 `body`。数据按速度优先：会话投影 → 已加载聊天节点 → 后台 `loadOlder`。位置通过测量 `[data-conversation-scroll]`（消息区）右缘与垂直中线动态锚定，因此 DSH 原生列布局与右侧边栏（`#root` 的 margin-right 布局推挤）变化时都会自动跟随；颜色全部使用 DSH 主题变量（`--dsw-alias-*`），浅色/深色模式均正常。
-- **GitBar**（`src/client/gitbar.tsx`）：拆成两个组件，分别挂在 composer 工具行**内部**的 `conversation.input.left`（分支，位于权限控件之后）与 `conversation.input.right`（差异，位于模型选择之前）插槽——输入区不再有独立的一行胶囊。样式与输入框原生控件一致（28px 高、radius 24px、`--dsw-alias-label-secondary` 颜色、hover 用 `--dsw-alias-interactive-bg-hover`）。工具行是 DSH 的 inline-size 容器（`container-type:inline-size`），胶囊用 `@container` 查询做挤压降级：行宽 <700px 隐藏差异的“· K 个文件”元信息，<620px 全部收敛为纯图标，避免与权限 / 模型选择重叠；分支名另加 `text-overflow:ellipsis` 上限。差异面板展开时通过 `#root { margin-right }` 把对话区往左挤，时间线 rail（锚定消息区右缘）因此不被遮挡；面板内的高度分配采用「只给被拖的那一段显式高度、diff 段 `flex:1` 吃掉余量」的方式，配合 45% 上限，拖动永远不会撑破面板。独立 commit 胶囊已移除，提交保留在差异面板底部的提交区。
+- **GitBar**（`src/client/gitbar.tsx`）：拆成两个组件，分别挂在 composer 工具行**内部**的 `conversation.input.left`（分支，位于权限控件之后）与 `conversation.input.right`（差异，位于模型选择之前）插槽——输入区不再有独立的一行胶囊。样式与输入框原生控件一致（28px 高、radius 24px、`--dsw-alias-label-secondary` 颜色、hover 用 `--dsw-alias-interactive-bg-hover`）。工具行是 DSH 的 inline-size 容器（`container-type:inline-size`），胶囊用 `@container` 查询做挤压降级：行宽 <700px 隐藏差异的“· K 个文件”元信息，<620px 全部收敛为纯图标，避免与权限 / 模型选择重叠；分支名另加 `text-overflow:ellipsis` 上限。差异面板展开时通过 `#root { margin-right }` 把对话区往左挤，面板不会与消息列重叠；面板内的高度分配采用「只给被拖的那一段显式高度、diff 段 `flex:1` 吃掉余量」的方式，配合 45% 上限，拖动永远不会撑破面板。独立 commit 胶囊已移除，提交保留在差异面板底部的提交区。
 - **归档管理**（服务端 `src/archive.ts` + 浏览器端 `src/client/archive.tsx`）：作为 `settings.section` 插槽（设置面板中的「归档」页面）。列表数据直接来自框架标准 hook `useSessions` + `useWorkspaces`（`archivedSessionIds`），无需额外查询；操作走同源路由 `/_dsh/ui-tweaks/archive`。**恢复**把会话 id 从工作区存储域的 `archivedSessionIds` 全局单例中移除（DSH 只暴露单向 `archiveSession`，无公开的取消归档 API，故直接写活体存储域句柄并同步工作区注册表的内存缓存）。**彻底删除**依次：拒绝正在运行的会话（agent `status === 'running'` 才拒绝，空闲会话先 `cancel` + `whenIdle`）→ 用持久化后端自身的 `findLog` 定位并 `rm` 会话日志目录 → 调用公开的 `WorkspaceEntity.detachSession` 摘除工作区记账 → 从归档集合移除并同步注册表内存缓存与 header 索引 → 清理 `session_projcache` → 从内存 SessionStore 摘除该会话（触发 `host/session-removed` 实时消失）。
 - **MCP 管理**（服务端 `src/mcp.ts` + 浏览器端 `src/client/mcp.tsx`）：同源路由 `/_dsh/ui-tweaks/mcp`。**列表**枚举 `ctx.loader.entries()` 中 `@deepseek-ai/dsh-mcp-client` 实例（id / config / fiber 状态：active=2、failed=3 等）并按 `mcp__<serverName>__` 前缀从工具注册表统计工具。**重启**调用 `entry.fiber.restart()`（仅运行时）。**添加 / 编辑 / 删除 / 启用停用**通过 `yaml`（eemeli）的 Document API 直接编辑 profile 的 `cordis.patch.yml`（保留注释与未知补丁结构，原子写 tmp+rename），随后由 DSH 内置的 `watchUserPatches` 热重载监视器重新应用补丁——`cordis-plugin-include` 对根组做**增量** `root.update`，因此只有被改动的 MCP 实例会重启，其它不受影响；环境变量值返回给同源浏览器（本机配置编辑需要），YAML 模式在服务端用 `yaml.parse` + 白名单校验。
-- **鲸鱼指示器**（`src/client/whale.tsx`）：挂在 `conversation.input.dock`（输入框卡片上方的整行插槽）。dock 行本身比卡片宽（卡片被 InputBar root 以 `--dsh-composer-card-max-width` 封顶居中、两侧留 `--dsh-composer-side-clearance`），因此鲸鱼行**复刻卡片的几何**——同 max-width、同样居中、同样侧留白——再右对齐 + 6px `translateY`，鲸鱼恰好「骑」在卡片右上角（Claude Desktop 小螃蟹位置），自定义对话框宽度时也自动跟随。开关走与 /init 相同的「按需注册」编排——`whaleIndicatorEnabled` 打开时才注册插槽与样式，关闭即卸载。工作状态 = 会话列表 feed 中当前会话的 `running`（`useSyncExternalStore` 直订）∪ 输入机 `phase` 的 claimed/submitting；鲸鱼 SVG 路径内置为常量，挂载时以 `[class*="brandMark"]` 从侧边栏实时徽标尝试刷新（class 前缀是构建哈希，按后缀匹配以抗版本变化），取不到则回退内置几何。
+- **鲸鱼指示器**（`src/client/whale.tsx`）：挂在 `conversation.input.dock`（输入框卡片上方的整行插槽）。dock 行本身比卡片宽（卡片被 InputBar root 以 `--dsh-composer-card-max-width` 封顶居中、两侧留 `--dsh-composer-side-clearance`），因此鲸鱼行**复刻卡片的几何**——同 max-width、同样居中、同样侧留白——再右对齐 + 6px `translateY`，鲸鱼恰好「骑」在卡片右上角（Claude Desktop 小螃蟹位置）。开关走与 /init 相同的「按需注册」编排——`whaleIndicatorEnabled` 打开时才注册插槽与样式，关闭即卸载。工作状态 = 会话列表 feed 中当前会话的 `running`（`useSyncExternalStore` 直订）∪ 输入机 `phase` 的 claimed/submitting；鲸鱼 SVG 路径内置为常量，挂载时以 `[class*="brandMark"]` 从侧边栏实时徽标尝试刷新（class 前缀是构建哈希，按后缀匹配以抗版本变化），取不到则回退内置几何。
 - **任务提醒**（`src/client/notifier.ts`）：纯逻辑模块（无 React），在 `ctx.effect` 中直订 `ctx.sessions.list` 快照流（鲸鱼同款数据源），对全部非空、非子代理会话做前后对比：`running` true→false 且无挂起交互 → 完成事件；`pendingInteraction`（'approval' / 'plan-review' / 'question'，即侧边栏黄点分类）出现 → 交互事件；后台会话的宿主 `completed` 绿点升沿同样计为完成。结束原因来自服务端 [`dshTurnOutcome` 投影](D:/dsh-project/dsh-ui-tweaks/src/turn-outcome.ts)（last-wins fold 会话日志的 `turn/end.reason`）并随列表行 `projectionValues` 下发——completed/max-tokens 按「任务完成」、aborted/interrupted 按「任务已中断」、error 按「请求失败」（附截断错误消息）播报；投影缺失或未随本次跳变更新时退回普通完成播报。三通道各自静默降级——标题闪烁用 `setInterval` 交替写 `document.title`，`focus`/`visibilitychange` 时恢复；系统通知带 `tag` 去重、`onclick` 里 `window.focus()` + `sessionsService.open(id)` 直达会话、`silent` 跟随提示音开关避免双重响铃；提示音由 WebAudio 振荡器现场合成双音包络。防打扰：首帧只武装基线、只在跳变沿触发、同会话同类 2s 冷却；「仅页面不可见时」等开关经 `readState` 每拍重读实时生效，改动无需重装监视器。
 - **缓存命中率两位小数**（`src/client/cachehit.tsx`）：挂在 `conversation.composer.dock`（输入框卡片下方承载原生统计条的横条）的**空渲染座位**——组件本身不画任何东西，只通过框架第五标准 hook `useProjection('tokenUsage')` 读取会话的 token 用量投影（未缓存输入 / 缓存读取 / 缓存写入 / 输出四个不相交桶），按 `缓存读取 ÷ (未缓存输入 + 缓存读取 + 缓存写入)` 算出精确占比后 `.toFixed(2)`，再把统计条里匹配「缓存命中 N%」/ "Cache hit N%" 的 span 原地改写为两位小数——布局、截断省略与 tooltip 行为全部保留 DSH 原样。一个 MutationObserver 监听统计条子树，React 重绘统计行时自动重打（写入幂等，改写一次后即收敛）；开关关闭或会话切换时恢复原始文本并断开监听。注册编排与鲸鱼一致：`preciseCacheHitEnabled` 打开才挂载，关闭即卸载。
 

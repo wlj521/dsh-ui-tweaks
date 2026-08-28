@@ -17,7 +17,6 @@ import {
   Config,
   type UITweaksConfig,
 } from './config.ts'
-import { installTimelineProjection } from './timeline.ts'
 import { installTurnOutcomeProjection } from './turn-outcome.ts'
 import { UITweaksWebBackend, installUITweaksWeb } from './web.ts'
 import { GitBackend } from './git.ts'
@@ -34,10 +33,6 @@ export function apply(ctx: Context): void {
   ctx.settings.register(UI_TWEAKS_SETTINGS_NAMESPACE, Config, {
     applies: 'live',
   })
-
-  // The conversation timeline rail enumerates user messages through this
-  // session projection (registered when the projection service is present).
-  installTimelineProjection(ctx)
 
   // The task notifier classifies turn endings (completed / aborted / failed)
   // through this session projection (same registration pattern as above).
