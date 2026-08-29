@@ -1,15 +1,15 @@
 # dsh-ui-tweaks
 
-> **版本要求**：本版本（v0.12.0）需要 **DSH v0.1.2-alpha.1 及以上**——对话时间线与对话框宽度已由 DSH 原生提供，插件因此移除了自带的重复实现。宿主暂未升级时，可指定安装旧版继续使用这两项功能：`npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks@0.11.2`。
+> **版本要求**：本版本（v0.12.0）需要 **DSH v0.1.2-alpha.1 及以上**——对话时间线与对话框宽度已由 DSH 原生提供，插件因此移除了自带的重复实现（消息字体大小与行高设置也一并移除）。宿主暂未升级时，可指定安装旧版继续使用这些功能：`npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks@0.11.2`。
 
-[DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/)（DSH）Web UI 插件：在设置面板中实时调整对话界面——字体大小、表格样式、**GitBar**（输入框工具行内的 git 状态胶囊：分支在权限旁、差异在模型前），可开关的**归档管理**（设置中的「归档」页面：查看、恢复或彻底删除已归档会话），可开关的**任务提醒**（会话完成或需要交互时，通过标签页标题闪烁 / 系统通知 / 提示音把你唤回来），以及**缓存命中率两位小数**（把输入框下方统计条的缓存命中百分比改写为精确值）。
+[DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/)（DSH）Web UI 插件：在设置面板中实时调整对话界面——代码字号、表格样式、**GitBar**（输入框工具行内的 git 状态胶囊：分支在权限旁、差异在模型前），可开关的**归档管理**（设置中的「归档」页面：查看、恢复或彻底删除已归档会话），可开关的**任务提醒**（会话完成或需要交互时，通过标签页标题闪烁 / 系统通知 / 提示音把你唤回来），以及**缓存命中率两位小数**（把输入框下方统计条的缓存命中百分比改写为精确值）。
 
 ## 预览
 
 | | |
 |---|---|
 | ![Claude Desktop 表格样式](assets/table.png) | ![设置面板](assets/settings.png) |
-| **表格样式**：Claude Desktop 浅灰圆角卡片风格 | **设置面板**：字体大小 / 代码字号 / 行高 / 表格样式 / Git 状态栏 / 鲸鱼指示器等功能开关 |
+| **表格样式**：Claude Desktop 浅灰圆角卡片风格 | **设置面板**：代码字号 / 表格样式 / Git 状态栏 / 鲸鱼指示器等功能开关 |
 | ![GitBar](assets/git.png) | ![分支面板](assets/branch.png) |
 | **GitBar**：输入框工具行内的 git 状态胶囊（分支在权限旁、差异在模型前），支持分支切换、删除、推送到远程，差异面板内可直接提交 | **分支面板**：点击分支胶囊向上弹出——本地 / 远程分支列表，点击即切换，支持删除、拉取、推送远程，底部可新建分支，菜单里可打开**提交图谱**（彩色 SVG 分叉图） |
 | ![差异面板](assets/gitdiff.png) | ![终端面板](assets/terminal.png) |
@@ -21,7 +21,7 @@
 
 ## 功能
 
-- **消息字体大小（px）**：直接输入数字（10–32），作用于消息正文、标题、表格与代码。**代码字号**可单独设置（8–32px 绝对值，默认 13；行内代码按比例跟随）——旧版的百分比配置（`codeFontScale`）仍然兼容，一旦设置新的 px 值即以其为准。
+- **代码字号（px）**：绝对值 8–32，默认 13（正文 16 时的 DSH 原生代码块字号）；作用于代码块，行内代码按比例跟随——旧版的百分比配置（`codeFontScale`）仍然兼容，一旦设置新的 px 值即以其为准。消息正文保持 DSH 原生字号。
 - **表格样式**：可选 `默认` 或 **Claude Desktop** 风格（浅灰圆角单元格卡片、单元格间有间隙、无边框、单元格与行内代码同底色、表头不加粗）。Claude 风格下表格默认撑满列宽；放不下的宽表保持自然宽度、在表格内横向滚动（悬停出现滚动条），不会被挤压换行或裁掉后面的列。
 - **GitBar（默认关闭，可在设置中开启）**：当会话的工作目录是一个 git 仓库时，在**输入框工具行内**显示两颗与输入框原生控件（权限 / 模型选择）同款样式的紧凑胶囊——不再占用输入框上方单独一行，输入区因此更矮：
   - **分支胶囊**：位于权限（访问模式）控件之后；显示当前分支名（有未提交改动时在标题提示）。点击**向上**弹出分支面板——本地 / 远程分支列表（点击即 `git switch`），底部可**新建分支**（`git switch -c` 并自动切换）。**头部当前分支右侧是拉取按钮**（`git pull --ff-only`：只快进，分叉时中止并显示 git 报错而不悄悄合并；无 upstream 的分支不显示该按钮），拉的就是头部显示的那个分支。菜单里的**图谱**打开**提交图谱**对话框：最近 150 条提交（`git log --date-order --all`）按拓扑自动分 lane，渲染成彩色 SVG 分叉图——圆点是提交、曲线是 fork/merge，各分支线独立着色，合并弧线汇入目标分支并采用其颜色；行悬停高亮，右上角可刷新。
@@ -49,7 +49,6 @@
 
 ```yaml
 ui-tweaks:
-  fontSize: 16
   tableStyle: claude
   gitBarEnabled: true     # 默认 false（关闭），设为 true 开启 GitBar
   archiveManagerEnabled: true   # 默认 false（关闭），设为 true 开启「归档」页面
@@ -109,7 +108,7 @@ npx -y @deepseek-ai/dsh plugin --profile web add .        # 从本目录作为 b
 
 - **服务端**（`src/index.ts`）：注册 `ui-tweaks` 设置命名空间，并挂载同源路由 `/_dsh/ui-tweaks/settings`——自 rc.6 起，Web 设置 RPC 只暴露固定白名单命名空间，因此自定义路由是插件拥有配置页的方式。
 - **Git 后端**（`src/git.ts` + `src/git-web.ts`）：通过 `ctx.get('sessions')`（可选服务）解析会话 header 的 `cwd` 作为“当前项目”，用 `child_process.execFile('git', …)`（无 shell、cwd 固定、超时 + 中止传播）执行只读/写操作；同源路由 `/_dsh/ui-tweaks/git/*` 提供 status / branches / diff（hunk 或完整文件，含绝对行号）/ graph（结构化提交行，含父哈希，供前端排布分支 lane）/ suggest / commit / push / pull（仅快进）/ checkout / create / branch-delete / remote-delete。提交说明生成优先走 `ctx.get('llm')`（可选服务，收集 `text-delta` 流），不可用时回退到启发式规则（按文件类型推断 conventional commit 类型与 scope）。
-- **浏览器端**（`src/client/index.tsx`）：读写该路由、渲染设置页，并通过运行时 `<style>` 元素实时应用样式，覆盖稳定的 DSH 锚点（`[data-chat-flow]`、`[data-composer-card]`、`body` 上的 markdown 字体 token、`[data-slot="conversation.chat.node"]` 内的 markdown 表格）。
+- **浏览器端**（`src/client/index.tsx`）：读写该路由、渲染设置页，并通过运行时 `<style>` 元素实时应用样式，覆盖稳定的 DSH 锚点（`body` 上的 markdown 代码字体 token、`[data-slot="conversation.chat.node"]` 内的 markdown 表格）。
 - **GitBar**（`src/client/gitbar.tsx`）：拆成两个组件，分别挂在 composer 工具行**内部**的 `conversation.input.left`（分支，位于权限控件之后）与 `conversation.input.right`（差异，位于模型选择之前）插槽——输入区不再有独立的一行胶囊。样式与输入框原生控件一致（28px 高、radius 24px、`--dsw-alias-label-secondary` 颜色、hover 用 `--dsw-alias-interactive-bg-hover`）。工具行是 DSH 的 inline-size 容器（`container-type:inline-size`），胶囊用 `@container` 查询做挤压降级：行宽 <700px 隐藏差异的“· K 个文件”元信息，<620px 全部收敛为纯图标，避免与权限 / 模型选择重叠；分支名另加 `text-overflow:ellipsis` 上限。差异面板展开时通过 `#root { margin-right }` 把对话区往左挤，面板不会与消息列重叠；面板内的高度分配采用「只给被拖的那一段显式高度、diff 段 `flex:1` 吃掉余量」的方式，配合 45% 上限，拖动永远不会撑破面板。独立 commit 胶囊已移除，提交保留在差异面板底部的提交区。提交图谱对话框的 lane 布局与 SVG 渲染拆在 `src/client/graphlayout.ts`（纯函数模块：父哈希 → 每行 lane / 边段，经典 first-parent 路由——第一父提交沿用原 lane 让线性历史始终一条线，合并与 fork 画贝塞尔弧线；`parents` 字段可选，兼容宿主里尚未重载的旧服务端）。
 - **归档管理**（服务端 `src/archive.ts` + 浏览器端 `src/client/archive.tsx`）：作为 `settings.section` 插槽（设置面板中的「归档」页面）。列表数据直接来自框架标准 hook `useSessions` + `useWorkspaces`（`archivedSessionIds`），无需额外查询；操作走同源路由 `/_dsh/ui-tweaks/archive`。**恢复**把会话 id 从工作区存储域的 `archivedSessionIds` 全局单例中移除（DSH 只暴露单向 `archiveSession`，无公开的取消归档 API，故直接写活体存储域句柄并同步工作区注册表的内存缓存）。**彻底删除**依次：拒绝正在运行的会话（agent `status === 'running'` 才拒绝，空闲会话先 `cancel` + `whenIdle`）→ 用持久化后端自身的 `findLog` 定位并 `rm` 会话日志目录 → 调用公开的 `WorkspaceEntity.detachSession` 摘除工作区记账 → 从归档集合移除并同步注册表内存缓存与 header 索引 → 清理 `session_projcache` → 从内存 SessionStore 摘除该会话（触发 `host/session-removed` 实时消失）。
 - **MCP 管理**（服务端 `src/mcp.ts` + 浏览器端 `src/client/mcp.tsx`）：同源路由 `/_dsh/ui-tweaks/mcp`。**列表**枚举 `ctx.loader.entries()` 中 `@deepseek-ai/dsh-mcp-client` 实例（id / config / fiber 状态：active=2、failed=3 等）并按 `mcp__<serverName>__` 前缀从工具注册表统计工具。**重启**调用 `entry.fiber.restart()`（仅运行时）。**添加 / 编辑 / 删除 / 启用停用**通过 `yaml`（eemeli）的 Document API 直接编辑 profile 的 `cordis.patch.yml`（保留注释与未知补丁结构，原子写 tmp+rename），随后由 DSH 内置的 `watchUserPatches` 热重载监视器重新应用补丁——`cordis-plugin-include` 对根组做**增量** `root.update`，因此只有被改动的 MCP 实例会重启，其它不受影响；环境变量值返回给同源浏览器（本机配置编辑需要），YAML 模式在服务端用 `yaml.parse` + 白名单校验。

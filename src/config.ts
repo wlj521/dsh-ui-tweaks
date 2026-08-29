@@ -1,8 +1,7 @@
 /**
- * dsh-ui-tweaks configuration: conversation font size (px), markdown table
- * style, and feature toggles. Every field
- * defaults at the schema boundary, so a hand-edited settings document and the
- * Settings panel stay consistent.
+ * dsh-ui-tweaks configuration: code font size (px), markdown table style, and
+ * feature toggles. Every field defaults at the schema boundary, so a
+ * hand-edited settings document and the Settings panel stay consistent.
  * @module dsh-ui-tweaks/config
  */
 
@@ -15,11 +14,10 @@ export const UI_TWEAKS_SETTINGS_NAMESPACE = settingsNamespace('ui-tweaks')
 
 /** Raw user-facing configuration (partial inputs receive schema defaults). */
 export interface UITweaksConfig {
-  /** Message content font size in px. */
-  fontSize?: number
   /**
-   * Code font size as a percentage of the message font size. 81 is the stock
-   * ratio (13px code block at a 16px body); 100 makes code match the body.
+   * Code font size as a percentage of the stock message font size (16px).
+   * 81 is the stock ratio (13px code block at a 16px body); 100 makes code
+   * match the body.
    *
    * @deprecated Legacy percent input, kept for migration; prefer
    * `codeFontSize`. Ignored once `codeFontSize` is set.
@@ -32,15 +30,6 @@ export interface UITweaksConfig {
    * `codeFontScale` percentage, then to the stock default.
    */
   codeFontSize?: number
-  /**
-   * The "行高" base unit in px: the vertical rhythm of the reply area. It
-   * drives the gap between message rows (Think ↔ tool cards, user ↔
-   * assistant), the gap between content blocks inside one assistant reply
-   * (Think ↔ text), the markdown text line-height, paragraph bottom margins,
-   * and list margins — all scaled proportionally. 16 matches the stock DSH
-   * spacing.
-   */
-  lineHeight?: number
   /** Markdown table presentation style. */
   tableStyle?: 'default' | 'claude'
   /**
@@ -109,15 +98,6 @@ export interface UITweaksConfig {
   suggestModel?: string
 }
 
-export const MIN_FONT_SIZE = 10
-export const MAX_FONT_SIZE = 32
-export const DEFAULT_FONT_SIZE = 16
-
-/** 16px matches the stock DSH vertical rhythm (message/block gaps, etc.). */
-export const MIN_LINE_HEIGHT = 0
-export const MAX_LINE_HEIGHT = 64
-export const DEFAULT_LINE_HEIGHT = 16
-
 /** 81% = the stock code ratio (13px code block at a 16px body). Legacy input. */
 export const MIN_CODE_FONT_SCALE = 50
 export const MAX_CODE_FONT_SCALE = 150
@@ -161,10 +141,8 @@ export const DEFAULT_NOTIFY_SOUND = false
 
 /** Configuration schema with documented defaults. */
 export const Config: Schema<UITweaksConfig> = z.object({
-  fontSize: z.number().min(10).max(32).default(16),
   codeFontScale: z.number().min(MIN_CODE_FONT_SCALE).max(MAX_CODE_FONT_SCALE).default(DEFAULT_CODE_FONT_SCALE),
   codeFontSize: z.number().min(MIN_CODE_FONT_SIZE).max(MAX_CODE_FONT_SIZE),
-  lineHeight: z.number().min(MIN_LINE_HEIGHT).max(MAX_LINE_HEIGHT).default(DEFAULT_LINE_HEIGHT),
   tableStyle: z.union(['default', 'claude'] as const).default('default'),
   gitBarEnabled: z.boolean().default(DEFAULT_GITBAR_ENABLED),
   archiveManagerEnabled: z.boolean().default(DEFAULT_ARCHIVE_MANAGER_ENABLED),
@@ -184,13 +162,10 @@ export const Config: Schema<UITweaksConfig> = z.object({
 
 /** Configuration after static validation, with every default materialized. */
 export interface ResolvedUITweaksConfig {
-  fontSize: number
-  /** Code font size as a percentage of the message font size (legacy input). */
+  /** Code font size as a percentage of the stock message font size (legacy input). */
   codeFontScale: number
   /** Effective absolute code font size in px (codeFontSize, else legacy %, else stock). */
   codeFontSize: number
-  /** Base vertical spacing (px) for the reply area ("行高"). */
-  lineHeight: number
   tableStyle: 'default' | 'claude'
   /** Whether the GitBar pills above the input are shown. */
   gitBarEnabled: boolean
@@ -224,14 +199,12 @@ export interface ResolvedUITweaksConfig {
 
 /** Resolve a partial config into a fully defaulted value. */
 export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConfig {
-  const fontSize = config.fontSize ?? DEFAULT_FONT_SIZE
   const codeFontScale = config.codeFontScale ?? DEFAULT_CODE_FONT_SCALE
   // Effective code size: the absolute px input wins; otherwise derive px from
-  // the legacy percentage at the resolved body size; otherwise stock.
+  // the legacy percentage at the stock 16px body; otherwise stock.
   const codeFontSize = typeof config.codeFontSize === 'number'
     ? Math.min(MAX_CODE_FONT_SIZE, Math.max(MIN_CODE_FONT_SIZE, config.codeFontSize))
-    : Math.max(8, Math.round(fontSize * (13 / 16) * (codeFontScale / DEFAULT_CODE_FONT_SCALE)))
-  const lineHeight = config.lineHeight ?? DEFAULT_LINE_HEIGHT
+    : Math.max(8, Math.round(DEFAULT_CODE_FONT_SIZE * (codeFontScale / DEFAULT_CODE_FONT_SCALE)))
   const tableStyle = config.tableStyle ?? 'default'
   const gitBarEnabled = config.gitBarEnabled ?? DEFAULT_GITBAR_ENABLED
   const archiveManagerEnabled = config.archiveManagerEnabled ?? DEFAULT_ARCHIVE_MANAGER_ENABLED
@@ -246,7 +219,7 @@ export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConf
   const notifyTitleFlash = config.notifyTitleFlash ?? DEFAULT_NOTIFY_TITLE_FLASH
   const notifySystemNotification = config.notifySystemNotification ?? DEFAULT_NOTIFY_SYSTEM_NOTIFICATION
   const notifySound = config.notifySound ?? DEFAULT_NOTIFY_SOUND
-  const resolved: ResolvedUITweaksConfig = { fontSize, codeFontScale, codeFontSize, lineHeight, tableStyle, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled, whaleIndicatorEnabled, preciseCacheHitEnabled, notificationsEnabled, notifyOnlyWhenHidden, notifyOnComplete, notifyOnInteraction, notifyTitleFlash, notifySystemNotification, notifySound }
+  const resolved: ResolvedUITweaksConfig = { codeFontScale, codeFontSize, tableStyle, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled, whaleIndicatorEnabled, preciseCacheHitEnabled, notificationsEnabled, notifyOnlyWhenHidden, notifyOnComplete, notifyOnInteraction, notifyTitleFlash, notifySystemNotification, notifySound }
   if (typeof config.suggestModel === 'string' && config.suggestModel !== '') {
     resolved.suggestModel = config.suggestModel
   }

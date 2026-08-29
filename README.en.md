@@ -1,6 +1,6 @@
 # dsh-ui-tweaks
 
-> **Version requirement**: this release (v0.12.0) requires **DSH v0.1.2-alpha.1 or newer** — the conversation timeline and dialog width now ship natively in DSH, so the plugin dropped its own duplicate implementations. On an older host, pin the previous version to keep both features: `npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks@0.11.2`.
+> **Version requirement**: this release (v0.12.0) requires **DSH v0.1.2-alpha.1 or newer** — the conversation timeline and dialog width now ship natively in DSH, so the plugin dropped its own duplicate implementations (the message font size and line-spacing settings were dropped alongside). On an older host, pin the previous version to keep those features: `npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks@0.11.2`.
 
 A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH) web plugin that live-tunes the conversation UI from the Settings panel.
 
@@ -9,7 +9,7 @@ A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH)
 | | |
 |---|---|
 | ![Claude Desktop table style](assets/table.png) | ![Settings panel](assets/settings.png) |
-| **Table style**: the Claude Desktop look (light-gray rounded cards) | **Settings panel**: font & code size / line spacing / table style / GitBar / whale indicator toggles |
+| **Table style**: the Claude Desktop look (light-gray rounded cards) | **Settings panel**: code font size / table style / GitBar / whale indicator toggles |
 | ![GitBar](assets/git.png) | ![Branch panel](assets/branch.png) |
 | **GitBar**: git pills inside the composer tool row (branch after the access-mode control, diff before the model select) — branch management, per-file diff, and commit & push from the diff panel | **Branch panel**: pops up from the branch pill — local / remote branch lists, click to switch, delete, pull & push to remote, new-branch field at the bottom, plus a **commit graph** dialog (colored SVG fork/merge lanes) |
 | ![Diff panel](assets/gitdiff.png) | ![Terminal panel](assets/terminal.png) |
@@ -21,7 +21,7 @@ A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH)
 
 ## Features
 
-- **Message font size (px)** — type any value (10–32); applies to message text, headings, tables and code. The **code font size** can be set separately (absolute 8–32px, default 13; inline code follows proportionally) — the legacy percentage (`codeFontScale`) stays compatible and is overridden once a px value is set.
+- **Code font size (px)** — absolute 8–32px, default 13 (DSH's stock code-block size at a 16px body); applies to code blocks, with inline code following proportionally. The legacy percentage (`codeFontScale`) stays compatible and is overridden once a px value is set. Message text keeps DSH's stock sizing.
 - **Table style** — choose `Default` or the **Claude Desktop** look (light-gray rounded cell cards with small gaps, no borders; cells share the inline-code background; header not bold).
 - **GitBar (toggleable, off by default)** — when the session's working directory is a git repository, two compact pills render **inside the composer's tool row** (styled like the native access-mode / model-select controls, so the input area no longer carries a separate row above the card):
   - **Branch pill** — right after the access-mode control; shows the current branch and opens an upward branch panel (local / remote lists, `git switch` on click, new-branch field). A **pull** button sits beside the current branch in the panel header (`git pull --ff-only` — fast-forward only: a diverged branch aborts with git's own error instead of silently merging; hidden when the branch has no upstream), so what gets pulled is always the branch in the header. The panel's **Graph** entry opens the **commit graph** dialog: the latest 150 commits (`git log --date-order --all`) are laid out into lanes and rendered as a colored SVG fork/merge graph — dots are commits, curves are forks/merges, each branch line keeps its own color and merge arcs adopt the color of the lane they join; rows highlight on hover, refresh in the header.
@@ -46,7 +46,6 @@ All changes apply **live** — no reload needed. The same values can be hand-edi
 
 ```yaml
 ui-tweaks:
-  fontSize: 16
   tableStyle: claude
   gitBarEnabled: true     # defaults to false (off); set true to enable GitBar
   archiveManagerEnabled: true   # defaults to false (off); set true to show the Archive page
@@ -113,9 +112,8 @@ npx -y @deepseek-ai/dsh plugin --profile web add .        # bundle install from 
   is how a plugin owns a configuration page.
 - **Browser** (`src/client/index.tsx`) reads/writes that route, renders the
   Settings section, and applies the values live via a runtime `<style>` element
-  that overrides stable DSH anchors (`[data-chat-flow]`,
-  `[data-composer-card]`, `body` markdown font tokens, markdown tables inside
-  `[data-slot="conversation.chat.node"]`).
+  that overrides stable DSH anchors (`body` markdown code-font tokens, markdown
+  tables inside `[data-slot="conversation.chat.node"]`).
 - **Precise cache hit** (`src/client/cachehit.tsx`) mounts a null-rendering
   seat in the `conversation.composer.dock` slot (the band hosting the stock
   stats line) and reads the session's token usage through the framework's

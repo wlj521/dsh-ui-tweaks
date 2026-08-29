@@ -2,8 +2,8 @@
  * dsh-ui-tweaks — browser half.
  *
  * Reads and writes the `ui-tweaks` settings namespace through the same-origin
- * route served by the server half, applies the chosen font size / table style
- * live via a runtime `<style>` element, and renders the Settings
+ * route served by the server half, applies the chosen code font size / table
+ * style live via a runtime `<style>` element, and renders the Settings
  * panel section that edits them.
  */
 
@@ -33,28 +33,18 @@ import { installTaskNotifier, previewAlerts, requestNotifyPermission } from './n
 const NS = 'ui-tweaks'
 const SETTINGS_ROUTE = '/_dsh/ui-tweaks/settings'
 
-const DEFAULT_FONT_SIZE = 16
-const MIN_FONT_SIZE = 10
-const MAX_FONT_SIZE = 32
-/** Legacy: code font as a percentage of the message font size (81% = stock 13/16). */
+/** Legacy: code font as a percentage of the stock 16px body (81% = stock 13/16). */
 const DEFAULT_CODE_FONT_SCALE = 81
 /** Absolute code font size (px): 13 is the stock DSH code block at a 16px body. */
 const DEFAULT_CODE_FONT_SIZE = 13
 const MIN_CODE_FONT_SIZE = 8
 const MAX_CODE_FONT_SIZE = 32
-/** 行高 base unit (px): message/block gaps, text line-height, paragraph & list margins all scale from it. */
-const DEFAULT_LINE_HEIGHT = 16
-const MIN_LINE_HEIGHT = 0
-const MAX_LINE_HEIGHT = 64
 
 interface TweaksValue {
-  fontSize?: number
-  /** Code font size as a percentage of the message font size (81 = stock). Legacy input. */
+  /** Code font size as a percentage of the stock 16px body (81 = stock). Legacy input. */
   codeFontScale?: number
   /** Absolute code font size in px; wins over the legacy percentage. */
   codeFontSize?: number
-  /** 行高 base unit in px; scales message/block gaps, line-height and list/paragraph margins. */
-  lineHeight?: number
   tableStyle?: 'default' | 'claude'
   /** Whether the GitBar (branch / diff / commit pills) is shown. */
   gitBarEnabled?: boolean
@@ -85,10 +75,8 @@ interface TweaksValue {
 }
 
 interface ResolvedTweaks {
-  fontSize: number
   /** Effective absolute code font size in px (codeFontSize, else legacy %, else stock). */
   codeFontSize: number
-  lineHeight: number
   tableStyle: 'default' | 'claude'
   gitBarEnabled: boolean
   archiveManagerEnabled: boolean
@@ -117,16 +105,12 @@ interface ApiFailure { ok: false; error: { code: string; message: string } }
 const en = {
   nav: 'UI Tweaks',
   settingsTitle: 'UI Tweaks',
-  settingsIntro: 'Tune the conversation UI — text, tables and layout, plus optional features: git bar, archive & MCP managers and the /init command. Changes apply live.',
+  settingsIntro: 'Tune the conversation UI — code size, tables and layout, plus optional features: git bar, archive & MCP managers and the /init command. Changes apply live.',
   sectionText: 'Text & tables',
   sectionLayout: 'Layout',
   sectionFeatures: 'Features',
-  fontSize: 'Message font size',
-  fontSizeHint: `Number between ${MIN_FONT_SIZE} and ${MAX_FONT_SIZE}; applies to message text, headings, tables and code.`,
   codeFontSize: 'Code font size',
   codeFontSizeHint: `Absolute code size in px (${MIN_CODE_FONT_SIZE}–${MAX_CODE_FONT_SIZE}); ${DEFAULT_CODE_FONT_SIZE}px is DSH's default at a 16px body. Applies to code blocks; inline code follows proportionally.`,
-  lineHeight: 'Line spacing',
-  lineHeightHint: `Base vertical spacing in px: gaps between message rows (Think ↔ tool cards) and blocks inside one reply, plus text line-height, paragraph and list margins, all scale from it; ${DEFAULT_LINE_HEIGHT} is DSH's default.`,
   tableStyle: 'Table style',
   tableStyleHint: 'Cell look for markdown tables: stock borders, or the Claude Desktop card style.',
   tableStyleDefault: 'Default',
@@ -326,16 +310,12 @@ type LocaleKey = keyof typeof en
 const zh: Record<LocaleKey, string> = {
   nav: '界面调整',
   settingsTitle: '界面调整',
-  settingsIntro: '调整对话界面——文本、表格与布局，以及 Git 状态栏、归档 / MCP 管理、/init 命令等功能开关，修改即时生效。',
+  settingsIntro: '调整对话界面——代码字号、表格与布局，以及 Git 状态栏、归档 / MCP 管理、/init 命令等功能开关，修改即时生效。',
   sectionText: '文本与表格',
   sectionLayout: '布局',
   sectionFeatures: '功能',
-  fontSize: '消息字体大小',
-  fontSizeHint: `取值 ${MIN_FONT_SIZE}–${MAX_FONT_SIZE}，作用于消息正文、标题、表格与代码。`,
   codeFontSize: '代码字号',
   codeFontSizeHint: `代码绝对字号，取值 ${MIN_CODE_FONT_SIZE}–${MAX_CODE_FONT_SIZE}px；${DEFAULT_CODE_FONT_SIZE}px 为 DSH 默认（正文 16 时）。作用于代码块，行内代码按比例跟随。`,
-  lineHeight: '行高',
-  lineHeightHint: `回复区垂直间距的基准值：消息之间（如 Think ↔ 工具卡片）、回复内块之间、正文行高、段落与列表边距都按它缩放；取值 ${MIN_LINE_HEIGHT}–${MAX_LINE_HEIGHT}px，${DEFAULT_LINE_HEIGHT} 为 DSH 默认。`,
   tableStyle: '表格样式',
   tableStyleHint: 'Markdown 表格的外观：默认边框，或 Claude Desktop 卡片风格。',
   tableStyleDefault: '默认',
@@ -540,16 +520,13 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
-  const fontSize = typeof value?.fontSize === 'number' ? value.fontSize : DEFAULT_FONT_SIZE
   // Effective code size: the absolute px input wins; otherwise derive px from
-  // the legacy percentage at the resolved body size; otherwise stock.
+  // the legacy percentage at the stock 16px body; otherwise stock.
   const codeFontSize = typeof value?.codeFontSize === 'number'
     ? Math.min(MAX_CODE_FONT_SIZE, Math.max(MIN_CODE_FONT_SIZE, value.codeFontSize))
-    : Math.max(8, Math.round(fontSize * (13 / 16) * ((value?.codeFontScale ?? DEFAULT_CODE_FONT_SCALE) / DEFAULT_CODE_FONT_SCALE)))
+    : Math.max(8, Math.round(DEFAULT_CODE_FONT_SIZE * ((value?.codeFontScale ?? DEFAULT_CODE_FONT_SCALE) / DEFAULT_CODE_FONT_SCALE)))
   return {
-    fontSize,
     codeFontSize,
-    lineHeight: typeof value?.lineHeight === 'number' ? value.lineHeight : DEFAULT_LINE_HEIGHT,
     tableStyle: value?.tableStyle === 'claude' ? 'claude' : 'default',
     gitBarEnabled: value?.gitBarEnabled ?? false,
     archiveManagerEnabled: value?.archiveManagerEnabled ?? false,
@@ -567,44 +544,31 @@ function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
   }
 }
 
-/** Scale one theme px value proportionally to the chosen base size. */
-function rel(base: number, fontSize: number): number {
-  return Math.max(8, Math.round((base / DEFAULT_FONT_SIZE) * fontSize))
-}
-
-/** Rebuild the markdown font tokens for the chosen base size, keeping the theme faces. */
-function buildFontCss(fontSize: number, lineHeight: number, codeFontSize: number): string {
+/**
+ * Rebuild the code font tokens for the chosen code-block size, keeping the
+ * theme faces and the stock vertical rhythm. Returns an empty string at the
+ * stock size so the theme's own tokens stay authoritative.
+ */
+function buildCodeFontCss(codeFontSize: number): string {
+  if (codeFontSize === DEFAULT_CODE_FONT_SIZE) return ''
   const cs = getComputedStyle(document.body)
   const fam = (name: string, fallback: string): string => {
     const value = cs.getPropertyValue(name).trim()
     return value.length > 0 ? value : fallback
   }
-  const base = fam('--dsw-font-markdown-base-font-family', '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif')
   const code = fam('--dsw-font-markdown-code-font-family', '"SF Mono", Consolas, monospace')
   const codeBlock = fam('--dsw-font-markdown-code-block-font-family', '"SF Mono", Consolas, monospace')
 
   const parts: string[] = []
-  // `baseLine` is the token's line-height at the 16px baseline; it scales with
-  // both the chosen font size and the 行高 unit, so at the default (16) it
-  // reproduces the stock rhythm exactly.
+  // Code sizes hang off the absolute code-block size, with inline code slightly
+  // larger and the small variant slightly smaller, preserving DSH's hierarchy
+  // (14/13 and 12/13 of the block); line-heights stay at the stock values.
   const token = (shorthand: string, size: number, baseLine: number, family: string): void => {
-    const line = Math.max(12, Math.round((baseLine / DEFAULT_FONT_SIZE) * fontSize * (lineHeight / DEFAULT_LINE_HEIGHT)))
-    parts.push(`--${shorthand}:${size}px/${line}px ${family}`)
+    parts.push(`--${shorthand}:${size}px/${baseLine}px ${family}`)
     parts.push(`--${shorthand}-font-size:${size}px`)
-    parts.push(`--${shorthand}-line-height:${line}px`)
+    parts.push(`--${shorthand}-line-height:${baseLine}px`)
   }
-  // Code fonts hang off the absolute code-block size (stock: 13px at a 16px
-  // body), with inline code slightly larger and the small variant slightly
-  // smaller, preserving DSH's hierarchy (14/13 and 12/13 of the block).
   const codePx = (blockRatio: number): number => Math.max(8, Math.round(codeFontSize * blockRatio))
-  token('dsw-font-markdown-base', fontSize, 28, base)
-  token('dsw-font-markdown-base-strong', fontSize, 28, base)
-  token('dsw-font-markdown-base-italic', fontSize, 28, base)
-  token('dsw-font-markdown-base-strong-italic', fontSize, 28, base)
-  token('dsw-font-markdown-h1', rel(24, fontSize), 34, base)
-  token('dsw-font-markdown-h2', rel(22, fontSize), 32, base)
-  token('dsw-font-markdown-h3', rel(20, fontSize), 30, base)
-  token('dsw-font-markdown-h4', fontSize, 28, base)
   token('dsw-font-markdown-code', codePx(14 / 13), 22, code)
   token('dsw-font-markdown-code-block', codePx(1), 22, codeBlock)
   token('dsw-font-markdown-code-block-small', codePx(12 / 13), 18, codeBlock)
@@ -613,9 +577,9 @@ function buildFontCss(fontSize: number, lineHeight: number, codeFontSize: number
 
 /**
  * Claude Desktop-ish markdown table look: light-gray rounded cell cards with
- * small gaps, no borders. Cells share the theme's inline-code background and
- * follow the message font-size setting. Alignment is left to the markdown
- * renderer, so headers and cells always match.
+ * small gaps, no borders. Cells share the theme's inline-code background.
+ * Alignment is left to the markdown renderer, so headers and cells always
+ * match; font sizes stay DSH's stock values.
  */
 const CLAUDE_TABLE_CSS = `
 div[data-slot="conversation.chat.node"] table{
@@ -627,7 +591,6 @@ div[data-slot="conversation.chat.node"] table{
      inside the stock table wrapper instead of hiding columns. */
   min-width:max-content !important;
   border:none !important;
-  font-size:var(--dsw-font-markdown-base-font-size) !important;
 }
 div[data-slot="conversation.chat.node"] table thead th{
   background:var(--dsw-alias-markdown-inline-code) !important;
@@ -657,77 +620,16 @@ div[data-slot="conversation.chat.node"] table pre{
 
 function buildRuntimeCss(value: ResolvedTweaks): string {
   const rules: string[] = []
-  rules.push(buildFontCss(value.fontSize, value.lineHeight, value.codeFontSize))
-  // User-sent messages use their own fixed font-size (not the markdown tokens);
-  // route them through the same base so they follow the fontSize setting too.
-  // `steering` messages are sent while the agent is busy (busyEnter: steer);
-  // `[data-pending-steering]` is their in-flight bubble before it becomes durable.
-  rules.push(`[data-chat-flow-kind="user"] [class^="_text_"],[data-chat-flow-kind="steering"] [class^="_text_"],[data-pending-steering] [class^="_text_"]{font-size:var(--dsw-font-markdown-base-font-size) !important}`)
-  // Composer input follows the same base size. The visible text is rendered by
-  // the hidden-textarea + backdrop/mirror pattern: the textarea is transparent,
-  // the `data-input-backdrop` paints the text you see, and `data-input-mirror`
-  // drives auto-grow. All three (plus the placeholder) must share the size.
-  // Only font-size is touched: line-height is part of the auto-grow/caret
-  // metrics, so overriding it misplaces the caret.
-  rules.push(`[data-composer-card="true"] textarea,[data-composer-card="true"] [data-input-backdrop],[data-composer-card="true"] [data-input-mirror]{font-size:var(--dsw-font-markdown-base-font-size) !important}`)
-  rules.push(`[data-composer-card="true"] textarea::placeholder{font-size:var(--dsw-font-markdown-base-font-size) !important}`)
-  // Markdown table cells are pinned by DSH (15px); let every table style follow
-  // the fontSize setting as well.
-  rules.push(`div[data-slot="conversation.chat.node"] table th,div[data-slot="conversation.chat.node"] table td{font-size:var(--dsw-font-markdown-base-font-size) !important}`)
+  // Code font tokens, emitted only when the code size leaves the stock 13px;
+  // the message body, headings, user messages and composer stay theme stock.
+  const fontCss = buildCodeFontCss(value.codeFontSize)
+  if (fontCss !== '') rules.push(fontCss)
   // Inline code is pinned by DSH to 0.875em of the surrounding text (it ignores
   // the code token); scale that em by how far the chosen code size sits from
-  // the stock ratio (a 13px block at this body size).
-  const stockCodeBlock = value.fontSize * (13 / 16)
-  if (Math.abs(value.codeFontSize - stockCodeBlock) > 0.5) {
-    const em = (0.875 * (value.codeFontSize / stockCodeBlock)).toFixed(3)
+  // the stock ratio (a 13px block at the stock 16px body).
+  if (Math.abs(value.codeFontSize - DEFAULT_CODE_FONT_SIZE) > 0.5) {
+    const em = (0.875 * (value.codeFontSize / DEFAULT_CODE_FONT_SIZE)).toFixed(3)
     rules.push(`div[data-slot="conversation.chat.node"] div[class*="_markdown_"] :not(pre)>code{font-size:${em}em !important}`)
-  }
-  // 行高: the base vertical rhythm of the reply area. When it differs from
-  // the stock 16px, every vertical spacing scales from it proportionally:
-  //  ① gaps between message rows (Think ↔ tool cards like pwsh, user ↔
-  //    assistant) — the chat flow column;
-  //  ② gaps between content blocks inside one assistant reply (Think ↔ text) —
-  //    the Assistant Markdown block container (`Sxvs8a_body`, CSS-module
-  //    hashed, stable within the pinned rc.8 conversation package);
-  //  ③ the markdown typography rhythm: paragraphs (`p` has a stock `margin:
-  //    16px 0` that must be overridden on both axes, not just bottom, or it
-  //    can never tighten below 16), list margins, list-item gaps (stock 6px),
-  //    paragraphs inside list items (stock 8px), code blocks, headings and
-  //    rules — all scaled from the 行高 unit.
-  // Text line-height itself scales in buildFontCss above.
-  if (value.lineHeight !== DEFAULT_LINE_HEIGHT) {
-    const n = value.lineHeight
-    const md = `div[data-slot="conversation.chat.node"] div[class*="_markdown_"]`
-    const liGap = Math.max(2, Math.round((6 * n) / DEFAULT_LINE_HEIGHT))
-    const liPGap = Math.max(2, Math.round((8 * n) / DEFAULT_LINE_HEIGHT))
-    rules.push(`div[data-slot="conversation.view"] .Md3f7G_column{gap:${n}px !important}`)
-    rules.push(`div[data-slot="conversation.chat.node"] .Sxvs8a_body{gap:${n}px !important}`)
-    rules.push(`${md} p{margin:${n}px 0 !important}`)
-    rules.push(`${md} ul,${md} ol{margin:${n}px 0 !important}`)
-    rules.push(`${md} pre{margin:${n}px 0 !important}`)
-    // Code blocks: the pre's inner vertical padding is stock 16px (shiki
-    // default); scale it so the block's own height follows 行高 too. Only
-    // top/bottom is touched, horizontal padding stays as the theme sets it.
-    const codePad = Math.max(4, Math.round((16 * n) / DEFAULT_LINE_HEIGHT))
-    rules.push(`${md} pre{padding-top:${codePad}px !important;padding-bottom:${codePad}px !important}`)
-    // Table cells: vertical cell padding is stock 10px. Scale it for the
-    // default table style; the Claude preset keeps its own compact 7px cell
-    // padding (that look is the point of the preset).
-    if (value.tableStyle !== 'claude') {
-      const cellPad = Math.max(2, Math.round((10 * n) / DEFAULT_LINE_HEIGHT))
-      rules.push(`${md} table th,${md} table td{padding-top:${cellPad}px !important;padding-bottom:${cellPad}px !important}`)
-    }
-    rules.push(`${md} li:not(:first-child){margin-top:${liGap}px !important}`)
-    rules.push(`${md} li>p{margin:${liPGap}px 0 !important}`)
-    rules.push(`${md} h1,${md} h2,${md} h3{margin:${2 * n}px 0 ${n}px !important}`)
-    rules.push(`${md} h4,${md} h5,${md} h6{margin:${n}px 0 !important}`)
-    rules.push(`${md} hr{margin:${2 * n}px 0 !important}`)
-    rules.push(`${md} blockquote{margin:${n}px 0 0 !important}`)
-    // Keep DSH's flush edges: the first/last block of a reply has zero outer
-    // margin (stock `>*:first-child` / `>*:last-child`), so a message starts
-    // and ends tight and the spacing to the next node stays the column gap.
-    rules.push(`${md} > :first-child{margin-top:0 !important}`)
-    rules.push(`${md} > :last-child{margin-bottom:0 !important}`)
   }
   if (value.tableStyle === 'claude') {
     rules.push(CLAUDE_TABLE_CSS)
@@ -955,38 +857,16 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
   const resolved = resolveValue(state.value)
   const writable = state.writable
-  const [draft, setDraft] = useState<string>(String(resolved.fontSize))
   const [codeDraft, setCodeDraft] = useState<string>(String(resolved.codeFontSize))
-  const [lineHeightDraft, setLineHeightDraft] = useState<string>(String(resolved.lineHeight))
   const [status, setStatus] = useState<LocaleKey | undefined>(undefined)
 
   useEffect(() => { if (state.status === 'loading' && state.value === undefined) void controller.load() }, [controller, state.status, state.value])
-  useEffect(() => { setDraft(String(resolved.fontSize)) }, [resolved.fontSize])
   useEffect(() => { setCodeDraft(String(resolved.codeFontSize)) }, [resolved.codeFontSize])
-  useEffect(() => { setLineHeightDraft(String(resolved.lineHeight)) }, [resolved.lineHeight])
   useEffect(() => {
     if (status === undefined) return
     const timer = setTimeout(() => { setStatus(undefined) }, 1800)
     return () => { clearTimeout(timer) }
   }, [status])
-
-  const commitFontSize = (raw: string): void => {
-    setDraft(raw)
-    const parsed = Number(raw)
-    if (!Number.isFinite(parsed)) return
-    const clamped = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, Math.round(parsed)))
-    setDraft(String(clamped))
-    void controller.set('fontSize', clamped).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
-  }
-
-  const commitLineHeight = (raw: string): void => {
-    setLineHeightDraft(raw)
-    const parsed = Number(raw)
-    if (!Number.isFinite(parsed)) return
-    const clamped = Math.min(MAX_LINE_HEIGHT, Math.max(MIN_LINE_HEIGHT, Math.round(parsed)))
-    setLineHeightDraft(String(clamped))
-    void controller.set('lineHeight', clamped).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
-  }
 
   const commitCodeSize = (raw: string): void => {
     setCodeDraft(raw)
@@ -999,18 +879,6 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
 
   const pickTableStyle = (raw: string): void => {
     void controller.set('tableStyle', raw === 'claude' ? 'claude' : 'default').then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
-  }
-
-  const stepFontSize = (delta: number): void => {
-    const next = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, resolved.fontSize + delta))
-    setDraft(String(next))
-    void controller.set('fontSize', next).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
-  }
-
-  const stepLineHeight = (delta: number): void => {
-    const next = Math.min(MAX_LINE_HEIGHT, Math.max(MIN_LINE_HEIGHT, resolved.lineHeight + delta))
-    setLineHeightDraft(String(next))
-    void controller.set('lineHeight', next).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
   const stepCodeSize = (delta: number): void => {
@@ -1078,10 +946,6 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     )
   }
 
-  const reset = (field: 'fontSize' | 'lineHeight' | 'tableStyle' | 'gitBarEnabled' | 'archiveManagerEnabled' | 'mcpManagerEnabled'): void => {
-    void controller.unset(field).then(() => { setStatus('resetDone') }).catch(() => { setStatus('unavailable') })
-  }
-
   /** Code size reset clears BOTH keys: the px input and the legacy percentage. */
   const resetCodeSize = (): void => {
     void (async () => {
@@ -1116,52 +980,6 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
 
       <section className="dut-panel">
         <div className="dut-section-label">{t('sectionText')}</div>
-        <div className="dut-field">
-          <div className="dut-field-top">
-            <span className="dut-label">{t('fontSize')}<Hint text={t('fontSizeHint')} /></span>
-            <div className="dut-controls">
-              <div className="dut-stepper">
-                <button type="button" aria-label="−" disabled={!writable || resolved.fontSize <= MIN_FONT_SIZE} onClick={() => { stepFontSize(-1) }}>−</button>
-                <input
-                  type="number"
-                  min={MIN_FONT_SIZE}
-                  max={MAX_FONT_SIZE}
-                  step={1}
-                  value={draft}
-                  disabled={!writable}
-                  onChange={(event) => { setDraft(event.target.value) }}
-                  onBlur={(event) => { commitFontSize(event.target.value) }}
-                  onKeyDown={(event) => { if (event.key === 'Enter') commitFontSize((event.target as HTMLInputElement).value) }}
-                />
-                <button type="button" aria-label="+" disabled={!writable || resolved.fontSize >= MAX_FONT_SIZE} onClick={() => { stepFontSize(1) }}>+</button>
-              </div>
-              <button type="button" className={'dut-btn' + (resolved.fontSize === DEFAULT_FONT_SIZE ? ' dut-btn-active' : '')} disabled={!writable} onClick={() => { reset('fontSize') }}>{t('defaultAction')}</button>
-            </div>
-          </div>
-        </div>
-        <div className="dut-field">
-          <div className="dut-field-top">
-            <span className="dut-label">{t('lineHeight')}<Hint text={t('lineHeightHint')} /></span>
-            <div className="dut-controls">
-              <div className="dut-stepper">
-                <button type="button" aria-label="−" disabled={!writable || resolved.lineHeight <= MIN_LINE_HEIGHT} onClick={() => { stepLineHeight(-2) }}>−</button>
-                <input
-                  type="number"
-                  min={MIN_LINE_HEIGHT}
-                  max={MAX_LINE_HEIGHT}
-                  step={2}
-                  value={lineHeightDraft}
-                  disabled={!writable}
-                  onChange={(event) => { setLineHeightDraft(event.target.value) }}
-                  onBlur={(event) => { commitLineHeight(event.target.value) }}
-                  onKeyDown={(event) => { if (event.key === 'Enter') commitLineHeight((event.target as HTMLInputElement).value) }}
-                />
-                <button type="button" aria-label="+" disabled={!writable || resolved.lineHeight >= MAX_LINE_HEIGHT} onClick={() => { stepLineHeight(2) }}>+</button>
-              </div>
-              <button type="button" className={'dut-btn' + (resolved.lineHeight === DEFAULT_LINE_HEIGHT ? ' dut-btn-active' : '')} disabled={!writable} onClick={() => { reset('lineHeight') }}>{t('defaultAction')}</button>
-            </div>
-          </div>
-        </div>
         <div className="dut-field">
           <div className="dut-field-top">
             <span className="dut-label">{t('codeFontSize')}<Hint text={t('codeFontSizeHint')} /></span>
