@@ -69,10 +69,24 @@ export interface GitBranches {
   remote: string[]
 }
 
+/** One tag: its name plus the commit it points at. */
+export interface GitTag {
+  name: string
+  /** Short hash of the tagged commit. */
+  hash: string
+  /** Subject line of the tagged commit. */
+  subject: string
+}
+
+/** Tag enumeration, newest creation date first. */
+export interface GitTags {
+  tags: GitTag[]
+}
+
 /** One commit row of the graph table. */
 export interface GitGraphCommit {
-  /** ASCII graph edge prefix (monospace drawing column). */
-  graph: string
+  /** Full hashes of the parent commits, first parent first (empty at root commits). */
+  parents: string[]
   /** Full commit hash. */
   fullHash: string
   /** Short hash (7 chars). */
@@ -89,7 +103,8 @@ export interface GitGraphCommit {
   refs: string
 }
 
-/** Git commit graph table (`git log --graph`, structured rows). */
+/** Git commit graph table (structured rows across all refs; the client lays
+ *  out the branch lanes and draws the fork/merge SVG itself from `parents`). */
 export interface GitGraph {
   commits: GitGraphCommit[]
   /** Whether the requested commit window was cut off by the limit. */
@@ -1083,8 +1098,8 @@ export class GitBackend {
   async commit(
     cwd: string,
     message: string,
-    opts: { push?: boolean; exclude?: readonly string[]; signal?: AbortSignal } = {},
-  ): Promise<{ hash?: string; pushed: boolean }> {
+    opts: { push?: boolean; exclude?: readonly string[]; tag?: string; signal?: AbortSignal } = {},
+  ): Promise<{ hash?: string; pushed: boolean; tag?: string }> {
     const msg = message.trim()
     if (msg === '') throw new Error('commit message is empty')
     const exclude = (opts.exclude ?? []).filter(path => path !== '')
@@ -1109,12 +1124,25 @@ export class GitBackend {
     } catch {
       // Hash is informational only.
     }
+    // Tag BEFORE pushing so a bad tag name fails before anything left the
+    // machine; the tag itself rides to the remote only after the code did.
+    // The commit-band shortcut creates a lightweight tag on HEAD.
+    const tag = opts.tag?.trim() ?? ''
+    let tagCreated: string | undefined
+    if (tag !== '') {
+      await this.createTag(cwd, tag, opts.signal !== undefined ? { signal: opts.signal } : {})
+      tagCreated = tag
+    }
     let pushed = false
     if (opts.push === true) {
       await this.push(cwd, opts.signal)
       pushed = true
+      if (tagCreated !== undefined) await this.pushTag(cwd, tagCreated, opts.signal)
     }
-    return hash === undefined ? { pushed } : { hash, pushed }
+    const result: { hash?: string; pushed: boolean; tag?: string } = { pushed }
+    if (hash !== undefined) result.hash = hash
+    if (tagCreated !== undefined) result.tag = tagCreated
+    return result
   }
 
   /** Delete a local branch (force; the UI confirms first). Protected branches cannot be deleted. */
@@ -1146,27 +1174,88 @@ export class GitBackend {
   }
 
   /**
-   * Recent commit graph as structured rows (`git log --graph --all --no-color`
-   * with a machine-readable format), bounded by `limit` commits. The graph edge
-   * prefix is kept verbatim for the monospace drawing column.
+   * Rename a branch (`git branch -m`). Renaming the current branch moves HEAD
+   * with it; a remote upstream keeps its old name — pushing the new name and
+   * deleting the old remote branch stays an explicit separate step.
+   */
+  async renameBranch(cwd: string, name: string, newName: string, signal?: AbortSignal): Promise<void> {
+    if (!isValidBranchName(name) || !isValidBranchName(newName)) throw new Error('invalid branch name')
+    if (isProtectedBranchName(name)) throw new Error(`cannot rename protected branch: ${name}`)
+    if (name === newName) return
+    await runGit(cwd, ['branch', '-m', name, newName], { signal })
+  }
+
+  /** Tags newest-first, each with the short hash + subject of its commit. */
+  async tags(cwd: string, signal?: AbortSignal): Promise<GitTags> {
+    const { stdout } = await runGit(cwd, [
+      'tag', '--list', '--sort=-creatordate',
+      '--format=%(refname:short)%09%(objectname:short)%09%(contents:subject)',
+    ], { signal })
+    const tags: GitTag[] = []
+    for (const line of stdout.split('\n')) {
+      const [name, hash, subject] = line.split('\t')
+      if (name !== undefined && name !== '' && hash !== undefined && hash !== '') {
+        tags.push({ name, hash, subject: subject ?? '' })
+      }
+    }
+    return { tags }
+  }
+
+  /**
+   * Create a tag on HEAD, or on `ref` (any hash/branch the rev-parse accepts)
+   * for back-tagger duty. With a message the tag is annotated, otherwise it is
+   * a lightweight pointer. Refuses an already-taken name (git enforces this
+   * too — the check just makes the API error readable).
+   */
+  async createTag(
+    cwd: string,
+    name: string,
+    opts: { message?: string; ref?: string; signal?: AbortSignal } = {},
+  ): Promise<void> {
+    if (!isValidTagName(name)) throw new Error('invalid tag name')
+    const message = opts.message?.trim() ?? ''
+    const ref = opts.ref?.trim() ?? ''
+    const args = message !== '' ? ['tag', '-a', name, '-m', message] : ['tag', name]
+    if (ref !== '') args.push(ref)
+    await runGit(cwd, args, { signal: opts.signal })
+  }
+
+  /** Delete a local tag (`git tag -d`). Remote tags stay untouched. */
+  async deleteTag(cwd: string, name: string, signal?: AbortSignal): Promise<void> {
+    if (!isValidTagName(name)) throw new Error('invalid tag name')
+    await runGit(cwd, ['tag', '-d', name], { signal })
+  }
+
+  /** Push one tag to `origin` — git never ships tags with a plain push. */
+  async pushTag(cwd: string, name: string, signal?: AbortSignal): Promise<void> {
+    if (!isValidTagName(name)) throw new Error('invalid tag name')
+    await runGit(cwd, ['push', 'origin', name], { signal })
+  }
+
+  /**
+   * Recent commits across all refs (`git log --date-order --all`), bounded by
+   * `limit`. Parent hashes ride along so the client can lay out branch lanes
+   * and render the fork/merge graph as SVG.
    */
   async graph(cwd: string, limit: number | undefined, signal?: AbortSignal): Promise<GitGraph> {
     const n = Math.max(1, Math.min(500, Number.isFinite(limit) ? Math.floor(limit as number) : 150))
     const sep = '\u001f'
     const { stdout } = await runGit(cwd, [
-      'log', '--graph', '--all', '--no-color',
-      `--format=${sep}%H${sep}%h${sep}%an${sep}%aI${sep}%cr${sep}%d${sep}%s`,
+      'log', '--all', '--no-color', '--date-order',
+      `--format=${sep}%H${sep}%h${sep}%an${sep}%aI${sep}%cr${sep}%d${sep}%P${sep}%s`,
       '-n', String(n),
     ], { signal })
     const commits: GitGraphCommit[] = []
     for (const line of stdout.split('\n')) {
-      // Pure graph continuation lines (`|`, `/`, `\`) carry no commit data.
+      // The format leads with the separator, so parts[0] is always '' — skip
+      // it in the destructure (no `--graph` anymore, so there is no edge
+      // prefix and no continuation lines either).
       const parts = line.split(sep)
-      if (parts.length < 8) continue
-      const [graph, fullHash, hash, author, date, dateRelative, refs, subject] = parts
+      if (parts.length < 9) continue
+      const [, fullHash, hash, author, date, dateRelative, refs, parents, subject] = parts
       if (fullHash === undefined || fullHash === '' || subject === undefined) continue
       commits.push({
-        graph: graph ?? '',
+        parents: (parents ?? '').trim() === '' ? [] : (parents ?? '').trim().split(' '),
         fullHash,
         hash: hash ?? fullHash.slice(0, 7),
         author: (author ?? '').trim(),
@@ -1200,6 +1289,15 @@ export class GitBackend {
     } else {
       await runGit(cwd, ['push', '-u', 'origin', branch], { signal })
     }
+  }
+
+  /**
+   * Pull the current branch, fast-forward only: a diverged branch aborts with
+   * git's own message instead of silently creating a merge commit, and a
+   * branch without upstream fails with git's tracking-information error.
+   */
+  async pull(cwd: string, signal?: AbortSignal): Promise<void> {
+    await runGit(cwd, ['pull', '--ff-only'], { signal })
   }
 
   /** Switch to an existing branch (git switch, falling back to checkout). */
@@ -1516,6 +1614,12 @@ function isAbortError(error: unknown): boolean {
 /** Git branch names: no leading `-`, no spaces, no control chars. */
 function isValidBranchName(name: string): boolean {
   return /^[A-Za-z0-9._\/-]+$/.test(name) && !name.startsWith('-') && !name.includes('..')
+}
+
+/** Tag names: the same ref-charset rules as branches (refs/tags rejects the
+ *  same metacharacters), minus `HEAD` itself. */
+function isValidTagName(name: string): boolean {
+  return isValidBranchName(name) && name !== 'HEAD'
 }
 
 /** Branch names that must never be deletable (main/master). */

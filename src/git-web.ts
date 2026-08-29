@@ -151,6 +151,10 @@ export class GitWebHandler {
           ok(res, await this.backend.branches(cwd))
           return
         }
+        if (path === `${GIT_ROUTE}/tags`) {
+          ok(res, await this.backend.tags(cwd))
+          return
+        }
         if (path === `${GIT_ROUTE}/diff`) {
           if (file === undefined) throw new TypeError('file query parameter is required')
           if (mode !== 'hunk' && mode !== 'full') throw new TypeError('mode must be "hunk" or "full"')
@@ -209,10 +213,12 @@ export class GitWebHandler {
         const exclude = isRecord(body) && Array.isArray(body.exclude)
           ? body.exclude.filter((entry): entry is string => typeof entry === 'string' && entry !== '')
           : undefined
+        const tag = isRecord(body) && typeof body.tag === 'string' ? body.tag.trim() : ''
         const cwd = this.requireCwd({ session, ws })
         ok(res, await this.backend.commit(cwd, fields.message, {
           push,
           ...(exclude !== undefined && exclude.length > 0 ? { exclude } : {}),
+          ...(tag !== '' ? { tag } : {}),
         }))
         return
       }
@@ -220,6 +226,12 @@ export class GitWebHandler {
         const cwd = this.requireCwd({ session, ws })
         await this.backend.push(cwd)
         ok(res, { pushed: true })
+        return
+      }
+      if (path === `${GIT_ROUTE}/pull`) {
+        const cwd = this.requireCwd({ session, ws })
+        await this.backend.pull(cwd)
+        ok(res, { pulled: true })
         return
       }
       if (path === `${GIT_ROUTE}/checkout`) {
@@ -250,6 +262,39 @@ export class GitWebHandler {
         const cwd = this.requireCwd({ session, ws })
         await this.backend.deleteRemoteBranch(cwd, fields.name)
         ok(res, { branch: fields.name })
+        return
+      }
+      if (path === `${GIT_ROUTE}/branch-rename`) {
+        const fields = requireFields(body, ['name', 'newName'])
+        const cwd = this.requireCwd({ session, ws })
+        await this.backend.renameBranch(cwd, fields.name, fields.newName)
+        ok(res, { branch: fields.newName })
+        return
+      }
+      if (path === `${GIT_ROUTE}/tag-create`) {
+        const fields = requireFields(body, ['name'])
+        const message = isRecord(body) && typeof body.message === 'string' ? body.message : undefined
+        const ref = isRecord(body) && typeof body.ref === 'string' ? body.ref : undefined
+        const cwd = this.requireCwd({ session, ws })
+        await this.backend.createTag(cwd, fields.name, {
+          ...(message !== undefined && message.trim() !== '' ? { message } : {}),
+          ...(ref !== undefined && ref.trim() !== '' ? { ref } : {}),
+        })
+        ok(res, { tag: fields.name })
+        return
+      }
+      if (path === `${GIT_ROUTE}/tag-delete`) {
+        const fields = requireFields(body, ['name'])
+        const cwd = this.requireCwd({ session, ws })
+        await this.backend.deleteTag(cwd, fields.name)
+        ok(res, { tag: fields.name })
+        return
+      }
+      if (path === `${GIT_ROUTE}/tag-push`) {
+        const fields = requireFields(body, ['name'])
+        const cwd = this.requireCwd({ session, ws })
+        await this.backend.pushTag(cwd, fields.name)
+        ok(res, { tag: fields.name })
         return
       }
       if (path === `${GIT_ROUTE}/suggest`) {

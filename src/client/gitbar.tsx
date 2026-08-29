@@ -30,6 +30,8 @@ import { createRoot } from 'react-dom/client'
 import type { ConversationSnapshot, ISessions, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { SettingsClient } from './index.tsx'
 import { APP_ICONS } from './appicons.ts'
+import { GRAPH_LANE_W, GRAPH_ROW_H, layoutCommitGraph } from './graphlayout.ts'
+import type { GraphRow } from './graphlayout.ts'
 
 /** Route prefix matching the host half (src/git-web.ts). */
 const GIT_ROUTE = '/_dsh/ui-tweaks/git'
@@ -54,7 +56,8 @@ type GitBarLabelKey =
   | 'commitEmpty' | 'commitCancel' | 'commitSubmit' | 'commitSubmitPush'
   | 'commitBusy'
   | 'dirty' | 'clean' | 'noChanges' | 'loading' | 'branchDelete' | 'branchDeleteConfirm'
-  | 'includeFile' | 'excludeFile' | 'branchPushRemote'
+  | 'includeFile' | 'excludeFile' | 'branchPushRemote' | 'branchPull' | 'branchRename'
+  | 'tagsTitle' | 'tagCreate' | 'tagCreatePlaceholder' | 'tagMessagePlaceholder' | 'tagPush' | 'tagDelete' | 'tagCommitPlaceholder'
   | 'branchRemoteDelete' | 'branchFrom' | 'branchFromHead' | 'branchGraph'
   | 'branchRefresh' | 'branchCancel' | 'graphTitle'
   | 'graphColGraph' | 'graphColCommit' | 'graphColSubject' | 'graphColAuthor' | 'graphColDate'
@@ -100,9 +103,23 @@ interface GitBranches {
   remote: string[]
 }
 
-/** One commit row of the graph dialog. */
+/** One tag: its name plus the commit it points at. */
+interface GitTag {
+  name: string
+  hash: string
+  subject: string
+}
+
+/** Tag enumeration returned by the `git/tags` endpoint (newest first). */
+interface GitTags {
+  tags: GitTag[]
+}
+
+/** One commit row of the graph dialog. `parents` is optional: the server half
+ *  loads once at host boot while this bundle is served fresh, so a just-updated
+ *  client can briefly talk to a pre-parents server. */
 interface GitGraphCommit {
-  graph: string
+  parents?: string[]
   fullHash: string
   hash: string
   subject: string
@@ -116,6 +133,51 @@ interface GitGraphCommit {
 interface GitGraph {
   commits: GitGraphCommit[]
   truncated: boolean
+}
+
+/** One row's graph drawing: lane segments plus the commit dot. */
+function GraphCell(props: { row: GraphRow; lanes: number }) {
+  const width = Math.max(props.lanes, 1) * GRAPH_LANE_W
+  const cx = (lane: number): number => lane * GRAPH_LANE_W + GRAPH_LANE_W / 2
+  const half = GRAPH_ROW_H / 2
+  return (
+    <svg width={width} height={GRAPH_ROW_H} viewBox={`0 0 ${width} ${GRAPH_ROW_H}`} aria-hidden focusable="false">
+      {props.row.edges.map((edge, index) => {
+        const key = `${edge.kind}:${edge.from}>${edge.to}:${index}`
+        if (edge.kind === 'pass') {
+          return <line key={key} x1={cx(edge.from)} y1={0} x2={cx(edge.to)} y2={GRAPH_ROW_H} stroke={edge.color} strokeWidth={2} />
+        }
+        if (edge.kind === 'in') {
+          return <line key={key} x1={cx(edge.from)} y1={0} x2={cx(edge.to)} y2={half} stroke={edge.color} strokeWidth={2} />
+        }
+        // 'out' — from the dot down to the parent lane: straight when the edge
+        // stays in its lane, an S-curve when it forks or merges across lanes.
+        const x1 = cx(edge.from)
+        const x2 = cx(edge.to)
+        if (x1 === x2) {
+          return <line key={key} x1={x1} y1={half} x2={x2} y2={GRAPH_ROW_H} stroke={edge.color} strokeWidth={2} />
+        }
+        const bend = half + (GRAPH_ROW_H - half) * 0.55
+        return (
+          <path
+            key={key}
+            d={`M ${x1} ${half} C ${x1} ${bend}, ${x2} ${bend}, ${x2} ${GRAPH_ROW_H}`}
+            fill="none"
+            stroke={edge.color}
+            strokeWidth={2}
+            strokeLinecap="round"
+          />
+        )
+      })}
+      <circle
+        cx={cx(props.row.dot)}
+        cy={half}
+        r={4}
+        fill={props.row.color}
+        style={{ stroke: 'var(--dsw-alias-bg-layer-2)', strokeWidth: 1.5 }}
+      />
+    </svg>
+  )
 }
 
 interface DiffLine {
@@ -272,6 +334,12 @@ export const GITBAR_CSS = `
 .gbar-pop-head .gbar-dot{width:6px;height:6px;border-radius:50%;flex:none}
 .gbar-pop-head .gbar-dot.gbar-dirty{background:var(--dsw-alias-state-warn-primary)}
 .gbar-pop-head .gbar-dot.gbar-clean{background:var(--dsw-alias-state-success-primary)}
+/* Pull-current-branch icon button at the popup header's right edge; hidden
+   entirely when the branch has no upstream (nothing to pull from). */
+.gbar-pop-head .gbar-pull{flex:none;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border:none;border-radius:7px;padding:0;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer;transition:background .12s ease,color .12s ease}
+.gbar-pop-head .gbar-pull svg{width:13px;height:13px;display:block}
+.gbar-pop-head .gbar-pull:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.gbar-pop-head .gbar-pull:disabled{opacity:.5;cursor:default}
 .gbar-pop-body{max-height:min(330px,calc(100vh - 250px));overflow-y:auto;padding:3px 6px 5px;scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--dsw-alias-label-tertiary) 35%,transparent) transparent}
 .gbar-pop-body::-webkit-scrollbar{width:5px}
 .gbar-pop-body::-webkit-scrollbar-track{background:transparent}
@@ -305,6 +373,18 @@ export const GITBAR_CSS = `
 .gbar-pop .gbar-del svg{width:13px;height:13px;display:block}
 .gbar-pop .gbar-del:hover{color:var(--dsw-alias-state-error-primary);background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent)}
 .gbar-pop .gbar-del.gbar-arm{width:auto;padding:0 8px;color:var(--dsw-alias-state-error-primary);font-weight:600;background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent)}
+/* rename/create entry beside the delete one — neutral/hover-primary, so the
+   eye keeps reading red strictly as "destructive"; also used by the tag rows
+   and the graph table (both under .gbar-pop / .gbar-modal scopes) */
+.gbar-pop .gbar-ren,.gbar-modal .gbar-ren{
+  flex:none;display:inline-flex;align-items:center;justify-content:center;
+  width:26px;height:26px;border:none;background:transparent;color:var(--dsw-alias-label-tertiary);
+  cursor:pointer;border-radius:7px;margin-right:4px;
+  transition:color .12s ease,background .12s ease;
+}
+.gbar-pop .gbar-ren svg,.gbar-modal .gbar-ren svg{width:13px;height:13px;display:block}
+.gbar-pop .gbar-ren:hover,.gbar-modal .gbar-ren:hover{color:var(--dsw-alias-state-business-primary);background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 10%,transparent)}
+.gbar-pop .gbar-ren:disabled,.gbar-modal .gbar-ren:disabled{opacity:.5;cursor:default}
 .gbar-pushrow{display:flex;align-items:center;gap:7px;padding:0 8px 7px}
 .gbar-pushrow .gbar-pushlabel{font-size:12px;color:var(--dsw-alias-label-secondary)}
 .gbar-pop .gbar-newrow{display:flex;gap:6px;padding:8px 6px 6px}
@@ -359,7 +439,7 @@ export const GITBAR_CSS = `
 .gbar-modal .gbar-pushrow .gbar-pushlabel{font-size:12.5px;color:var(--dsw-alias-label-primary)}
 .gbar-x:disabled{opacity:.5;cursor:default}
 /* commit-graph dialog */
-.gbar-modal.gbar-graph-modal{width:min(760px,calc(100vw - 40px));gap:10px}
+.gbar-modal.gbar-graph-modal{width:min(860px,calc(100vw - 40px));gap:10px}
 /* Refresh sits immediately left of close, both pinned to the right edge: the
    refresh takes the auto margin (specificity .gbar-x.gbar-refresh beats the
    .gbar-x override below), close drops it so they stay adjacent. */
@@ -368,19 +448,26 @@ export const GITBAR_CSS = `
 .gbar-modal.gbar-graph-modal .gbar-x svg{width:15px;height:15px;display:block}
 .gbar-graph-empty{padding:28px 12px;text-align:center;font-size:13px;color:var(--dsw-alias-label-tertiary)}
 .gbar-graph-table{display:flex;flex-direction:column;max-height:min(60vh,540px);overflow:auto;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-bg-layer-2)}
-.gbar-graph-row{display:grid;grid-template-columns:62px 1fr 96px 90px;align-items:center;gap:8px;padding:5px 12px;border-bottom:1px solid var(--dsw-alias-border-l1);transition:background .12s ease}
-.gbar-graph-row:last-child{border-bottom:none}
+/* Fixed row height so the per-row graph SVGs tile exactly — lane lines must
+   read as continuous across rows. Body rows therefore separate by zebra +
+   hover only: a 1px border would cut through the lane strokes. */
+.gbar-graph-row{display:grid;grid-template-columns:auto 62px 1fr 96px 90px 26px;align-items:center;gap:8px;height:28px;padding:0 12px;transition:background .12s ease}
 /* Zebra striping for scanability; the hover rule matches its specificity and
    comes later in the sheet, so pointing at a row still wins. */
 .gbar-graph-row:not(.gbar-graph-head):nth-child(odd){background:color-mix(in srgb,var(--dsw-alias-bg-module-platform) 35%,transparent)}
 .gbar-graph-row:not(.gbar-graph-head):hover{background:var(--dsw-alias-interactive-bg-hover)}
 .gbar-graph-head{position:sticky;top:0;background:var(--dsw-alias-bg-module-platform);font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--dsw-alias-label-tertiary);z-index:1;border-bottom:1px solid var(--dsw-alias-border-l1)}
+.gbar-c-graph svg{display:block}
 .gbar-c-hash code{font-family:var(--dsw-font-markdown-code-font-family,"SF Mono",Consolas,monospace);font-size:11px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-module-platform);border-radius:6px;padding:2px 6px}
 .gbar-c-subject{min-width:0;display:flex;align-items:center;gap:8px}
 .gbar-subject{font-size:12.5px;color:var(--dsw-alias-label-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .gbar-refs{flex:none;font-size:10.5px;color:var(--dsw-alias-state-business-primary);background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);border-radius:999px;padding:1px 8px;white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis}
 .gbar-c-author{font-size:12px;color:var(--dsw-alias-label-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .gbar-c-date{font-size:11.5px;color:var(--dsw-alias-label-tertiary);text-align:right;white-space:nowrap}
+/* per-row tag action — hidden until the row is hovered, so the table stays calm */
+.gbar-c-tag{display:inline-flex;justify-content:center}
+.gbar-c-tag .gbar-ren{opacity:0;transition:opacity .12s ease,color .12s ease,background .12s ease}
+.gbar-graph-row:hover .gbar-c-tag .gbar-ren,.gbar-c-tag .gbar-ren:focus-visible{opacity:1}
 
 /* diff side panel — fixed on the right; the conversation is pushed left via
    #root { margin-right } so the panel never overlaps the message column. */
@@ -509,6 +596,15 @@ export const GITBAR_CSS = `
 }
 .gbar-side-commit textarea:focus{border-color:var(--dsw-alias-state-business-primary)}
 .gbar-side-commit textarea::placeholder{color:var(--dsw-alias-label-tertiary)}
+/* optional tag input riding the commit buttons — same chrome as the textarea */
+.gbar-taginput{
+  flex:none;width:118px;height:28px;padding:0 10px;
+  border:1px solid var(--dsw-alias-border-l2);border-radius:8px;
+  background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);
+  font:inherit;font-size:12px;outline:none;
+}
+.gbar-taginput:focus{border-color:var(--dsw-alias-state-business-primary)}
+.gbar-taginput::placeholder{color:var(--dsw-alias-label-tertiary)}
 .gbar-side-commit .gbar-actions{flex:none;display:flex;align-items:center;justify-content:flex-end;gap:6px}
 .gbar-side-commit .gbar-btn{height:28px;padding:0 12px;font-size:12px;border-radius:8px}
 
@@ -543,6 +639,19 @@ export const GITBAR_CSS = `
 .gbar-modal textarea:focus{border-color:var(--dsw-alias-state-business-primary)}
 .gbar-modal textarea::placeholder{color:var(--dsw-alias-label-tertiary)}
 .gbar-modal .gbar-hint{font-size:12px;color:var(--dsw-alias-label-tertiary);line-height:1.6}
+/* tag manager dialog — mirrors the popup row chrome inside a centered dialog */
+.gbar-modal .gbar-rowwrap{display:flex;align-items:center;gap:2px;border-radius:8px;transition:background .12s ease}
+.gbar-modal .gbar-rowwrap:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.gbar-modal .gbar-rowwrap .gbar-row{background:transparent}
+.gbar-modal .gbar-row .gbar-bicon{width:13px;height:13px;flex:none;color:var(--dsw-alias-label-tertiary);opacity:.85}
+.gbar-modal .gbar-row .gbar-rm{flex:none;font-size:10px;line-height:15px;color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-bg-module-platform);border-radius:999px;padding:0 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:90px}
+.gbar-modal .gbar-loading{display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 9px;font-size:12px;color:var(--dsw-alias-label-tertiary)}
+.gbar-modal .gbar-del{flex:none;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border:none;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:10.5px;cursor:pointer;border-radius:7px;margin-right:4px;transition:color .12s ease,background .12s ease}
+.gbar-modal .gbar-del svg{width:13px;height:13px;display:block}
+.gbar-modal .gbar-del:hover{color:var(--dsw-alias-state-error-primary);background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent)}
+.gbar-modal .gbar-del.gbar-arm{width:auto;padding:0 8px;color:var(--dsw-alias-state-error-primary);font-weight:600;background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent)}
+.gbar-tags-modal .gbar-tags-list{display:flex;flex-direction:column;gap:1px;max-height:280px;overflow-y:auto;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-2);padding:4px}
+.gbar-tags-modal .gbar-tags-list .gbar-rowwrap .gbar-row{flex:1;min-width:0}
 .gbar-modal .gbar-files-head{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--dsw-alias-label-tertiary);margin-top:2px}
 .gbar-modal .gbar-files-head .gbar-hint{font-size:11px;font-weight:400;text-transform:none;letter-spacing:0}
 .gbar-modal .gbar-files{
@@ -689,11 +798,12 @@ header:has([role="tablist"]) .gbar-hicons{
   color:var(--dsw-alias-label-secondary);width:26px;height:26px;cursor:pointer;flex:none;font-size:13px}
 .gbar-term-error button:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 
-/* half-screen toggle button in side-panel heads */
+/* icon buttons in side-panel heads (half-screen toggle, diff refresh) */
 .gbar-side-half{border:1px solid var(--dsw-alias-border-l1);background:transparent;color:var(--dsw-alias-label-tertiary);
   width:28px;height:28px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;
   cursor:pointer;flex:none;transition:background .15s ease,color .15s ease,border-color .15s ease}
 .gbar-side-half:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.gbar-side-half:disabled{opacity:.5;cursor:default}
 .gbar-side-half.gbar-on{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);
   color:var(--dsw-alias-state-business-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 40%,transparent)}
 .gbar-side-half svg{width:15px;height:15px;display:block}
@@ -935,9 +1045,22 @@ export function BranchChipEntry({ sessionId, sessionsService, controller, t }: B
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [baseBranch, setBaseBranch] = useState('')
   const [newBranchOpen, setNewBranchOpen] = useState(false)
+  const [renameTarget, setRenameTarget] = useState<string | null>(null)
+  const [renameName, setRenameName] = useState('')
+  const [tags, setTags] = useState<GitTags | null>(null)
+  const [tagName, setTagName] = useState('')
+  const [tagMessage, setTagMessage] = useState('')
+  const [tagsOpen, setTagsOpen] = useState(false)
+  const [confirmTagDelete, setConfirmTagDelete] = useState<string | null>(null)
+  // Back-tag dialog: create a tag on an arbitrary commit picked from the graph.
+  const [tagDialog, setTagDialog] = useState<{ ref: string; hash: string } | null>(null)
+  const [tagDialogName, setTagDialogName] = useState('')
+  const [tagDialogMessage, setTagDialogMessage] = useState('')
   const [graphOpen, setGraphOpen] = useState(false)
   const [graph, setGraph] = useState<GitGraph | null>(null)
   const [graphBusy, setGraphBusy] = useState(false)
+  // Lane layout is pure derived state — recompute only when a new graph lands.
+  const graphLayout = useMemo(() => (graph === null ? null : layoutCommitGraph(graph.commits)), [graph])
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
   const branchRef = useRef<HTMLButtonElement | null>(null)
@@ -948,6 +1071,10 @@ export function BranchChipEntry({ sessionId, sessionsService, controller, t }: B
     if (!enabled || sessionStr === undefined) {
       setBranchOpen(false)
       setNewBranchOpen(false)
+      setRenameTarget(null)
+      setTagsOpen(false)
+      setTagDialog(null)
+      setConfirmTagDelete(null)
       setGraphOpen(false)
     }
   }, [enabled, sessionStr])
@@ -978,10 +1105,17 @@ export function BranchChipEntry({ sessionId, sessionsService, controller, t }: B
       .catch(cause => { showNotice('err', cause instanceof Error ? cause.message : String(cause)) })
   }
 
+  const loadTags = (): void => {
+    if (sessionStr === undefined) return
+    void apiGet<GitTags>(`${GIT_ROUTE}/tags?${targetQuery(target)}`)
+      .then(setTags)
+      .catch(cause => { showNotice('err', cause instanceof Error ? cause.message : String(cause)) })
+  }
+
   const toggleBranch = (): void => {
     const next = !branchOpen
     setBranchOpen(next)
-    if (next) loadBranches()
+    if (next) { loadBranches(); loadTags() }
   }
 
   const pickBranch = (name: string): void => {
@@ -991,6 +1125,19 @@ export function BranchChipEntry({ sessionId, sessionsService, controller, t }: B
       setBranchOpen(false)
       await refresh()
       showNotice('ok', `→ ${name}`)
+    })
+  }
+
+  // Pull the branch shown in the popup header — the button only renders when
+  // an upstream exists, so what gets pulled is never ambiguous.
+  const pullBranch = (): void => {
+    if (sessionStr === undefined) return
+    const target = snapshot?.upstream ?? snapshot?.branch ?? ''
+    void run('pull', async () => {
+      await apiPost(`${GIT_ROUTE}/pull`, { session: sessionStr })
+      setBranchOpen(false)
+      await refresh()
+      showNotice('ok', `⬇ ${target}`)
     })
   }
 
@@ -1018,6 +1165,106 @@ export function BranchChipEntry({ sessionId, sessionsService, controller, t }: B
     setBaseBranch('')
     setPushToRemote(false)
     setNewBranchOpen(true)
+  }
+
+  // Rename dialog: the input starts as the old name, preselected so typing
+  // replaces it. The current branch may be renamed (HEAD moves with it);
+  // protected branches are rejected server-side and the entry is not drawn.
+  const openRename = (name: string): void => {
+    setConfirmDelete(null)
+    setRenameName(name)
+    setRenameTarget(name)
+  }
+
+  const renameBranch = (): void => {
+    if (sessionStr === undefined || renameTarget === null) return
+    const from = renameTarget
+    const to = renameName.trim()
+    if (to === '' || to === from) { setRenameTarget(null); return }
+    void run('branch-rename', async () => {
+      await apiPost(`${GIT_ROUTE}/branch-rename`, { session: sessionStr, name: from, newName: to })
+      setRenameTarget(null)
+      loadBranches()
+      await refresh()
+      showNotice('ok', `✎ ${from} → ${to}`)
+    })
+  }
+
+  // --- tags -------------------------------------------------------------------
+  // Created on HEAD from the Tag manager dialog, or on any graph row's commit
+  // via the back-tag dialog. A filled message creates an annotated tag, an
+  // empty one a lightweight pointer. Tags never ride a plain push — pushing
+  // one is its own explicit action, mirroring git.
+  const openTags = (): void => {
+    loadTags()
+    setTagsOpen(true)
+  }
+
+  const createTagOnHead = (): void => {
+    if (sessionStr === undefined) return
+    const name = tagName.trim()
+    if (name === '') return
+    const message = tagMessage.trim()
+    void run('tag-create', async () => {
+      await apiPost(`${GIT_ROUTE}/tag-create`, {
+        session: sessionStr,
+        name,
+        ...(message !== '' ? { message } : {}),
+      })
+      setTagName('')
+      setTagMessage('')
+      loadTags()
+      showNotice('ok', `🏷 ${name}`)
+    })
+  }
+
+  const openTagDialog = (ref: string, hash: string): void => {
+    setTagDialogName('')
+    setTagDialogMessage('')
+    setTagDialog({ ref, hash })
+  }
+
+  const createTagOnRef = (): void => {
+    if (sessionStr === undefined || tagDialog === null) return
+    const name = tagDialogName.trim()
+    if (name === '') return
+    const message = tagDialogMessage.trim()
+    void run('tag-create', async () => {
+      await apiPost(`${GIT_ROUTE}/tag-create`, {
+        session: sessionStr,
+        name,
+        ref: tagDialog.ref,
+        ...(message !== '' ? { message } : {}),
+      })
+      setTagDialog(null)
+      loadTags()
+      fetchGraph()
+      showNotice('ok', `🏷 ${name}`)
+    })
+  }
+
+  const pushTag = (name: string): void => {
+    if (sessionStr === undefined) return
+    void run('tag-push', async () => {
+      await apiPost(`${GIT_ROUTE}/tag-push`, { session: sessionStr, name })
+      showNotice('ok', `☁ ${name}`)
+    })
+  }
+
+  // Two-step tag deletion, same pattern as branch deletion.
+  const deleteTag = (name: string): void => {
+    if (sessionStr === undefined) return
+    if (confirmTagDelete === name) {
+      setConfirmTagDelete(null)
+      void run('tag-delete', async () => {
+        await apiPost(`${GIT_ROUTE}/tag-delete`, { session: sessionStr, name })
+        loadTags()
+        showNotice('ok', `🗑 ${name}`)
+      })
+    } else {
+      setConfirmTagDelete(name)
+      window.setTimeout(() => { setConfirmTagDelete(current => (current === name ? null : current)) }, 3000)
+    }
   }
 
   // Two-step branch deletion: first click arms a confirm, second click deletes.
@@ -1169,6 +1416,17 @@ export function BranchChipEntry({ sessionId, sessionsService, controller, t }: B
               {snapshot.ahead > 0 ? <span>↑{snapshot.ahead}</span> : null}
               {snapshot.behind > 0 ? <span>↓{snapshot.behind}</span> : null}
             </span>
+            {snapshot.branch !== null && snapshot.upstream !== undefined ? (
+              <button type="button" className="gbar-pull" onClick={pullBranch} disabled={busy !== null} title={t('branchPull')} aria-label={t('branchPull')}>
+                {busy === 'pull' ? <span className="gbar-spin" /> : (
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M8 2.5v7.5" />
+                    <path d="M4.6 6.9 8 10.3l3.4-3.4" />
+                    <path d="M2.5 13.5h11" />
+                  </svg>
+                )}
+              </button>
+            ) : null}
           </div>
           <div className="gbar-pop-body">
             <div className="gbar-sec">{t('branchLocal')}{branches !== null ? <span className="gbar-count">{branches.local.length}</span> : null}</div>
@@ -1190,6 +1448,18 @@ export function BranchChipEntry({ sessionId, sessionsService, controller, t }: B
                   <span>{name}</span>
                   {name === branches.current ? <span className="gbar-check" aria-hidden>✓</span> : null}
                 </button>
+                {!isProtectedBranch(name) ? (
+                  <button
+                    type="button"
+                    className="gbar-ren"
+                    onClick={() => { openRename(name) }}
+                    title={t('branchRename')}
+                  >
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M11.3 2a1.9 1.9 0 0 1 2.7 2.7L6.4 12.3l-3.9 1.2 1.2-3.9L11.3 2Z" />
+                    </svg>
+                  </button>
+                ) : null}
                 {name !== branches.current && !isProtectedBranch(name) ? (
                   <button
                     type="button"
@@ -1243,19 +1513,31 @@ export function BranchChipEntry({ sessionId, sessionsService, controller, t }: B
           </div>
           <div className="gbar-actions">
             <button type="button" className="gbar-act" onClick={openNewBranch}>
-              <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden>
-                <path d="M7.4 2.6a1.2 1.2 0 1 1 2.2 0l3.2 1.6a1.2 1.2 0 1 1-1.1 2.1l-2.3-1.2a2.6 2.6 0 0 1-1.1.8l.6 4.2a1.2 1.2 0 1 1-1.7.2l-.6-4.2a2.6 2.6 0 0 1-1.2-.7l-2.9 1.5a1.2 1.2 0 1 1-1.1-2.1l2.9-1.5a2.6 2.6 0 0 1 .2-1.5l-3.2-1.6a1.2 1.2 0 1 1 1.1-2.1z" />
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M4 2v8" />
+                <circle cx="12" cy="4" r="2" />
+                <circle cx="4" cy="12" r="2" />
+                <path d="M12 6a6 6 0 0 1-6 6" />
+                <path d="M12.5 10.5v4" />
+                <path d="M10.5 12.5h4" />
               </svg>
               {t('branchNew')}
             </button>
             <button type="button" className="gbar-act" onClick={openGraph}>
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
-                <path d="M3 1.5v3.4a4.4 4.4 0 0 0 4.4 4.4h5.1" />
-                <path d="M13 1.5v4.9a3.2 3.2 0 0 1-3.2 3.2H3" />
-                <circle cx="3" cy="1.5" r="1.2" fill="currentColor" stroke="none" />
-                <circle cx="13" cy="12" r="1.2" fill="currentColor" stroke="none" />
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M4 2v12" />
+                <path d="M12 5.2C12 8.4 4 8.4 4 11.5" />
+                <circle cx="4" cy="5" r="1.7" fill="currentColor" stroke="none" />
+                <circle cx="12" cy="3.5" r="1.7" fill="currentColor" stroke="none" />
               </svg>
               {t('branchGraph')}
+            </button>
+            <button type="button" className="gbar-act" onClick={openTags}>
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M2.5 6.8V3.5a1 1 0 0 1 1-1h3.3c.27 0 .52.1.71.3l5.9 5.9a1 1 0 0 1 0 1.4l-3.9 3.9a1 1 0 0 1-1.4 0l-5.9-5.9a1 1 0 0 1-.3-.71Z" />
+                <circle cx="5.4" cy="5.4" r="0.5" fill="currentColor" stroke="none" />
+              </svg>
+              {t('tagsTitle')}
             </button>
           </div>
         </div>
@@ -1315,6 +1597,144 @@ export function BranchChipEntry({ sessionId, sessionsService, controller, t }: B
         document.body,
       ) : null}
 
+      {/* Rename-branch dialog — input starts as the old name, preselected */}
+      {renameTarget !== null ? createPortal(
+        <div className="gbar-modal-wrap" onMouseDown={event => { if (event.target === event.currentTarget) setRenameTarget(null) }}>
+          <div className="gbar-modal" role="dialog" aria-label={t('branchRename')}>
+            <div className="gbar-head">
+              <span className="gbar-title">{t('branchRename')}</span>
+              <span className="gbar-branch">{renameTarget}</span>
+              <button type="button" className="gbar-x" onClick={() => { setRenameTarget(null) }} aria-label="✕">✕</button>
+            </div>
+            <input
+              value={renameName}
+              onChange={event => { setRenameName(event.target.value) }}
+              onKeyDown={event => { if (event.key === 'Enter') renameBranch() }}
+              placeholder={t('branchNewPlaceholder')}
+              aria-label={t('branchRename')}
+              autoFocus
+              onFocus={event => { event.target.select() }}
+            />
+            <div className="gbar-foot">
+              <button type="button" className="gbar-btn gbar-ghost" onClick={() => { setRenameTarget(null) }}>{t('branchCancel')}</button>
+              <button type="button" className="gbar-btn gbar-primary" onClick={renameBranch} disabled={busy !== null || renameName.trim() === '' || renameName.trim() === renameTarget}>
+                {busy === 'branch-rename' ? <span className="gbar-spin" /> : null} {t('branchRename')}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      ) : null}
+
+      {/* Tag manager dialog — list / push / delete, plus create-on-HEAD; a
+          filled message makes the tag annotated. Stays open after creating so
+          the fresh list is visible. */}
+      {tagsOpen ? createPortal(
+        <div className="gbar-modal-wrap" onMouseDown={event => { if (event.target === event.currentTarget) setTagsOpen(false) }}>
+          <div className="gbar-modal gbar-tags-modal" role="dialog" aria-label={t('tagsTitle')}>
+            <div className="gbar-head">
+              <span className="gbar-title">{t('tagsTitle')}</span>
+              <span className="gbar-branch">{snapshot.branch ?? snapshot.detachedHead ?? '—'}</span>
+              <button type="button" className="gbar-x" onClick={() => { setTagsOpen(false) }} aria-label="✕">✕</button>
+            </div>
+            <div className="gbar-tags-list">
+              {tags === null ? (
+                <div className="gbar-loading"><span className="gbar-spin" />{t('loading')}</div>
+              ) : tags.tags.length === 0 ? (
+                <div className="gbar-graph-empty">{t('noChanges')}</div>
+              ) : tags.tags.map(tag => (
+                <div key={tag.name} className="gbar-rowwrap">
+                  <div className="gbar-row" title={tag.subject !== '' ? `${tag.hash} ${tag.subject}` : tag.hash}>
+                    <svg className="gbar-bicon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M2.5 6.8V3.5a1 1 0 0 1 1-1h3.3c.27 0 .52.1.71.3l5.9 5.9a1 1 0 0 1 0 1.4l-3.9 3.9a1 1 0 0 1-1.4 0l-5.9-5.9a1 1 0 0 1-.3-.71Z" />
+                      <circle cx="5.4" cy="5.4" r="0.5" fill="currentColor" stroke="none" />
+                    </svg>
+                    <span>{tag.name}</span>
+                    <span className="gbar-rm">{tag.hash}</span>
+                  </div>
+                  <button type="button" className="gbar-ren" onClick={() => { pushTag(tag.name) }} title={t('tagPush')}>
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M5.2 13a3.2 3.2 0 1 1 .5-6.36 4 4 0 0 1 7.75 1.06 2.65 2.65 0 0 1-.55 5.3H5.2Z" />
+                      <path d="M8 9.5V3" /><path d="M5.4 5.1 8 2.5l2.6 2.6" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    className={'gbar-del' + (confirmTagDelete === tag.name ? ' gbar-arm' : '')}
+                    onClick={() => { deleteTag(tag.name) }}
+                    title={t('tagDelete')}
+                  >
+                    {confirmTagDelete === tag.name ? t('branchDeleteConfirm') : (
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <path d="M2.5 4.5h11" />
+                        <path d="M5.5 4.5V3.3c0-.44.36-.8.8-.8h3.4c.44 0 .8.36.8.8v1.2" />
+                        <path d="M4 4.5l.6 8.2c.04.5.45.8.95.8h4.9c.5 0 .91-.3.95-.8l.6-8.2" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              ))}
+            </div>
+            <input
+              value={tagName}
+              onChange={event => { setTagName(event.target.value) }}
+              onKeyDown={event => { if (event.key === 'Enter') createTagOnHead() }}
+              placeholder={t('tagCreatePlaceholder')}
+              aria-label={t('tagCreate')}
+            />
+            <input
+              value={tagMessage}
+              onChange={event => { setTagMessage(event.target.value) }}
+              onKeyDown={event => { if (event.key === 'Enter') createTagOnHead() }}
+              placeholder={t('tagMessagePlaceholder')}
+              aria-label={t('tagMessagePlaceholder')}
+            />
+            <div className="gbar-foot">
+              <button type="button" className="gbar-btn gbar-ghost" onClick={() => { setTagsOpen(false) }}>{t('branchCancel')}</button>
+              <button type="button" className="gbar-btn gbar-primary" onClick={createTagOnHead} disabled={busy !== null || tagName.trim() === ''}>
+                {busy === 'tag-create' ? <span className="gbar-spin" /> : null} {t('tagCreate')}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      ) : null}
+
+      {/* Tag-on-commit dialog — opened from a graph row */}
+      {tagDialog !== null ? createPortal(
+        <div className="gbar-modal-wrap" onMouseDown={event => { if (event.target === event.currentTarget) setTagDialog(null) }}>
+          <div className="gbar-modal" role="dialog" aria-label={t('tagCreate')}>
+            <div className="gbar-head">
+              <span className="gbar-title">{t('tagCreate')}</span>
+              <span className="gbar-branch">#{tagDialog.hash}</span>
+              <button type="button" className="gbar-x" onClick={() => { setTagDialog(null) }} aria-label="✕">✕</button>
+            </div>
+            <input
+              value={tagDialogName}
+              onChange={event => { setTagDialogName(event.target.value) }}
+              onKeyDown={event => { if (event.key === 'Enter') createTagOnRef() }}
+              placeholder={t('tagCreatePlaceholder')}
+              aria-label={t('tagCreate')}
+              autoFocus
+            />
+            <input
+              value={tagDialogMessage}
+              onChange={event => { setTagDialogMessage(event.target.value) }}
+              onKeyDown={event => { if (event.key === 'Enter') createTagOnRef() }}
+              placeholder={t('tagMessagePlaceholder')}
+              aria-label={t('tagMessagePlaceholder')}
+            />
+            <div className="gbar-foot">
+              <button type="button" className="gbar-btn gbar-ghost" onClick={() => { setTagDialog(null) }}>{t('branchCancel')}</button>
+              <button type="button" className="gbar-btn gbar-primary" onClick={createTagOnRef} disabled={busy !== null || tagDialogName.trim() === ''}>
+                {busy === 'tag-create' ? <span className="gbar-spin" /> : null} {t('tagCreate')}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      ) : null}
+
       {/* Commit-graph dialog */}
       {graphOpen ? createPortal(
         <div className="gbar-modal-wrap" onMouseDown={event => { if (event.target === event.currentTarget) setGraphOpen(false) }}>
@@ -1335,27 +1755,42 @@ export function BranchChipEntry({ sessionId, sessionsService, controller, t }: B
             </div>
             {graph === null ? (
               <div className="gbar-graph-empty">{graphBusy ? t('loading') : t('noChanges')}</div>
-            ) : graph.commits.length === 0 ? (
+            ) : graphLayout === null || graphLayout.rows.length === 0 ? (
               <div className="gbar-graph-empty">{t('noChanges')}</div>
             ) : (
               <div className="gbar-graph-table" role="table" aria-label={t('graphTitle')}>
                 <div className="gbar-graph-row gbar-graph-head" role="row">
+                  <span className="gbar-c-graph" role="columnheader">{t('graphColGraph')}</span>
                   <span className="gbar-c-hash" role="columnheader">{t('graphColCommit')}</span>
                   <span className="gbar-c-subject" role="columnheader">{t('graphColSubject')}</span>
                   <span className="gbar-c-author" role="columnheader">{t('graphColAuthor')}</span>
                   <span className="gbar-c-date" role="columnheader">{t('graphColDate')}</span>
+                  <span className="gbar-c-tag" role="columnheader" />
                 </div>
-                {graph.commits.map(commit => (
-                  <div key={commit.fullHash} className="gbar-graph-row" role="row">
-                    <span className="gbar-c-hash" role="cell"><code className="gbar-hash">{commit.hash}</code></span>
-                    <span className="gbar-c-subject" role="cell">
-                      <span className="gbar-subject">{commit.subject}</span>
-                      {commit.refs !== '' ? <span className="gbar-refs">{commit.refs}</span> : null}
-                    </span>
-                    <span className="gbar-c-author" role="cell">{commit.author}</span>
-                    <span className="gbar-c-date" role="cell" title={commit.date}>{commit.dateRelative}</span>
-                  </div>
-                ))}
+                {graphLayout.rows.map((row, index) => {
+                  const commit = graph.commits[index]
+                  if (commit === undefined) return null
+                  return (
+                    <div key={commit.fullHash} className="gbar-graph-row" role="row">
+                      <span className="gbar-c-graph" role="cell"><GraphCell row={row} lanes={graphLayout.lanes} /></span>
+                      <span className="gbar-c-hash" role="cell"><code className="gbar-hash">{commit.hash}</code></span>
+                      <span className="gbar-c-subject" role="cell">
+                        <span className="gbar-subject">{commit.subject}</span>
+                        {commit.refs !== '' ? <span className="gbar-refs">{commit.refs}</span> : null}
+                      </span>
+                      <span className="gbar-c-author" role="cell">{commit.author}</span>
+                      <span className="gbar-c-date" role="cell" title={commit.date}>{commit.dateRelative}</span>
+                      <span className="gbar-c-tag" role="cell">
+                        <button type="button" className="gbar-ren" onClick={() => { openTagDialog(commit.fullHash, commit.hash) }} title={t('tagCreate')}>
+                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                            <path d="M2.5 6.8V3.5a1 1 0 0 1 1-1h3.3c.27 0 .52.1.71.3l5.9 5.9a1 1 0 0 1 0 1.4l-3.9 3.9a1 1 0 0 1-1.4 0l-5.9-5.9a1 1 0 0 1-.3-.71Z" />
+                            <circle cx="5.4" cy="5.4" r="0.5" fill="currentColor" stroke="none" />
+                          </svg>
+                        </button>
+                      </span>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -1445,7 +1880,13 @@ export function DiffPanel({ sessionId, useSession, controller, t, onClose }: Dif
   const [diff, setDiff] = useState<GitDiffResult | null>(null)
   const [diffMode, setDiffMode] = useState<'hunk' | 'full'>('hunk')
   const [diffPath, setDiffPath] = useState<string | null>(null)
+  // Bumped by the header refresh button: the diff effect below reruns only on
+  // selection/mode changes, so a manual refresh needs its own trigger.
+  const [diffNonce, setDiffNonce] = useState(0)
   const [message, setMessage] = useState('')
+  // Optional tag for the commit band — with "commit & push" the whole
+  // release sequence (commit → tag → push code → push tag) is one click.
+  const [tagInput, setTagInput] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set())
@@ -1504,7 +1945,19 @@ export function DiffPanel({ sessionId, useSession, controller, t, onClose }: Dif
     setDiffMode(mode)
   }
 
-  // Load the selected file's diff when the selection/mode changes.
+  // Header refresh: re-pull the status snapshot (file list, ±nums) and bump the
+  // nonce so the selected file's diff refetches even though selection and mode
+  // are unchanged.
+  const refreshPanel = (): void => {
+    void run('refresh', async () => {
+      await refresh()
+      setDiffNonce(n => n + 1)
+    })
+  }
+
+  // Load the selected file's diff when the selection/mode changes, or when the
+  // header refresh button bumps `diffNonce` — a file edited outside the panel
+  // (or by the agent) keeps its stale diff until one of these fires.
   useEffect(() => {
     if (sessionStr === undefined || diffPath === null) return
     let cancelled = false
@@ -1517,7 +1970,7 @@ export function DiffPanel({ sessionId, useSession, controller, t, onClose }: Dif
       if (!cancelled) showNotice('err', cause instanceof Error ? cause.message : String(cause))
     })
     return () => { cancelled = true }
-  }, [sessionStr, diffPath, diffMode])
+  }, [sessionStr, diffPath, diffMode, diffNonce])
 
   const doCommit = (push: boolean): void => {
     if (agentRunning) return
@@ -1527,17 +1980,23 @@ export function DiffPanel({ sessionId, useSession, controller, t, onClose }: Dif
         showNotice('err', t('commitEmpty'))
         return
       }
-      const result = await apiPost<{ hash?: string; pushed: boolean }>(`${GIT_ROUTE}/commit`, {
+      const tag = tagInput.trim()
+      const result = await apiPost<{ hash?: string; pushed: boolean; tag?: string }>(`${GIT_ROUTE}/commit`, {
         session: sessionStr,
         message: msg,
         push,
         exclude: [...excluded],
+        ...(tag !== '' ? { tag } : {}),
       })
       onClose()
       setMessage('')
+      setTagInput('')
       setExcluded(new Set())
       await refresh()
-      showNotice('ok', push ? `✓ ${result.hash ?? 'committed'} · pushed` : `✓ ${result.hash ?? 'committed'}`)
+      const tagged = result.tag !== undefined ? ` · 🏷 ${result.tag}` : ''
+      showNotice('ok', push
+        ? `✓ ${result.hash ?? 'committed'} · pushed${tagged}`
+        : `✓ ${result.hash ?? 'committed'}${tagged}`)
     })
   }
 
@@ -1678,6 +2137,14 @@ export function DiffPanel({ sessionId, useSession, controller, t, onClose }: Dif
           <button type="button" className={diffMode === 'hunk' ? 'gbar-on' : ''} onClick={() => { switchDiffMode('hunk') }}>{t('diffOnly')}</button>
           <button type="button" className={diffMode === 'full' ? 'gbar-on' : ''} onClick={() => { switchDiffMode('full') }}>{t('diffFull')}</button>
         </div>
+        <button type="button" className="gbar-side-half" onClick={refreshPanel} disabled={busy !== null} title={t('branchRefresh')} aria-label={t('branchRefresh')}>
+          {busy === 'refresh' ? <span className="gbar-spin" /> : (
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M13.4 8a5.4 5.4 0 1 1-1.6-3.8" />
+              <path d="M13.4 1.5v3h-3" />
+            </svg>
+          )}
+        </button>
         <button
           type="button"
           className={'gbar-side-half' + (halfActive ? ' gbar-on' : '')}
@@ -1793,6 +2260,14 @@ export function DiffPanel({ sessionId, useSession, controller, t, onClose }: Dif
                 />
               </div>
               <div className="gbar-actions">
+                <input
+                  className="gbar-taginput"
+                  value={tagInput}
+                  onChange={event => { setTagInput(event.target.value) }}
+                  onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); doCommit(false) } }}
+                  placeholder={t('tagCommitPlaceholder')}
+                  aria-label={t('tagCommitPlaceholder')}
+                />
                 <button
                   type="button"
                   className="gbar-btn gbar-soft"
@@ -2335,6 +2810,8 @@ function HeroBranchChip({ t, right, top }: {
   const [branchOpen, setBranchOpen] = useState(false)
   const [branches, setBranches] = useState<GitBranches | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [renameTarget, setRenameTarget] = useState<string | null>(null)
+  const [renameName, setRenameName] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
   const chipRef = useRef<HTMLButtonElement | null>(null)
@@ -2376,6 +2853,17 @@ function HeroBranchChip({ t, right, top }: {
     })
   }
 
+  // Pull the branch shown in the popup header (upstream required).
+  const pullBranch = (): void => {
+    const target = snapshot?.upstream ?? snapshot?.branch ?? ''
+    void run('pull', async () => {
+      await apiPost(`${GIT_ROUTE}/pull`, { ws: wsName })
+      setBranchOpen(false)
+      await refresh()
+      showNotice('ok', `⬇ ${target}`)
+    })
+  }
+
   const deleteLocal = (name: string): void => {
     if (confirmDelete === name) {
       setConfirmDelete(null)
@@ -2402,6 +2890,26 @@ function HeroBranchChip({ t, right, top }: {
       setConfirmDelete(name)
       window.setTimeout(() => { setConfirmDelete(current => (current === name ? null : current)) }, 3000)
     }
+  }
+
+  const openRename = (name: string): void => {
+    setConfirmDelete(null)
+    setRenameName(name)
+    setRenameTarget(name)
+  }
+
+  const renameBranch = (): void => {
+    if (renameTarget === null) return
+    const from = renameTarget
+    const to = renameName.trim()
+    if (to === '' || to === from) { setRenameTarget(null); return }
+    void run('branch-rename', async () => {
+      await apiPost(`${GIT_ROUTE}/branch-rename`, { ws: wsName, name: from, newName: to })
+      setRenameTarget(null)
+      loadBranches()
+      await refresh()
+      showNotice('ok', `✎ ${from} → ${to}`)
+    })
   }
 
   // Close on outside click / Escape.
@@ -2464,6 +2972,25 @@ function HeroBranchChip({ t, right, top }: {
               {snapshot.ahead > 0 ? <span>↑{snapshot.ahead}</span> : null}
               {snapshot.behind > 0 ? <span>↓{snapshot.behind}</span> : null}
             </span>
+            {snapshot.branch !== null && snapshot.upstream !== undefined ? (
+              <button
+                type="button"
+                className="gbar-pull"
+                style={{ marginLeft: 'auto' }}
+                onClick={pullBranch}
+                disabled={busy !== null}
+                title={t('branchPull')}
+                aria-label={t('branchPull')}
+              >
+                {busy === 'pull' ? <span className="gbar-spin" /> : (
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M8 2.5v7.5" />
+                    <path d="M4.6 6.9 8 10.3l3.4-3.4" />
+                    <path d="M2.5 13.5h11" />
+                  </svg>
+                )}
+              </button>
+            ) : null}
           </div>
           <div className="gbar-pop-body">
             <div className="gbar-sec">{t('branchLocal')}{branches !== null ? <span className="gbar-count">{branches.local.length}</span> : null}</div>
@@ -2475,6 +3002,13 @@ function HeroBranchChip({ t, right, top }: {
                   <span>{name}</span>
                   {name === branches.current ? <span className="gbar-check" aria-hidden>✓</span> : null}
                 </button>
+                {!isProtectedBranch(name) ? (
+                  <button type="button" className="gbar-ren" onClick={() => { openRename(name) }} title={t('branchRename')}>
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M11.3 2a1.9 1.9 0 0 1 2.7 2.7L6.4 12.3l-3.9 1.2 1.2-3.9L11.3 2Z" />
+                    </svg>
+                  </button>
+                ) : null}
                 {name !== branches.current && !isProtectedBranch(name) ? (
                   <button type="button" className={'gbar-del' + (confirmDelete === name ? ' gbar-arm' : '')} onClick={() => { deleteLocal(name) }} title={t('branchDelete')}>
                     {confirmDelete === name ? t('branchDeleteConfirm') : '🗑'}
@@ -2502,6 +3036,33 @@ function HeroBranchChip({ t, right, top }: {
       </span>
       {notice !== null ? createPortal(
         <div className={'gbar-notice gbar-' + notice.kind} role="status">{notice.text}</div>,
+        document.body,
+      ) : null}
+      {renameTarget !== null ? createPortal(
+        <div className="gbar-modal-wrap" onMouseDown={event => { if (event.target === event.currentTarget) setRenameTarget(null) }}>
+          <div className="gbar-modal" role="dialog" aria-label={t('branchRename')}>
+            <div className="gbar-head">
+              <span className="gbar-title">{t('branchRename')}</span>
+              <span className="gbar-branch">{renameTarget}</span>
+              <button type="button" className="gbar-x" onClick={() => { setRenameTarget(null) }} aria-label="✕">✕</button>
+            </div>
+            <input
+              value={renameName}
+              onChange={event => { setRenameName(event.target.value) }}
+              onKeyDown={event => { if (event.key === 'Enter') renameBranch() }}
+              placeholder={t('branchNewPlaceholder')}
+              aria-label={t('branchRename')}
+              autoFocus
+              onFocus={event => { event.target.select() }}
+            />
+            <div className="gbar-foot">
+              <button type="button" className="gbar-btn gbar-ghost" onClick={() => { setRenameTarget(null) }}>{t('branchCancel')}</button>
+              <button type="button" className="gbar-btn gbar-primary" onClick={renameBranch} disabled={busy !== null || renameName.trim() === '' || renameName.trim() === renameTarget}>
+                {busy === 'branch-rename' ? <span className="gbar-spin" /> : null} {t('branchRename')}
+              </button>
+            </div>
+          </div>
+        </div>,
         document.body,
       ) : null}
     </div>
