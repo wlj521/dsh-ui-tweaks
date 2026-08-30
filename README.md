@@ -25,7 +25,7 @@
 - **表格样式**：可选 `默认` 或 **Claude Desktop** 风格（浅灰圆角单元格卡片、单元格间有间隙、无边框、单元格与行内代码同底色、表头不加粗）。Claude 风格下表格默认撑满列宽；放不下的宽表保持自然宽度、在表格内横向滚动（悬停出现滚动条），不会被挤压换行或裁掉后面的列。
 - **GitBar（默认关闭，可在设置中开启）**：当会话的工作目录是一个 git 仓库时，在**输入框工具行内**显示两颗与输入框原生控件（权限 / 模型选择）同款样式的紧凑胶囊——不再占用输入框上方单独一行，输入区因此更矮：
   - **分支胶囊**：位于权限（访问模式）控件之后；显示当前分支名（有未提交改动时在标题提示）。点击**向上**弹出分支面板——本地 / 远程分支列表（点击即 `git switch`），底部可**新建分支**（`git switch -c` 并自动切换）。**头部当前分支右侧是拉取按钮**（`git pull --ff-only`：只快进，分叉时中止并显示 git 报错而不悄悄合并；无 upstream 的分支不显示该按钮），拉的就是头部显示的那个分支。菜单里的**图谱**打开**提交图谱**对话框：最近 150 条提交（`git log --date-order --all`）按拓扑自动分 lane，渲染成彩色 SVG 分叉图——圆点是提交、曲线是 fork/merge，各分支线独立着色，合并弧线汇入目标分支并采用其颜色；行悬停高亮，右上角可刷新。
-  - **差异胶囊**：位于模型选择之前；显示 `+N −M · K 个文件`。点击从右侧滑出**差异面板**：文件列表 + 逐文件 diff（默认**只显示有差异的 hunk**，右上可切“完整文件”视图）。面板**支持拖动拉伸宽度**，展开时**自动把对话区往左挤**；面板内三段（文件列表 / diff 内容 / 提交区）之间的分隔线**可上下拖动调整高度**（双击复位；提交说明框随提交区高度拉伸，可写多行，Shift+Enter 换行）。**提交区保留在差异面板底部**（提交 / 提交并推送，说明留空自动生成）——原来的独立 commit 胶囊已移除。
+  - **差异胶囊**：位于模型选择之前；显示 `+N −M · K 个文件`。点击从右侧滑出**差异面板**：文件列表 + 逐文件 diff（默认**只显示有差异的 hunk**，右上可切“完整文件”视图）。面板**支持拖动拉伸宽度**，展开时**自动把对话区往左挤**；面板内三段（文件列表 / diff 内容 / 提交区）之间的分隔线**可上下拖动调整高度**（双击复位；提交说明框随提交区高度拉伸，可写多行，Shift+Enter 换行）。**提交区保留在差异面板底部**（提交 / 提交并推送，提交说明必须自行填写）——原来的独立 commit 胶囊已移除。
   - **挤压自适应**：输入框工具行变窄时（例如差异面板拉宽把对话列挤小），胶囊像原生控件一样自动降级——先隐藏“· K 个文件”元信息，行再窄时**收敛为纯图标**，分支名与差异文字绝不会和权限、模型选择重叠。
   - 非 git 仓库或无会话 cwd 时胶囊自动隐藏；所有操作走服务端 `execFile('git', …)`（无 shell、带超时）。
 - **归档管理（可开关，默认关闭）**：设置面板中的「归档」页面，列出所有已归档会话（标题 / 所在工作区 / 相对时间），支持**恢复**与**彻底删除**：
@@ -56,7 +56,6 @@ ui-tweaks:
   whaleIndicatorEnabled: true   # 默认 false（关闭），设为 true 开启鲸鱼指示器
   preciseCacheHitEnabled: true  # 默认 false（关闭），设为 true 开启缓存命中率两位小数
   notificationsEnabled: true    # 默认 false（关闭），设为 true 开启任务提醒（事件过滤与三个通道在设置里逐项开关）
-  # suggestModel: 'provider:model'   # 可选：指定生成提交说明的模型
 ```
 
 设置入口：**设置 → 界面调整**。
@@ -107,7 +106,7 @@ npx -y @deepseek-ai/dsh plugin --profile web add .        # 从本目录作为 b
 ## 工作原理
 
 - **服务端**（`src/index.ts`）：注册 `ui-tweaks` 设置命名空间，并挂载同源路由 `/_dsh/ui-tweaks/settings`——自 rc.6 起，Web 设置 RPC 只暴露固定白名单命名空间，因此自定义路由是插件拥有配置页的方式。
-- **Git 后端**（`src/git.ts` + `src/git-web.ts`）：通过 `ctx.get('sessions')`（可选服务）解析会话 header 的 `cwd` 作为“当前项目”，用 `child_process.execFile('git', …)`（无 shell、cwd 固定、超时 + 中止传播）执行只读/写操作；同源路由 `/_dsh/ui-tweaks/git/*` 提供 status / branches / diff（hunk 或完整文件，含绝对行号）/ graph（结构化提交行，含父哈希，供前端排布分支 lane）/ suggest / commit / push / pull（仅快进）/ checkout / create / branch-delete / remote-delete。提交说明生成优先走 `ctx.get('llm')`（可选服务，收集 `text-delta` 流），不可用时回退到启发式规则（按文件类型推断 conventional commit 类型与 scope）。
+- **Git 后端**（`src/git.ts` + `src/git-web.ts`）：通过 `ctx.get('sessions')`（可选服务）解析会话 header 的 `cwd` 作为“当前项目”，用 `child_process.execFile('git', …)`（无 shell、cwd 固定、超时 + 中止传播）执行只读/写操作；同源路由 `/_dsh/ui-tweaks/git/*` 提供 status / branches / diff（hunk 或完整文件，含绝对行号）/ graph（结构化提交行，含父哈希，供前端排布分支 lane）/ commit / push / pull（仅快进）/ checkout / create / branch-delete / remote-delete。
 - **浏览器端**（`src/client/index.tsx`）：读写该路由、渲染设置页，并通过运行时 `<style>` 元素实时应用样式，覆盖稳定的 DSH 锚点（`body` 上的 markdown 代码字体 token、`[data-slot="conversation.chat.node"]` 内的 markdown 表格）。
 - **GitBar**（`src/client/gitbar.tsx`）：拆成两个组件，分别挂在 composer 工具行**内部**的 `conversation.input.left`（分支，位于权限控件之后）与 `conversation.input.right`（差异，位于模型选择之前）插槽——输入区不再有独立的一行胶囊。样式与输入框原生控件一致（28px 高、radius 24px、`--dsw-alias-label-secondary` 颜色、hover 用 `--dsw-alias-interactive-bg-hover`）。工具行是 DSH 的 inline-size 容器（`container-type:inline-size`），胶囊用 `@container` 查询做挤压降级：行宽 <700px 隐藏差异的“· K 个文件”元信息，<620px 全部收敛为纯图标，避免与权限 / 模型选择重叠；分支名另加 `text-overflow:ellipsis` 上限。差异面板展开时通过 `#root { margin-right }` 把对话区往左挤，面板不会与消息列重叠；面板内的高度分配采用「只给被拖的那一段显式高度、diff 段 `flex:1` 吃掉余量」的方式，配合 45% 上限，拖动永远不会撑破面板。独立 commit 胶囊已移除，提交保留在差异面板底部的提交区。提交图谱对话框的 lane 布局与 SVG 渲染拆在 `src/client/graphlayout.ts`（纯函数模块：父哈希 → 每行 lane / 边段，经典 first-parent 路由——第一父提交沿用原 lane 让线性历史始终一条线，合并与 fork 画贝塞尔弧线；`parents` 字段可选，兼容宿主里尚未重载的旧服务端）。
 - **归档管理**（服务端 `src/archive.ts` + 浏览器端 `src/client/archive.tsx`）：作为 `settings.section` 插槽（设置面板中的「归档」页面）。列表数据直接来自框架标准 hook `useSessions` + `useWorkspaces`（`archivedSessionIds`），无需额外查询；操作走同源路由 `/_dsh/ui-tweaks/archive`。**恢复**把会话 id 从工作区存储域的 `archivedSessionIds` 全局单例中移除（DSH 只暴露单向 `archiveSession`，无公开的取消归档 API，故直接写活体存储域句柄并同步工作区注册表的内存缓存）。**彻底删除**依次：拒绝正在运行的会话（agent `status === 'running'` 才拒绝，空闲会话先 `cancel` + `whenIdle`）→ 用持久化后端自身的 `findLog` 定位并 `rm` 会话日志目录 → 调用公开的 `WorkspaceEntity.detachSession` 摘除工作区记账 → 从归档集合移除并同步注册表内存缓存与 header 索引 → 清理 `session_projcache` → 从内存 SessionStore 摘除该会话（触发 `host/session-removed` 实时消失）。

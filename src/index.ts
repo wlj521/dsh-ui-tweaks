@@ -15,7 +15,6 @@ import type { Context } from '@deepseek-ai/cordis'
 import {
   UI_TWEAKS_SETTINGS_NAMESPACE,
   Config,
-  type UITweaksConfig,
 } from './config.ts'
 import { installTurnOutcomeProjection } from './turn-outcome.ts'
 import { UITweaksWebBackend, installUITweaksWeb } from './web.ts'
@@ -43,9 +42,8 @@ export function apply(ctx: Context): void {
   installUITweaksWeb(ctx, new UITweaksWebBackend(ctx))
 
   // The GitBar runs git in the session's working directory through these
-  // same-origin routes (sessions/llm are optional services, duck-typed).
-  const readConfig = (): UITweaksConfig => ctx.settings.get(UI_TWEAKS_SETTINGS_NAMESPACE) as UITweaksConfig
-  installGitWeb(ctx, new GitBackend(ctx, readConfig))
+  // same-origin routes (sessions is an optional service, duck-typed).
+  installGitWeb(ctx, new GitBackend(ctx))
 
   // The Archive panel lists archived sessions and restores ("deletes") them
   // through these same-origin routes (workspace registry + storage domain

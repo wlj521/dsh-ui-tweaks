@@ -89,13 +89,6 @@ export interface UITweaksConfig {
   notifySystemNotification?: boolean
   /** Play a synthesized two-note chime (rising = done, falling = needs you). */
   notifySound?: boolean
-  /**
-   * Optional explicit `provider:model` for generating commit messages with the
-   * LLM (e.g. `jiyuanlvdong:deepseek-v4-flash-0731`). When unset, the first
-   * registered provider/model is used; when the LLM service is unavailable or
-   * the call fails, a heuristic commit message is generated instead.
-   */
-  suggestModel?: string
 }
 
 /** 81% = the stock code ratio (13px code block at a 16px body). Legacy input. */
@@ -157,7 +150,6 @@ export const Config: Schema<UITweaksConfig> = z.object({
   notifyTitleFlash: z.boolean().default(DEFAULT_NOTIFY_TITLE_FLASH),
   notifySystemNotification: z.boolean().default(DEFAULT_NOTIFY_SYSTEM_NOTIFICATION),
   notifySound: z.boolean().default(DEFAULT_NOTIFY_SOUND),
-  suggestModel: z.string(),
 })
 
 /** Configuration after static validation, with every default materialized. */
@@ -193,8 +185,6 @@ export interface ResolvedUITweaksConfig {
   notifySystemNotification: boolean
   /** Play the synthesized two-note chime. */
   notifySound: boolean
-  /** Optional `provider:model` override for LLM commit-message generation. */
-  suggestModel?: string
 }
 
 /** Resolve a partial config into a fully defaulted value. */
@@ -220,8 +210,5 @@ export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConf
   const notifySystemNotification = config.notifySystemNotification ?? DEFAULT_NOTIFY_SYSTEM_NOTIFICATION
   const notifySound = config.notifySound ?? DEFAULT_NOTIFY_SOUND
   const resolved: ResolvedUITweaksConfig = { codeFontScale, codeFontSize, tableStyle, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled, whaleIndicatorEnabled, preciseCacheHitEnabled, notificationsEnabled, notifyOnlyWhenHidden, notifyOnComplete, notifyOnInteraction, notifyTitleFlash, notifySystemNotification, notifySound }
-  if (typeof config.suggestModel === 'string' && config.suggestModel !== '') {
-    resolved.suggestModel = config.suggestModel
-  }
   return resolved
 }

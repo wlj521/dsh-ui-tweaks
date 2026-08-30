@@ -297,13 +297,6 @@ export class GitWebHandler {
         ok(res, { tag: fields.name })
         return
       }
-      if (path === `${GIT_ROUTE}/suggest`) {
-        const cwd = this.requireCwd({ session, ws })
-        // `via` / `reason` let the UI say when the offline heuristic wrote the
-        // message; `message` stays the first-class field.
-        ok(res, await this.backend.suggestDetailed(cwd))
-        return
-      }
     } catch (error) {
       fail(res, 400, 'git-action-failed', messageOf(error))
       return
