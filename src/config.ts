@@ -32,6 +32,22 @@ export interface UITweaksConfig {
   /** Markdown table presentation style. */
   tableStyle?: 'default' | 'claude'
   /**
+   * Master switch for the web-search feature: when on, a dedicated "搜索"
+   * Settings page appears (engine picker + per-engine API keys, stored in
+   * ~/.dsh/.credentials.yaml) and the harness web_search backend is taken
+   * over by this plugin. Off by default; the stock backend stays in place.
+   */
+  searchEnabled?: boolean
+  /**
+   * Preferred web-search engine backing the harness's `web_search` tool.
+   * Free engines (bing / ddg) need no key; Exa, Tavily and Keenable fall back
+   * to their keyless anonymous quota; Perplexity and DeepSeek require a key
+   * in `~/.dsh/.credentials.yaml`.
+   */
+  searchEngine?: 'bing' | 'ddg' | 'exa' | 'tavily' | 'keenable' | 'perplexity' | 'deepseek'
+  /** Bing market code (fixed options); only applies to the Bing engine. */
+  bingMarket?: BingMarket
+  /**
    * Whether the GitBar (branch / diff / commit-message pills above the input)
    * is shown. Off by default; the bar hides itself when the session has no
    * cwd or the directory is not a git repository.
@@ -100,6 +116,19 @@ export const MIN_CODE_FONT_SIZE = 8
 export const MAX_CODE_FONT_SIZE = 32
 export const DEFAULT_CODE_FONT_SIZE = 13
 
+/** Web search defaults to off; users turn it on in Settings. */
+export const DEFAULT_SEARCH_ENABLED = false
+
+/** Web search defaults to the free, most stable engine. */
+export const DEFAULT_SEARCH_ENGINE = 'bing'
+export const DEFAULT_BING_MARKET = 'zh-CN'
+
+/** Markets offered in the Bing-market dropdown. */
+export const BING_MARKET_OPTIONS = ['zh-CN', 'zh-HK', 'zh-TW', 'ja-JP', 'en-US', 'en-GB'] as const
+
+/** Bing market code. */
+export type BingMarket = (typeof BING_MARKET_OPTIONS)[number]
+
 /** GitBar defaults to off; users turn it on in Settings. */
 export const DEFAULT_GITBAR_ENABLED = false
 
@@ -136,6 +165,9 @@ export const Config: Schema<UITweaksConfig> = z.object({
   codeFontScale: z.number().min(MIN_CODE_FONT_SCALE).max(MAX_CODE_FONT_SCALE).default(DEFAULT_CODE_FONT_SCALE),
   codeFontSize: z.number().min(MIN_CODE_FONT_SIZE).max(MAX_CODE_FONT_SIZE),
   tableStyle: z.union(['default', 'claude'] as const).default('default'),
+  searchEnabled: z.boolean().default(DEFAULT_SEARCH_ENABLED),
+  searchEngine: z.union(['bing', 'ddg', 'exa', 'tavily', 'keenable', 'perplexity', 'deepseek'] as const).default(DEFAULT_SEARCH_ENGINE),
+  bingMarket: z.union(BING_MARKET_OPTIONS).default(DEFAULT_BING_MARKET),
   gitBarEnabled: z.boolean().default(DEFAULT_GITBAR_ENABLED),
   archiveManagerEnabled: z.boolean().default(DEFAULT_ARCHIVE_MANAGER_ENABLED),
   mcpManagerEnabled: z.boolean().default(DEFAULT_MCP_MANAGER_ENABLED),
@@ -158,6 +190,12 @@ export interface ResolvedUITweaksConfig {
   /** Effective absolute code font size in px (codeFontSize, else legacy %, else stock). */
   codeFontSize: number
   tableStyle: 'default' | 'claude'
+  /** Whether the web-search feature (Settings page + provider takeover) is on. */
+  searchEnabled: boolean
+  /** Preferred web-search engine id. */
+  searchEngine: 'bing' | 'ddg' | 'exa' | 'tavily' | 'keenable' | 'perplexity' | 'deepseek'
+  /** Bing market code. */
+  bingMarket: BingMarket
   /** Whether the GitBar pills above the input are shown. */
   gitBarEnabled: boolean
   /** Whether the Archive manager sidebar entry is shown. */
@@ -195,6 +233,9 @@ export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConf
     ? Math.min(MAX_CODE_FONT_SIZE, Math.max(MIN_CODE_FONT_SIZE, config.codeFontSize))
     : Math.max(8, Math.round(DEFAULT_CODE_FONT_SIZE * (codeFontScale / DEFAULT_CODE_FONT_SCALE)))
   const tableStyle = config.tableStyle ?? 'default'
+  const searchEnabled = config.searchEnabled ?? DEFAULT_SEARCH_ENABLED
+  const searchEngine = config.searchEngine ?? DEFAULT_SEARCH_ENGINE
+  const bingMarket = config.bingMarket ?? DEFAULT_BING_MARKET
   const gitBarEnabled = config.gitBarEnabled ?? DEFAULT_GITBAR_ENABLED
   const archiveManagerEnabled = config.archiveManagerEnabled ?? DEFAULT_ARCHIVE_MANAGER_ENABLED
   const mcpManagerEnabled = config.mcpManagerEnabled ?? DEFAULT_MCP_MANAGER_ENABLED
@@ -208,6 +249,6 @@ export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConf
   const notifyTitleFlash = config.notifyTitleFlash ?? DEFAULT_NOTIFY_TITLE_FLASH
   const notifySystemNotification = config.notifySystemNotification ?? DEFAULT_NOTIFY_SYSTEM_NOTIFICATION
   const notifySound = config.notifySound ?? DEFAULT_NOTIFY_SOUND
-  const resolved: ResolvedUITweaksConfig = { codeFontScale, codeFontSize, tableStyle, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled, whaleIndicatorEnabled, preciseCacheHitEnabled, notificationsEnabled, notifyOnlyWhenHidden, notifyOnComplete, notifyOnInteraction, notifyTitleFlash, notifySystemNotification, notifySound }
+  const resolved: ResolvedUITweaksConfig = { codeFontScale, codeFontSize, tableStyle, searchEnabled, searchEngine, bingMarket, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled, whaleIndicatorEnabled, preciseCacheHitEnabled, notificationsEnabled, notifyOnlyWhenHidden, notifyOnComplete, notifyOnInteraction, notifyTitleFlash, notifySystemNotification, notifySound }
   return resolved
 }

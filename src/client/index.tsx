@@ -33,6 +33,7 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { BranchChipEntry, GitWarmup, HeaderUtilities, installGitBarStyles, installHeroChip } from './gitbar.tsx'
 import { ArchiveSection, installArchiveStyles } from './archive.tsx'
 import { McpSection, installMcpStyles } from './mcp.tsx'
+import { SearchSection } from './search.tsx'
 import { WhaleIndicator, installWhaleStyles } from './whale.tsx'
 import { PreciseCacheHitEntry } from './cachehit.tsx'
 import { installTaskNotifier, previewAlerts, requestNotifyPermission } from './notifier.ts'
@@ -53,12 +54,18 @@ interface TweaksValue {
   /** Absolute code font size in px; wins over the legacy percentage. */
   codeFontSize?: number
   tableStyle?: 'default' | 'claude'
+  /** Preferred web-search engine (bing | ddg | exa | tavily | keenable | perplexity | deepseek). */
+  searchEngine?: string
+  /** Bing market code (e.g. zh-CN). */
+  bingMarket?: string
   /** Whether the GitBar (branch / diff / commit pills) is shown. */
   gitBarEnabled?: boolean
   /** Whether the Archive manager (sidebar entry above Settings) is shown. */
   archiveManagerEnabled?: boolean
   /** Whether the MCP manager (Settings page listing MCP servers) is shown. */
   mcpManagerEnabled?: boolean
+  /** Whether the web-search takeover + 搜索 settings page are enabled. */
+  searchEnabled?: boolean
   /** Whether the /init slash command (AGENTS.md bootstrap prompt) is registered. */
   initCommandEnabled?: boolean
   /** Whether the whale working indicator above the input is shown. */
@@ -85,9 +92,12 @@ interface ResolvedTweaks {
   /** Effective absolute code font size in px (codeFontSize, else legacy %, else stock). */
   codeFontSize: number
   tableStyle: 'default' | 'claude'
+  searchEngine: string
+  bingMarket: string
   gitBarEnabled: boolean
   archiveManagerEnabled: boolean
   mcpManagerEnabled: boolean
+  searchEnabled: boolean
   initCommandEnabled: boolean
   whaleIndicatorEnabled: boolean
   preciseCacheHitEnabled: boolean
@@ -122,6 +132,41 @@ const en = {
   tableStyleHint: 'Cell look for markdown tables: stock borders, or the Claude Desktop card style.',
   tableStyleDefault: 'Default',
   tableStyleClaude: 'Claude Desktop',
+  sectionSearch: 'Web search',
+  searchOn: 'On',
+  searchOff: 'Off',
+  searchEnabled: 'Web search',
+  searchEnabledHint: 'Takes over the built-in web_search tool with this plugin\u2019s multi-engine provider, and adds a "搜索" settings page for the engine picker and per-platform API keys. Off restores the stock backend.',
+  searchNav: 'Search',
+  searchTitle: 'Web search',
+  searchIntro: 'Pick the preferred engine for the built-in web_search tool; any engine that fails falls through to the next one automatically.',
+  sectionKeys: 'API keys',
+  keyFree: 'FREE',
+  keyOptional: 'KEY OPTIONAL',
+  keyRequired: 'KEY REQUIRED',
+  keyConfigured: 'Configured',
+  keyNotConfigured: 'Not configured',
+  keySave: 'Save',
+  keyClear: 'Clear',
+  keySaved: 'Key saved.',
+  keyCleared: 'Key cleared.',
+  keyEnvHint: 'Keys are stored in the credentials center, one per line:',
+  searchTest: 'Test engine',
+  searchTesting: 'Testing…',
+  searchTestOk: 'Engine works',
+  searchTestFail: 'Engine failed',
+  searchEngine: 'Search engine',
+  searchEngineHint: 'Backend for the built-in web_search tool. Free engines (Bing, DuckDuckGo) need no key; Exa / Tavily / Keenable use their keyless anonymous quota without one; Perplexity and DeepSeek require a key.',
+  searchEngineBing: 'Bing (free)',
+  searchEngineDdg: 'DuckDuckGo (free)',
+  searchEngineExa: 'Exa',
+  searchEngineTavily: 'Tavily',
+  searchEngineKeenable: 'Keenable',
+  searchEnginePerplexity: 'Perplexity',
+  searchEngineDeepseek: 'DeepSeek',
+  bingMarket: 'Bing market',
+  bingMarketHint: 'Market code for Bing results, e.g. zh-CN or en-US.',
+  searchKeysHint: 'API keys live in ~/.dsh/.credentials.yaml, one per line: EXA_API_KEY / TAVILY_API_KEY / KEENABLE_API_KEY / PERPLEXITY_API_KEY / DEEPSEEK_API_KEY: sk-.... Keys resolve from the credentials center first, then environment variables.',
   gitBar: 'Git bar',
   gitBarHint: 'Branch / diff pills above the input inside git repos, with branch management and commit & push; auto-hidden outside git.',
   gitBarOn: 'On',
@@ -327,6 +372,41 @@ const zh: Record<LocaleKey, string> = {
   tableStyleHint: 'Markdown 表格的外观：默认边框，或 Claude Desktop 卡片风格。',
   tableStyleDefault: '默认',
   tableStyleClaude: 'Claude Desktop',
+  sectionSearch: '网络搜索',
+  searchOn: '开',
+  searchOff: '关',
+  searchEnabled: '网络搜索',
+  searchEnabledHint: '用本插件的多引擎 provider 接管内置 web_search 工具，并新增「搜索」设置页：选择引擎、按平台填写 API key。关闭后恢复官方搜索后端。',
+  searchNav: '搜索',
+  searchTitle: '网络搜索',
+  searchIntro: '为内置 web_search 工具选择首选引擎；任一引擎失败会自动回退到下一个。',
+  sectionKeys: 'API 密钥',
+  keyFree: '免费',
+  keyOptional: '可选',
+  keyRequired: '必填',
+  keyConfigured: '已配置',
+  keyNotConfigured: '未配置',
+  keySave: '保存',
+  keyClear: '清除',
+  keySaved: '已保存。',
+  keyCleared: '已清除。',
+  keyEnvHint: '密钥保存在凭据中心文件中，每行一个：',
+  searchTest: '测试引擎',
+  searchTesting: '测试中…',
+  searchTestOk: '引擎可用',
+  searchTestFail: '引擎失败',
+  searchEngine: '搜索引擎',
+  searchEngineHint: '内置 web_search 工具的后端。免费引擎（Bing、DuckDuckGo）无需 key；Exa / Tavily / Keenable 无 key 时走匿名免费额度；Perplexity 和 DeepSeek 需要配置 key。',
+  searchEngineBing: 'Bing（免费）',
+  searchEngineDdg: 'DuckDuckGo（免费）',
+  searchEngineExa: 'Exa',
+  searchEngineTavily: 'Tavily',
+  searchEngineKeenable: 'Keenable',
+  searchEnginePerplexity: 'Perplexity',
+  searchEngineDeepseek: 'DeepSeek',
+  bingMarket: 'Bing 市场',
+  bingMarketHint: 'Bing 结果的市场代码，如 zh-CN 或 en-US。',
+  searchKeysHint: 'API key 存放在 ~/.dsh/.credentials.yaml，每行一个：EXA_API_KEY / TAVILY_API_KEY / KEENABLE_API_KEY / PERPLEXITY_API_KEY / DEEPSEEK_API_KEY: sk-...。解析优先级：凭据中心 → 环境变量。',
   gitBar: 'Git 状态栏',
   gitBarHint: 'git 仓库内时在输入框上方显示 分支 / 差异 胶囊，支持分支管理与提交推送；非 git 目录自动隐藏。',
   gitBarOn: '开启',
@@ -535,9 +615,12 @@ function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
   return {
     codeFontSize,
     tableStyle: value?.tableStyle === 'claude' ? 'claude' : 'default',
+    searchEngine: value?.searchEngine ?? 'bing',
+    bingMarket: value?.bingMarket ?? 'zh-CN',
     gitBarEnabled: value?.gitBarEnabled ?? false,
     archiveManagerEnabled: value?.archiveManagerEnabled ?? false,
     mcpManagerEnabled: value?.mcpManagerEnabled ?? false,
+    searchEnabled: value?.searchEnabled ?? false,
     initCommandEnabled: value?.initCommandEnabled ?? false,
     whaleIndicatorEnabled: value?.whaleIndicatorEnabled ?? false,
     preciseCacheHitEnabled: value?.preciseCacheHitEnabled ?? false,
@@ -701,6 +784,14 @@ const BASE_CSS = `
 .dut-seg button.dut-seg-active{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);color:var(--dsw-alias-state-business-primary);font-weight:600;box-shadow:none}
 .dut-seg button.dut-seg-active:hover:not(:disabled){color:var(--dsw-alias-state-business-primary)}
 .dut-seg button:disabled{opacity:.45;cursor:default}
+.dut-select{height:28px;padding:0 8px;border:1px solid var(--dsw-alias-border-l1);border-radius:9px;background:var(--dsw-alias-bg-layer-2);color:inherit;font:inherit;font-size:12.5px;cursor:pointer;color-scheme:light dark}
+.dut-select:hover:not(:disabled){border-color:var(--dsw-alias-label-dimmed)}
+.dut-select:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}
+.dut-select:disabled{opacity:.45;cursor:default}
+.dut-text-input{height:28px;width:110px;padding:0 10px;border:1px solid var(--dsw-alias-border-l1);border-radius:9px;background:var(--dsw-alias-bg-layer-2);color:inherit;font:inherit;font-size:12.5px}
+.dut-text-input:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}
+.dut-text-input:disabled{opacity:.45}
+.dut-note{padding:8px 16px 12px;font-size:11.5px;line-height:1.55;color:var(--dsw-alias-label-tertiary)}
 /* The selected Settings-section tab — the stock shell paints a barely-there
    grey; brand-tint it so the selection reads clearly (and in the README shot). */
 [role="dialog"] nav button[aria-selected="true"],[role="dialog"] nav button[aria-current="true"]{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);color:var(--dsw-alias-state-business-primary);font-weight:600}
@@ -729,14 +820,29 @@ function installBaseStyles(): () => void {
   return () => { style.remove() }
 }
 
+/**
+ * Settings requests retry briefly on 502/503: writing the profile patch
+ * hot-reloads the `web` node and restarts this plugin for a moment (it
+ * injects `web`), so a toggle click can land inside that window. The retry
+ * rides it out instead of surfacing "settings unavailable".
+ */
 async function apiRequest<T>(init?: RequestInit): Promise<T> {
-  const response = await fetch(SETTINGS_ROUTE, { credentials: 'same-origin', ...init })
-  const body = await response.json() as ApiSuccess<T> | ApiFailure
-  if (!response.ok || !body.ok) {
-    const failure = body as ApiFailure
-    throw new Error(failure.error?.message ?? `UI Tweaks request failed with HTTP ${response.status}`)
+  let lastError: unknown
+  for (let attempt = 1; attempt <= 6; attempt++) {
+    try {
+      const response = await fetch(SETTINGS_ROUTE, { credentials: 'same-origin', ...init })
+      const body = await response.json() as ApiSuccess<T> | ApiFailure
+      if (response.ok && body.ok) return body.value
+      const failure = body as ApiFailure
+      const retryable = response.status === 502 || response.status === 503
+      lastError = new Error(failure.error?.message ?? `UI Tweaks request failed with HTTP ${response.status}`)
+      if (!retryable) throw lastError
+    } catch (error) {
+      lastError = error
+    }
+    await new Promise((resolve) => setTimeout(resolve, attempt * 250))
   }
-  return body.value
+  throw lastError ?? new Error('UI Tweaks request failed')
 }
 
 /** Client-side snapshot store fed by the same-origin Settings route. */
@@ -906,6 +1012,22 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     void controller.set('mcpManagerEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
+  const setSearchEnabled = (value: boolean): void => {
+    void controller.set('searchEnabled', value).then(() => {
+      setStatus('applied')
+      // Mirror the toggle into the profile patch AFTER the settings write
+      // lands; the explicit `enabled` avoids racing the server-side read.
+      // The patch write hot-reloads the web node (the plugin restarts with
+      // it); the settings route's own retry absorbs the downtime.
+      void fetch('/_dsh/ui-tweaks/search', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'sync-patch', enabled: value }),
+      }).catch(() => { /* the startup reconcile also covers this */ })
+    }).catch(() => { setStatus('unavailable') })
+  }
+
   const setInitCommand = (value: boolean): void => {
     void controller.set('initCommandEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
@@ -1032,6 +1154,21 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
               <div className="dut-seg">
                 <button type="button" className={resolved.preciseCacheHitEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setPreciseCacheHit(true) }}>{t('preciseCacheHitOn')}</button>
                 <button type="button" className={!resolved.preciseCacheHitEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setPreciseCacheHit(false) }}>{t('preciseCacheHitOff')}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="dut-panel">
+        <div className="dut-section-label">{t('sectionSearch')}</div>
+        <div className="dut-field">
+          <div className="dut-field-top">
+            <span className="dut-label">{t('searchEnabled')}<Hint text={t('searchEnabledHint')} /></span>
+            <div className="dut-controls">
+              <div className="dut-seg">
+                <button type="button" className={resolved.searchEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setSearchEnabled(true) }}>{t('searchOn')}</button>
+                <button type="button" className={!resolved.searchEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setSearchEnabled(false) }}>{t('searchOff')}</button>
               </div>
             </div>
           </div>
@@ -1376,6 +1513,18 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: () => ({ controller, t }),
   }, McpSection))
+
+  // Web search manager: a Settings section ("搜索") with the engine picker and
+  // per-engine API keys (credentials center). Mounted only while the
+  // searchEnabled toggle in the UI Tweaks section is on.
+  installConditionalSection(ctx, controller, (value) => value?.searchEnabled === true, () => ctx.slots.register({
+    name: 'settings.section',
+    id: 'search',
+    order: 70,
+    label: () => t('searchNav'),
+    locale: NS,
+    inject: () => ({ controller, t }),
+  }, SearchSection))
 
   // /init slash command: registered only while the initCommandEnabled toggle
   // in the UI Tweaks section is on, so `/init` appears in the slash menu only
