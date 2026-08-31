@@ -1,6 +1,6 @@
 # dsh-ui-tweaks
 
-> **Version requirement**: this release (v0.12.0) requires **DSH v0.1.2-alpha.1 or newer** — the conversation timeline and dialog width now ship natively in DSH, so the plugin dropped its own duplicate implementations (the message font size and line-spacing settings were dropped alongside). On an older host, pin the previous version to keep those features: `npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks@0.11.2`.
+> **Version requirement**: this release (v0.12.0) requires **DSH v0.1.2-alpha.2 or newer** — the conversation timeline and dialog width now ship natively in DSH, so the plugin dropped its own duplicate implementations (the message font size and line-spacing settings were dropped alongside). On an older host, pin the previous version to keep those features: `npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks@0.11.2`.
 
 A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH) web plugin that live-tunes the conversation UI from the Settings panel.
 

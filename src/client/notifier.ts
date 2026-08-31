@@ -39,7 +39,8 @@
  * @module dsh-ui-tweaks/client/notifier
  */
 
-import type { ISessions, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 
 /** Client-side view of the host `dshTurnOutcome` fold (see src/turn-outcome.ts). */
 interface TurnOutcomeSnapshot {
@@ -121,6 +122,11 @@ export interface TaskNotifierInput {
   text: NotifierText
   /** Fresh behavior switches + channel toggles, read on every tick. */
   readState(): { options: NotifierOptions; channels: NotifierChannels }
+  /** Per-session pending-user-interaction map (alpha.2 `useSessionPendingInteraction` source). */
+  pendingInteractions: {
+    getSnapshot(): ReadonlyMap<SessionId, { kind: string }>
+    subscribe(listener: () => void): () => void
+  }
 }
 
 /** Per-session state the transition detector compares against. */
@@ -283,8 +289,13 @@ function playChime(shape: 'up' | 'down'): void {
  * @returns disposer — unsubscribes, restores the tab title and tears the channels down.
  */
 export function installTaskNotifier(input: TaskNotifierInput): () => void {
-  const { sessionsService, text, readState } = input
+  const { sessionsService, text, readState, pendingInteractions } = input
   const list = sessionsService.list
+  /** Pending-user-interaction kind for a session, absent when it is not waiting on the user. */
+  const pendingOf = (id: SessionId): NotifyPendingKind | undefined => {
+    const kind = pendingInteractions.getSnapshot().get(id)?.kind
+    return kind === 'approval' || kind === 'plan-review' || kind === 'question' ? kind : undefined
+  }
 
   // --- detector state ------------------------------------------------------
   const watch = new Map<SessionId, WatchState>()
@@ -410,7 +421,7 @@ export function installTaskNotifier(input: TaskNotifierInput): () => void {
     for (const row of Object.values(list.getSnapshot().byId)) {
       if (row.parentId !== undefined || row.blank) continue
       const outcome = row.projectionValues?.[TURN_OUTCOME_KEY] ?? undefined
-      watch.set(row.id, { running: row.running, pending: row.pendingInteraction, completed: row.completed === true, outcome })
+      watch.set(row.id, { running: row.running, pending: pendingOf(row.id), completed: row.completed === true, outcome })
     }
   }
 
@@ -427,19 +438,19 @@ export function installTaskNotifier(input: TaskNotifierInput): () => void {
       seen.add(row.id)
       const prev = watch.get(row.id)
       const outcome = row.projectionValues?.[TURN_OUTCOME_KEY] ?? undefined
-      watch.set(row.id, { running: row.running, pending: row.pendingInteraction, completed: row.completed === true, outcome })
+      watch.set(row.id, { running: row.running, pending: pendingOf(row.id), completed: row.completed === true, outcome })
       if (prev === undefined) continue
 
       // Interaction outranks completion: a turn ending ON a question must
       // announce the question, not a completion.
-      if (prev.pending === undefined && row.pendingInteraction !== undefined) {
+      if (prev.pending === undefined && pendingOf(row.id) !== undefined) {
         if (options.onInteraction && deliverable) {
-          deliver(row.id, row.displayTitle, 'interaction', row.pendingInteraction, undefined, channels, now)
+          deliver(row.id, row.displayTitle, 'interaction', pendingOf(row.id), undefined, channels, now)
         }
         continue
       }
 
-      const finished = prev.running && !row.running && row.pendingInteraction === undefined
+      const finished = prev.running && !row.running && pendingOf(row.id) === undefined
       const completedReminder = !prev.completed && row.completed === true
       if (finished || completedReminder) {
         // The green `completed` reminder often arrives a re-pull AFTER the
@@ -475,9 +486,11 @@ export function installTaskNotifier(input: TaskNotifierInput): () => void {
 
   armBaseline()
   const disposeFeed = list.subscribe(check)
+  const disposePending = pendingInteractions.subscribe(check)
 
   return () => {
     disposeFeed()
+    disposePending()
     stopTitleFlash()
     window.removeEventListener('focus', settleIfBack)
     document.removeEventListener('visibilitychange', onVisibilityChange)

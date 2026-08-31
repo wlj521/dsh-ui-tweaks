@@ -7,10 +7,9 @@
 
 import z from '@deepseek-ai/schemastery'
 import type Schema from '@deepseek-ai/schemastery'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 
 /** Settings document namespace owned by this plugin. */
-export const UI_TWEAKS_SETTINGS_NAMESPACE = settingsNamespace('ui-tweaks')
+export const UI_TWEAKS_SETTINGS_NAMESPACE = 'ui-tweaks'
 
 /** Raw user-facing configuration (partial inputs receive schema defaults). */
 export interface UITweaksConfig {

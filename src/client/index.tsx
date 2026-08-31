@@ -9,7 +9,14 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+// Type-only imports activate the client-service Context declarations this
+// entry drives: `ctx.sessions` (api-session-controller), `ctx.slots`
+// (ui-renderer), `ctx.locale` (locale), `ctx.commandUi` (ui-commands),
+// `ctx.conversation` (ui-conversation) and the `settings.section` slot contract.
+import type {} from '@deepseek-ai/dsh-api-session-controller/client'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only import activates the dsh-client-ui-settings slot declarations
 // (`settings.section`) and the client-side settings scope contract.
@@ -803,7 +810,7 @@ export class SettingsClient {
 }
 
 /** Required client services: slots (settings.section), locale, sessions (git bar, whale, archive, notifier), the slash-command registry, and the scope-addressed conversation face. */
-export const inject = ['slots', 'locale', 'sessions', 'commandUi', 'conversation']
+export const inject = ['slots', 'locale', 'sessions', 'commandUi', 'conversation', 'uiSession']
 
 /**
  * Hover/focus hint: a small ⓘ next to the field label; the hint text renders
@@ -1455,6 +1462,7 @@ export function apply(ctx: ClientContext): void {
       if (enabled && disposeNotifier === undefined) {
         disposeNotifier = installTaskNotifier({
           sessionsService: ctx.sessions,
+          pendingInteractions: ctx.uiSession.pendingInteractions,
           text: {
             notifyTitleDone: t('notifyTitleDone'),
             notifyTitleAborted: t('notifyTitleAborted'),

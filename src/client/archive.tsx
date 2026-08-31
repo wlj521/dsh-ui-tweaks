@@ -22,8 +22,9 @@
  */
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
-import type { ISessions, SessionListState, SessionSummary, WorkspaceListState } from '@deepseek-ai/dsh-client-runtime/client'
-import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
+import type { ISessions, SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-store'
 import type { SettingsClient } from './index.tsx'
 
 /** Route matching the host half (src/archive.ts). */
@@ -145,7 +146,7 @@ export interface ArchiveSectionProps {
   sessionsService: ISessions
   /** Framework standard feeds: session list + workspace archive set. */
   useSessions: SnapshotSelectorHook<SessionListState>
-  useWorkspaces: SnapshotSelectorHook<WorkspaceListState>
+  useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>
 }
 
 export function ArchiveSection({ controller, t, sessionsService, useSessions, useWorkspaces }: ArchiveSectionProps) {

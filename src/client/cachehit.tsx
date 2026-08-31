@@ -22,7 +22,7 @@
  */
 
 import { useEffect } from 'react'
-import type { UseProjection } from '@deepseek-ai/dsh-client-runtime/client'
+import type { UseProjection } from '@deepseek-ai/dsh-api-session-controller/client'
 // Type-only import: pulls dsh-token-meter's `tokenUsage` key into the shared
 // projection type table (and the value shape) without a runtime dependency.
 import type { TokenUsageProjection } from '@deepseek-ai/dsh-token-meter/client'

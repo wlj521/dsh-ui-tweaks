@@ -27,7 +27,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import { createRoot } from 'react-dom/client'
-import type { ConversationSnapshot, ISessions, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ISessions, SessionSnapshot } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SettingsClient } from './index.tsx'
 import { APP_ICONS } from './appicons.ts'
 import { GRAPH_LANE_W, GRAPH_ROW_H, layoutCommitGraph } from './graphlayout.ts'
@@ -1816,7 +1817,7 @@ export interface DiffPanelProps {
   /** Framework session kit: the definite current session id. */
   sessionId: SessionId
   /** Framework session kit: live conversation snapshot selector. */
-  useSession: <T>(selector: (snapshot: ConversationSnapshot) => T) => T
+  useSession: <T>(selector: (snapshot: SessionSnapshot) => T) => T
   /** Injected: the ui-tweaks settings store (reads `gitBarEnabled`). */
   controller: SettingsClient
   /** Locale-bound translator for the GitBar labels. */
@@ -2642,7 +2643,7 @@ export function TerminalPanel({ sessionId, controller, t, onClose }: {
 
 export interface HeaderUtilitiesProps {
   sessionId: SessionId
-  useSession: <T>(selector: (snapshot: ConversationSnapshot) => T) => T
+  useSession: <T>(selector: (snapshot: SessionSnapshot) => T) => T
   controller: SettingsClient
   t: Translate
 }
