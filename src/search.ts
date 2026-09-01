@@ -37,6 +37,14 @@ export type SearchEngineId = 'bing' | 'ddg' | 'exa' | 'tavily' | 'keenable' | 'p
 /** Fallback order after the preferred engine. */
 export const ENGINE_ORDER: readonly SearchEngineId[] = ['bing', 'ddg', 'exa', 'tavily', 'keenable', 'perplexity', 'deepseek']
 
+/**
+ * Id of the search provider registered into `ctx.web` and written as
+ * `searchProvider` in the profile's cordis.patch.yml. Named after the plugin
+ * (not after an engine like `ddg`) so it can never collide with another
+ * plugin's provider id in the same profile.
+ */
+export const SEARCH_PROVIDER_ID = 'dsh-ui-tweaks'
+
 /** Credential file env names for engines that REQUIRE a key. */
 const REQUIRED_API_KEYS: Partial<Record<SearchEngineId, string>> = {
   perplexity: 'PERPLEXITY_API_KEY',
@@ -582,7 +590,7 @@ export function createSearchProvider(options: SearchProviderOptions): {
     deepseek: (q, n, o, s) => searchDeepSeekOfficial(q, n, o, s),
   }
   return {
-    id: 'ddg',
+    id: SEARCH_PROVIDER_ID,
     available(): boolean {
       // Live gate: the harness consults this before exposing web_search, so
       // turning the feature off in Settings removes the takeover instantly.

@@ -1,6 +1,6 @@
 # dsh-ui-tweaks
 
-> **Version requirement**: this release (v0.12.0) requires **DSH v0.1.2-alpha.2 or newer** — the conversation timeline and dialog width now ship natively in DSH, so the plugin dropped its own duplicate implementations (the message font size and line-spacing settings were dropped alongside). On an older host, pin the previous version to keep those features: `npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks@0.11.2`.
+> **Version requirement**: this release (v0.13.0) requires **DSH v0.1.2-alpha.3 or newer**; the web-search provider id was renamed from `ddg` to the plugin name `dsh-ui-tweaks`, so it no longer collides with other plugins that also register a `ddg` search provider (with web search on, the `searchProvider:` entry in the profile patch is rewritten automatically). The conversation timeline and dialog width have shipped natively in DSH since v0.12.0, so the plugin dropped its own duplicate implementations (the message font size and line-spacing settings were dropped alongside). On an older host, pin the previous version: `npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks@0.12.0`.
 
 A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH) web plugin that live-tunes the conversation UI from the Settings panel.
 
@@ -71,8 +71,8 @@ The package spec after `add` is forwarded to pnpm verbatim, so versions can be
 pinned — `@version` for the npm package, `#tag` for the GitHub source:
 
 ```bash
-npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks@0.11.2                    # pin the npm version
-npx -y @deepseek-ai/dsh plugin --profile web add github:wlj521/dsh-ui-tweaks#v0.11.2     # pin a git tag
+npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks@0.12.0                    # pin the npm version
+npx -y @deepseek-ai/dsh plugin --profile web add github:wlj521/dsh-ui-tweaks#v0.12.0     # pin a git tag
 ```
 
 For GitHub installs, pnpm may ask you to approve the package's build script —

@@ -21,7 +21,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 // Type-only import activates the webServer Context declaration.
 import type {} from '@deepseek-ai/dsh-host-webserver'
-import { createSearchProvider, ENGINE_ORDER, type SearchEngineId } from './search.ts'
+import { createSearchProvider, ENGINE_ORDER, SEARCH_PROVIDER_ID, type SearchEngineId } from './search.ts'
 import { isRecord, json, messageOf, readJson, requestError, sameOriginPost } from './web.ts'
 
 /** Exact route used by the browser search settings page. */
@@ -98,8 +98,12 @@ export class SearchBackend {
   // Provider activation (the profile's cordis.patch.yml, MCP-manager style)
   // -----------------------------------------------------------------------
 
-  /** The `searchProvider` id this plugin registers (matches provider.id). */
-  private static readonly PROVIDER_ID = 'ddg'
+  /**
+   * The `searchProvider` id this plugin registers (matches provider.id).
+   * Named after the plugin so other ddg-style plugins writing `ddg` into the
+   * shared profile patch can never collide with it.
+   */
+  private static readonly PROVIDER_ID = SEARCH_PROVIDER_ID
 
   /** Structural face of the Cordis loader service (duck-typed). */
   private loader(): { entries(): Iterable<{ options: { id?: string; name?: string; config?: Record<string, unknown> } }>; config?: { baseUrl?: string } } | undefined {

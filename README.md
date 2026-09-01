@@ -1,6 +1,6 @@
 # dsh-ui-tweaks
 
-> **版本要求**：本版本（v0.12.0）需要 **DSH v0.1.2-alpha.2 及以上**——对话时间线与对话框宽度已由 DSH 原生提供，插件因此移除了自带的重复实现（消息字体大小与行高设置也一并移除）。宿主暂未升级时，可指定安装旧版继续使用这些功能：`npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks@0.11.2`。
+> **版本要求**：本版本（v0.13.0）需要 **DSH v0.1.2-alpha.3 及以上**；网页搜索 provider id 由 `ddg` 改为插件名 `dsh-ui-tweaks`，不再与其他同样以 `ddg` 注册搜索 provider 的插件冲突（开启网页搜索时，profile 补丁里的 `searchProvider:` 会自动改写为新 id）。对话时间线与对话框宽度自 v0.12.0 起已由 DSH 原生提供，插件相应移除了自带的重复实现（消息字体大小与行高设置一并移除）。宿主暂未升级时，可安装上一版继续使用：`npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks@0.12.0`。
 
 [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/)（DSH）Web UI 插件：在设置面板中实时调整对话界面——代码字号、表格样式、**GitBar**（输入框工具行内的 git 状态胶囊：分支在权限旁、差异在模型前），可开关的**归档管理**（设置中的「归档」页面：查看、恢复或彻底删除已归档会话），可开关的**任务提醒**（会话完成或需要交互时，通过标签页标题闪烁 / 系统通知 / 提示音把你唤回来），以及**缓存命中率两位小数**（把输入框下方统计条的缓存命中百分比改写为精确值）。
 
@@ -73,8 +73,8 @@ npx -y @deepseek-ai/dsh plugin --profile web add github:wlj521/dsh-ui-tweaks
 `add` 后面的包说明会**原样转发给 pnpm**，因此可以指定版本——npm 包用 `@版本号`，GitHub 源码用 `#tag`：
 
 ```bash
-npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks@0.11.2                    # 锁定 npm 版本
-npx -y @deepseek-ai/dsh plugin --profile web add github:wlj521/dsh-ui-tweaks#v0.11.2     # 锁定 git tag
+npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks@0.12.0                    # 锁定 npm 版本
+npx -y @deepseek-ai/dsh plugin --profile web add github:wlj521/dsh-ui-tweaks#v0.12.0     # 锁定 git tag
 ```
 
 从 GitHub 安装时，pnpm 可能要求批准该包的构建脚本——把提示的包键加进该 profile 的 `pnpm-workspace.yaml`：
