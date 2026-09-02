@@ -22,9 +22,9 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 // (`settings.section`) and the client-side settings scope contract.
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 // Type-only import activates the dsh-client-ui-conversation slot declarations
-// (`conversation.input.dock`) that host the git-bar warmup seat and the whale
-// indicator, and the Context declaration for `ctx.conversation` (the /init
-// command's scope-addressed send / input registry).
+// (`conversation.input.dock`) that host the git-bar warmup seat, the whale
+// indicator and the timeline rail, and the Context declaration for
+// `ctx.conversation` (the /init command's scope-addressed send / input registry).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 // Type-only import activates the Context declaration for `ctx.commandUi`
 // (client slash-command contributions) and provides the contribution types.
@@ -35,6 +35,7 @@ import { ArchiveSection, installArchiveStyles } from './archive.tsx'
 import { McpSection, installMcpStyles } from './mcp.tsx'
 import { SearchSection } from './search.tsx'
 import { WhaleIndicator, installWhaleStyles } from './whale.tsx'
+import { TimelineRail, installTimelineStyles } from './timeline.tsx'
 import { PreciseCacheHitEntry } from './cachehit.tsx'
 import { installTaskNotifier, previewAlerts, requestNotifyPermission } from './notifier.ts'
 
@@ -54,6 +55,8 @@ interface TweaksValue {
   /** Absolute code font size in px; wins over the legacy percentage. */
   codeFontSize?: number
   tableStyle?: 'default' | 'claude'
+  /** Which timeline to show: 'native' (DSH built-in rail) or 'web' (plugin classic rail). Keep in sync with src/config.ts. */
+  timelineStyle?: 'native' | 'web'
   /** Preferred web-search engine (bing | ddg | exa | tavily | keenable | perplexity | deepseek). */
   searchEngine?: string
   /** Bing market code (e.g. zh-CN). */
@@ -92,6 +95,7 @@ interface ResolvedTweaks {
   /** Effective absolute code font size in px (codeFontSize, else legacy %, else stock). */
   codeFontSize: number
   tableStyle: 'default' | 'claude'
+  timelineStyle: 'native' | 'web'
   searchEngine: string
   bingMarket: string
   gitBarEnabled: boolean
@@ -132,6 +136,10 @@ const en = {
   tableStyleHint: 'Cell look for markdown tables: stock borders, or the Claude Desktop card style.',
   tableStyleDefault: 'Default',
   tableStyleClaude: 'Claude Desktop',
+  timeline: 'Timeline',
+  timelineHint: 'Native: DSH\u2019s built-in turn rail at the right edge (stock). Web (classic): the v0.11 right-side navigation rail — hover to preview, click to jump; auto-hidden in short conversations.',
+  timelineNative: 'Native',
+  timelineWeb: 'Web (classic)',
   sectionSearch: 'Web search',
   searchOn: 'On',
   searchOff: 'Off',
@@ -280,6 +288,9 @@ const en = {
   archiveDisabledHint: 'Archive management is off. Turn it on in 界面调整 (UI Tweaks) to restore or permanently delete archived sessions here.',
   archiveEnable: 'Enable archive management',
   archiveRestored: 'Restored.',
+  railLabel: 'Chat timeline',
+  roleUser: 'User',
+  noText: '(no text)',
   defaultAction: 'Default',
   reset: 'Reset',
   resetDone: 'Reset to default.',
@@ -362,7 +373,7 @@ type LocaleKey = keyof typeof en
 const zh: Record<LocaleKey, string> = {
   nav: '界面调整',
   settingsTitle: '界面调整',
-  settingsIntro: '调整对话界面——代码字号、表格与布局，以及 Git 状态栏、归档 / MCP 管理、/init 命令等功能开关，修改即时生效。',
+  settingsIntro: '调整对话界面——代码字号、表格与布局，以及时间线、Git 状态栏、归档 / MCP 管理、/init 命令等功能开关，修改即时生效。',
   sectionText: '文本与表格',
   sectionLayout: '布局',
   sectionFeatures: '功能',
@@ -372,6 +383,10 @@ const zh: Record<LocaleKey, string> = {
   tableStyleHint: 'Markdown 表格的外观：默认边框，或 Claude Desktop 卡片风格。',
   tableStyleDefault: '默认',
   tableStyleClaude: 'Claude Desktop',
+  timeline: '时间线',
+  timelineHint: '原生：DSH 自带的回合导航轨（消息右侧小圆点，默认）。网页（经典）：找回 v0.11 的右侧导航轨——悬停预览、点击跳转；会话较短时自动隐藏。',
+  timelineNative: '原生',
+  timelineWeb: '网页（经典）',
   sectionSearch: '网络搜索',
   searchOn: '开',
   searchOff: '关',
@@ -520,6 +535,9 @@ const zh: Record<LocaleKey, string> = {
   archiveDisabledHint: '归档管理尚未开启。在「界面调整」中开启“归档管理”后，可在此查看、恢复或彻底删除已归档会话。',
   archiveEnable: '开启归档管理',
   archiveRestored: '已恢复。',
+  railLabel: '对话时间线',
+  roleUser: '用户',
+  noText: '（无文本内容）',
   defaultAction: '默认',
   reset: '重置',
   resetDone: '已重置为默认。',
@@ -615,6 +633,7 @@ function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
   return {
     codeFontSize,
     tableStyle: value?.tableStyle === 'claude' ? 'claude' : 'default',
+    timelineStyle: value?.timelineStyle === 'web' ? 'web' : 'native',
     searchEngine: value?.searchEngine ?? 'bing',
     bingMarket: value?.bingMarket ?? 'zh-CN',
     gitBarEnabled: value?.gitBarEnabled ?? false,
@@ -723,6 +742,14 @@ function buildRuntimeCss(value: ResolvedTweaks): string {
   }
   if (value.tableStyle === 'claude') {
     rules.push(CLAUDE_TABLE_CSS)
+  }
+  // Hide the DSH built-in turn-navigation rail while the timeline switch is
+  // on 'web'. The rail is a `<nav>` whose inline style carries the frame's
+  // `--turn-natural-height` custom property — unique to TurnNavigator (not a
+  // hashed CSS-modules class, not locale-dependent), so the attribute
+  // selector survives rebuilds as long as the custom property does.
+  if (value.timelineStyle === 'web') {
+    rules.push('nav[style*="--turn-natural-height"]{display:none !important}')
   }
   return rules.join('\n')
 }
@@ -1032,6 +1059,10 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     void controller.set('initCommandEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
+  const setTimeline = (value: 'native' | 'web'): void => {
+    void controller.set('timelineStyle', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
+  }
+
   const setWhaleIndicator = (value: boolean): void => {
     void controller.set('whaleIndicatorEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
@@ -1177,6 +1208,17 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
 
       <section className="dut-panel dut-grid">
         <div className="dut-section-label">{t('sectionFeatures')}</div>
+        <div className="dut-field">
+          <div className="dut-field-top">
+            <span className="dut-label">{t('timeline')}<Hint text={t('timelineHint')} /></span>
+            <div className="dut-controls">
+              <div className="dut-seg">
+                <button type="button" className={resolved.timelineStyle === 'native' ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setTimeline('native') }}>{t('timelineNative')}</button>
+                <button type="button" className={resolved.timelineStyle === 'web' ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setTimeline('web') }}>{t('timelineWeb')}</button>
+              </div>
+            </div>
+          </div>
+        </div>
         <div className="dut-field">
           <div className="dut-field-top">
             <span className="dut-label">{t('gitBar')}<Hint text={t('gitBarHint')} /></span>
@@ -1573,6 +1615,35 @@ export function apply(ctx: ClientContext): void {
     sync()
     return controller.subscribe(sync)
   }, 'dsh-ui-tweaks: whale indicator')
+
+  // Conversation timeline rail (classic web rail): mounted per session,
+  // registered only while the timeline switch is on 'web', so flipping the
+  // choice applies live (the native DSH rail is hidden through the runtime
+  // CSS in buildRuntimeCss on the same switch, never both or neither).
+  ctx.effect(() => {
+    let disposeEntry: (() => void) | undefined
+    let disposeStyles: (() => void) | undefined
+    const sync = (): void => {
+      const enabled = controller.getSnapshot().value?.timelineStyle === 'web'
+      if (enabled && disposeEntry === undefined) {
+        disposeStyles = installTimelineStyles()
+        disposeEntry = ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+          name: 'conversation.input.dock',
+          id: 'timeline',
+          order: 40,
+          locale: NS,
+          inject: () => ({ controller, sessionsService: ctx.sessions }),
+        }, TimelineRail))
+      } else if (!enabled && disposeEntry !== undefined) {
+        disposeEntry()
+        disposeEntry = undefined
+        disposeStyles?.()
+        disposeStyles = undefined
+      }
+    }
+    sync()
+    return controller.subscribe(sync)
+  }, 'dsh-ui-tweaks: timeline rail')
 
   // Precise cache hit: rewrites the stats line's cache-hit figure to two
   // decimals from the raw tokenUsage projection. The composer-dock entry

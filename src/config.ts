@@ -32,6 +32,13 @@ export interface UITweaksConfig {
   /** Markdown table presentation style. */
   tableStyle?: 'default' | 'claude'
   /**
+   * Which conversation timeline to show: `'native'` keeps DSH's built-in
+   * turn-navigation rail (the stock behavior); `'web'` shows the plugin's
+   * classic right-side user-message rail (hover to preview, click to jump)
+   * and hides the native one. Defaults to `'native'`.
+   */
+  timelineStyle?: 'native' | 'web'
+  /**
    * Master switch for the web-search feature: when on, a dedicated "搜索"
    * Settings page appears (engine picker + per-engine API keys, stored in
    * ~/.dsh/.credentials.yaml) and the harness web_search backend is taken
@@ -129,6 +136,9 @@ export const BING_MARKET_OPTIONS = ['zh-CN', 'zh-HK', 'zh-TW', 'ja-JP', 'en-US',
 /** Bing market code. */
 export type BingMarket = (typeof BING_MARKET_OPTIONS)[number]
 
+/** The timeline defaults to DSH's native turn rail — the stock behavior. */
+export const DEFAULT_TIMELINE_STYLE: 'native' | 'web' = 'native'
+
 /** GitBar defaults to off; users turn it on in Settings. */
 export const DEFAULT_GITBAR_ENABLED = false
 
@@ -165,6 +175,7 @@ export const Config: Schema<UITweaksConfig> = z.object({
   codeFontScale: z.number().min(MIN_CODE_FONT_SCALE).max(MAX_CODE_FONT_SCALE).default(DEFAULT_CODE_FONT_SCALE),
   codeFontSize: z.number().min(MIN_CODE_FONT_SIZE).max(MAX_CODE_FONT_SIZE),
   tableStyle: z.union(['default', 'claude'] as const).default('default'),
+  timelineStyle: z.union(['native', 'web'] as const).default(DEFAULT_TIMELINE_STYLE),
   searchEnabled: z.boolean().default(DEFAULT_SEARCH_ENABLED),
   searchEngine: z.union(['bing', 'ddg', 'exa', 'tavily', 'keenable', 'perplexity', 'deepseek'] as const).default(DEFAULT_SEARCH_ENGINE),
   bingMarket: z.union(BING_MARKET_OPTIONS).default(DEFAULT_BING_MARKET),
@@ -190,6 +201,8 @@ export interface ResolvedUITweaksConfig {
   /** Effective absolute code font size in px (codeFontSize, else legacy %, else stock). */
   codeFontSize: number
   tableStyle: 'default' | 'claude'
+  /** Which conversation timeline is shown: DSH's native rail or the plugin web rail. */
+  timelineStyle: 'native' | 'web'
   /** Whether the web-search feature (Settings page + provider takeover) is on. */
   searchEnabled: boolean
   /** Preferred web-search engine id. */
@@ -233,6 +246,7 @@ export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConf
     ? Math.min(MAX_CODE_FONT_SIZE, Math.max(MIN_CODE_FONT_SIZE, config.codeFontSize))
     : Math.max(8, Math.round(DEFAULT_CODE_FONT_SIZE * (codeFontScale / DEFAULT_CODE_FONT_SCALE)))
   const tableStyle = config.tableStyle ?? 'default'
+  const timelineStyle = config.timelineStyle ?? DEFAULT_TIMELINE_STYLE
   const searchEnabled = config.searchEnabled ?? DEFAULT_SEARCH_ENABLED
   const searchEngine = config.searchEngine ?? DEFAULT_SEARCH_ENGINE
   const bingMarket = config.bingMarket ?? DEFAULT_BING_MARKET
@@ -249,6 +263,6 @@ export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConf
   const notifyTitleFlash = config.notifyTitleFlash ?? DEFAULT_NOTIFY_TITLE_FLASH
   const notifySystemNotification = config.notifySystemNotification ?? DEFAULT_NOTIFY_SYSTEM_NOTIFICATION
   const notifySound = config.notifySound ?? DEFAULT_NOTIFY_SOUND
-  const resolved: ResolvedUITweaksConfig = { codeFontScale, codeFontSize, tableStyle, searchEnabled, searchEngine, bingMarket, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled, whaleIndicatorEnabled, preciseCacheHitEnabled, notificationsEnabled, notifyOnlyWhenHidden, notifyOnComplete, notifyOnInteraction, notifyTitleFlash, notifySystemNotification, notifySound }
+  const resolved: ResolvedUITweaksConfig = { codeFontScale, codeFontSize, tableStyle, timelineStyle, searchEnabled, searchEngine, bingMarket, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled, whaleIndicatorEnabled, preciseCacheHitEnabled, notificationsEnabled, notifyOnlyWhenHidden, notifyOnComplete, notifyOnInteraction, notifyTitleFlash, notifySystemNotification, notifySound }
   return resolved
 }

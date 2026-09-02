@@ -1,6 +1,6 @@
 # dsh-ui-tweaks
 
-> **Version requirement**: this release (v0.13.0) requires **DSH v0.1.2-alpha.3 or newer**; the web-search provider id was renamed from `ddg` to the plugin name `dsh-ui-tweaks`, so it no longer collides with other plugins that also register a `ddg` search provider (with web search on, the `searchProvider:` entry in the profile patch is rewritten automatically). The conversation timeline and dialog width have shipped natively in DSH since v0.12.0, so the plugin dropped its own duplicate implementations (the message font size and line-spacing settings were dropped alongside). On an older host, pin the previous version: `npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks@0.12.0`.
+> **Version requirement**: this release (v0.13.1) requires **DSH v0.1.2-alpha.4 or newer** (host dependencies batch-bumped to match). The classic web timeline — removed in v0.12.0 — is back, switchable against DSH's native turn rail with a single two-option control (native by default).
 
 A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH) web plugin that live-tunes the conversation UI from the Settings panel.
 
@@ -23,6 +23,9 @@ A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH)
 
 - **Code font size (px)** — absolute 8–32px, default 13 (DSH's stock code-block size at a 16px body); applies to code blocks, with inline code following proportionally. The legacy percentage (`codeFontScale`) stays compatible and is overridden once a px value is set. Message text keeps DSH's stock sizing.
 - **Table style** — choose `Default` or the **Claude Desktop** look (light-gray rounded cell cards with small gaps, no borders; cells share the inline-code background; header not bold).
+- **Timeline (single choice in Features)** — one switch, two options:
+  - **Native (default)** — DSH's built-in turn rail (the row of small dots beside the messages), the stock behavior.
+  - **Web (classic)** — the v0.11 classic right-side navigation rail, restored: vertically centered on the message area's right edge, a thin line strip when collapsed, a 240px panel on hover (message previews + current-position highlight), a per-item detail bubble with timestamp, and **click to jump** (deep history pages in automatically before landing, with a landing self-check); wheel over the rail scrubs clipped items into reach. Data comes from the server-side `dshChatTimeline` session projection (every user message, independent of the browser's loaded window); sessions with fewer than two user messages hide it. On the web option the native turn rail is hidden with one theme-independent CSS rule (matching its `--turn-natural-height` inline variable), so the two never appear together.
 - **GitBar (toggleable, off by default)** — when the session's working directory is a git repository, two compact pills render **inside the composer's tool row** (styled like the native access-mode / model-select controls, so the input area no longer carries a separate row above the card):
   - **Branch pill** — right after the access-mode control; shows the current branch and opens an upward branch panel (local / remote lists, `git switch` on click, new-branch field). A **pull** button sits beside the current branch in the panel header (`git pull --ff-only` — fast-forward only: a diverged branch aborts with git's own error instead of silently merging; hidden when the branch has no upstream), so what gets pulled is always the branch in the header. The panel's **Graph** entry opens the **commit graph** dialog: the latest 150 commits (`git log --date-order --all`) are laid out into lanes and rendered as a colored SVG fork/merge graph — dots are commits, curves are forks/merges, each branch line keeps its own color and merge arcs adopt the color of the lane they join; rows highlight on hover, refresh in the header.
   - **Diff pill** — right before the model select; shows `+N −M · K files` and opens the right slide-over diff panel (changed-file list + per-file diff, resizable, commit band kept at its foot for 提交 / 提交并推送). The standalone commit pill is gone — commit now happens from the diff panel.
@@ -47,6 +50,7 @@ All changes apply **live** — no reload needed. The same values can be hand-edi
 ```yaml
 ui-tweaks:
   tableStyle: claude
+  timelineStyle: web            # defaults to native (DSH's built-in turn rail); web is the classic web timeline
   gitBarEnabled: true     # defaults to false (off); set true to enable GitBar
   archiveManagerEnabled: true   # defaults to false (off); set true to show the Archive page
   initCommandEnabled: true      # defaults to false (off); set true to register the /init slash command
