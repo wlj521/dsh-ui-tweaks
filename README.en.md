@@ -1,6 +1,6 @@
 # dsh-ui-tweaks
 
-> **Version requirement**: this release (v0.13.1) requires **DSH v0.1.2-alpha.4 or newer** (host dependencies batch-bumped to match). The classic web timeline — removed in v0.12.0 — is back, switchable against DSH's native turn rail with a single two-option control (native by default).
+> **Dependency**: currently targets **DSH v0.1.2-alpha.5**.
 
 A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH) web plugin that live-tunes the conversation UI from the Settings panel.
 
