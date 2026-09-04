@@ -85,9 +85,18 @@ interface StorageDomainLike {
     | undefined
 }
 
-/** Structural face of the session-persistence backend's log locator. */
+/** Structural face of the session-persistence backend's log locator. The
+ * locator's return shape changed across DSH releases: v0.1.2-alpha.5 resolved
+ * to the selected log file's path string; the generation-aware layout from
+ * v0.1.3-alpha.1 resolves to a record naming the authoritative generation
+ * file (`sourcePath`, `sourceVersion`, `currentPath`). Both spell out the
+ * session directory as their parent, so deletion normalizes to one path. */
+interface ResolvedLogGeneration {
+  readonly sourcePath: string
+}
+
 interface PersistenceLike {
-  findLog?(id: string, signal?: AbortSignal): Promise<string | undefined>
+  findLog?(id: string, signal?: AbortSignal): Promise<string | ResolvedLogGeneration | undefined>
 }
 
 /** A live session was targeted by a permanent delete. */
@@ -184,7 +193,10 @@ export class ArchiveBackend {
     // 1. Remove the durable session log (its parent directory) from disk.
     const persistence = this.ctx.get('sessionPersistence') as unknown as PersistenceLike | undefined
     if (persistence?.findLog !== undefined) {
-      const logPath = await persistence.findLog(sessionId)
+      const found = await persistence.findLog(sessionId)
+      // Older backends resolve a path string; generation-aware ones resolve a
+      // record whose `sourcePath` names the authoritative generation file.
+      const logPath = typeof found === 'string' ? found : found?.sourcePath
       if (logPath !== undefined) await rm(dirname(logPath), { recursive: true, force: true })
     }
 
