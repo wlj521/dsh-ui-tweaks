@@ -1537,7 +1537,14 @@ export function apply(ctx: ClientContext): void {
       }
     }
     sync()
-    return controller.subscribe(sync)
+    const unsubscribe = controller.subscribe(sync)
+    // The tab registry outlives this plugin: every id registered here must be
+    // released on teardown, or the next apply (e.g. after a web hot-reload)
+    // re-registers the same ids and the host throws "already registered".
+    return () => {
+      unsubscribe()
+      for (const dispose of disposers.splice(0).reverse()) dispose()
+    }
   }, 'dsh-ui-tweaks: sidebar tabs')
 
   // Hero (new-session screen): the session header does not mount there, so a
@@ -1600,7 +1607,12 @@ export function apply(ctx: ClientContext): void {
       }
     }
     sync()
-    return controller.subscribe(sync)
+    const unsubscribe = controller.subscribe(sync)
+    return () => {
+      unsubscribe()
+      dispose?.()
+      dispose = undefined
+    }
   }, 'dsh-ui-tweaks: /init command')
 
   // Conversation timeline rail (classic web rail): mounted per session,
@@ -1629,7 +1641,14 @@ export function apply(ctx: ClientContext): void {
       }
     }
     sync()
-    return controller.subscribe(sync)
+    const unsubscribe = controller.subscribe(sync)
+    return () => {
+      unsubscribe()
+      disposeEntry?.()
+      disposeEntry = undefined
+      disposeStyles?.()
+      disposeStyles = undefined
+    }
   }, 'dsh-ui-tweaks: timeline rail')
 
   // Precise cache hit: rewrites the stats line's cache-hit figure to two
@@ -1654,7 +1673,12 @@ export function apply(ctx: ClientContext): void {
       }
     }
     sync()
-    return controller.subscribe(sync)
+    const unsubscribe = controller.subscribe(sync)
+    return () => {
+      unsubscribe()
+      disposeEntry?.()
+      disposeEntry = undefined
+    }
   }, 'dsh-ui-tweaks: precise cache hit')
 
   // Task notifications: watch every session on the list feed and raise
@@ -1704,6 +1728,11 @@ export function apply(ctx: ClientContext): void {
       }
     }
     sync()
-    return controller.subscribe(sync)
+    const unsubscribe = controller.subscribe(sync)
+    return () => {
+      unsubscribe()
+      disposeNotifier?.()
+      disposeNotifier = undefined
+    }
   }, 'dsh-ui-tweaks: task notifications')
 }
