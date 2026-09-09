@@ -61,6 +61,8 @@ interface TweaksValue {
   tableStyle?: 'default' | 'claude'
   /** Which timeline to show: 'native' (DSH built-in rail) or 'web' (plugin classic rail). Keep in sync with src/config.ts. */
   timelineStyle?: 'native' | 'web'
+  /** Conversation theme: 'default' keeps the stock look; any other value applies that skin. Keep in sync with src/config.ts. */
+  themeStyle?: 'default' | 'neon-cyan'
   /** Preferred web-search engine (bing | ddg | exa | tavily | keenable | perplexity | deepseek). */
   searchEngine?: string
   /** Bing market code (e.g. zh-CN). */
@@ -98,6 +100,7 @@ interface ResolvedTweaks {
   codeFontSize: number
   tableStyle: 'default' | 'claude'
   timelineStyle: 'native' | 'web'
+  themeStyle: 'default' | 'neon-cyan'
   searchEngine: string
   bingMarket: string
   gitBarEnabled: boolean
@@ -141,6 +144,10 @@ const en = {
   timelineHint: 'Native: DSH\u2019s built-in turn rail at the right edge (stock). Web (classic): the v0.11 right-side navigation rail — hover to preview, click to jump; auto-hidden in short conversations.',
   timelineNative: 'Native',
   timelineWeb: 'Web (classic)',
+  theme: 'Theme',
+  themeHint: 'Conversation skin. Default keeps DSH\u2019s stock look; Neon cyan is a dark fluorescent-cyan skin applied live.',
+  themeDefault: 'Default',
+  themeNeonCyan: 'Neon cyan',
   sectionSearch: 'Web search',
   searchOn: 'On',
   searchOff: 'Off',
@@ -380,6 +387,10 @@ const zh: Record<LocaleKey, string> = {
   timelineHint: '原生：DSH 自带的回合导航轨（消息右侧小圆点，默认）。网页（经典）：找回 v0.11 的右侧导航轨——悬停预览、点击跳转；会话较短时自动隐藏。',
   timelineNative: '原生',
   timelineWeb: '网页（经典）',
+  theme: '主题',
+  themeHint: '对话皮肤。默认保持 DSH 原生外观；荧光青是深色荧光青皮肤，切换即时生效。',
+  themeDefault: '默认',
+  themeNeonCyan: '荧光青',
   sectionSearch: '网络搜索',
   searchOn: '开',
   searchOff: '关',
@@ -619,6 +630,7 @@ function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
     codeFontSize,
     tableStyle: value?.tableStyle === 'claude' ? 'claude' : 'default',
     timelineStyle: value?.timelineStyle === 'web' ? 'web' : 'native',
+    themeStyle: value?.themeStyle === 'neon-cyan' ? 'neon-cyan' : 'default',
     searchEngine: value?.searchEngine ?? 'bing',
     bingMarket: value?.bingMarket ?? 'zh-CN',
     gitBarEnabled: value?.gitBarEnabled ?? false,
@@ -711,6 +723,35 @@ div[data-slot="conversation.chat.node"] table pre{
 }
 `
 
+/**
+ * Fluorescent-cyan skin: near-black blue-tinted surfaces, cyan-white type,
+ * and a neon accent riding the same DSW alias tokens the host paints with —
+ * so buttons, links, selections and the plugin's own tinted controls follow
+ * automatically. Opinionated dark look in both host schemes; 'default' emits
+ * nothing and stays stock. Future skins add one union member plus one block
+ * like this.
+ */
+const NEON_CYAN_CSS = `
+body{
+  --dsw-alias-bg-base:#04070c;
+  --dsw-alias-bg-layer-1:#080d15;
+  --dsw-alias-bg-layer-2:#0d1522;
+  --dsw-alias-label-primary:#d8f7ff;
+  --dsw-alias-label-secondary:#8fb8c6;
+  --dsw-alias-label-tertiary:#54707d;
+  --dsw-alias-border-l1:rgba(0,229,255,.14);
+  --dsw-alias-border-l2:rgba(0,229,255,.30);
+  --dsw-alias-state-business-primary:#00e5ff;
+  --dsw-alias-markdown-inline-code:rgba(0,229,255,.13);
+  --dsw-alias-interactive-bg-hover:rgba(0,229,255,.10);
+}
+::selection{background:rgba(0,229,255,.35)}
+div[data-slot="conversation.chat.node"] pre{
+  border:1px solid rgba(0,229,255,.28) !important;
+  box-shadow:0 0 14px rgba(0,229,255,.13),inset 0 0 18px rgba(0,229,255,.04) !important;
+}
+`
+
 function buildRuntimeCss(value: ResolvedTweaks): string {
   const rules: string[] = []
   // Code font tokens, emitted only when the code size leaves the stock 13px;
@@ -734,6 +775,9 @@ function buildRuntimeCss(value: ResolvedTweaks): string {
   // selector survives rebuilds as long as the custom property does.
   if (value.timelineStyle === 'web') {
     rules.push('nav[style*="--turn-natural-height"]{display:none !important}')
+  }
+  if (value.themeStyle === 'neon-cyan') {
+    rules.push(NEON_CYAN_CSS)
   }
   return rules.join('\n')
 }
@@ -1051,6 +1095,10 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     void controller.set('preciseCacheHitEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
+  const setTheme = (value: 'default' | 'neon-cyan'): void => {
+    void controller.set('themeStyle', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
+  }
+
   /** Master switch; enabling also asks for notification permission inside this click gesture. */
   const setNotifications = (value: boolean): void => {
     if (value) requestNotifyPermission()
@@ -1158,6 +1206,17 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
 
       <section className="dut-panel">
         <div className="dut-section-label">{t('sectionLayout')}</div>
+        <div className="dut-field">
+          <div className="dut-field-top">
+            <span className="dut-label">{t('theme')}<Hint text={t('themeHint')} /></span>
+            <div className="dut-controls">
+              <div className="dut-seg">
+                <button type="button" className={resolved.themeStyle === 'neon-cyan' ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setTheme('neon-cyan') }}>{t('themeNeonCyan')}</button>
+                <button type="button" className={resolved.themeStyle === 'default' ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setTheme('default') }}>{t('themeDefault')}</button>
+              </div>
+            </div>
+          </div>
+        </div>
         <div className="dut-field">
           <div className="dut-field-top">
             <span className="dut-label">{t('preciseCacheHit')}<Hint text={t('preciseCacheHitHint')} /></span>

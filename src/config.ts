@@ -39,6 +39,12 @@ export interface UITweaksConfig {
    */
   timelineStyle?: 'native' | 'web'
   /**
+   * Conversation theme: `'default'` keeps DSH's stock look (no overrides);
+   * any other value applies that skin live through the runtime stylesheet.
+   * Defaults to `'default'`.
+   */
+  themeStyle?: 'default' | 'neon-cyan'
+  /**
    * Master switch for the web-search feature: when on, a dedicated "搜索"
    * Settings page appears (engine picker + per-engine API keys, stored in
    * ~/.dsh/.credentials.yaml) and the harness web_search backend is taken
@@ -132,6 +138,9 @@ export type BingMarket = (typeof BING_MARKET_OPTIONS)[number]
 /** The timeline defaults to DSH's native turn rail — the stock behavior. */
 export const DEFAULT_TIMELINE_STYLE: 'native' | 'web' = 'native'
 
+/** The theme defaults to DSH's stock look — no overrides emitted. */
+export const DEFAULT_THEME_STYLE: 'default' | 'neon-cyan' = 'default'
+
 /** GitBar defaults to off; users turn it on in Settings. */
 export const DEFAULT_GITBAR_ENABLED = false
 
@@ -166,6 +175,7 @@ export const Config: Schema<UITweaksConfig> = z.object({
   codeFontSize: z.number().min(MIN_CODE_FONT_SIZE).max(MAX_CODE_FONT_SIZE),
   tableStyle: z.union(['default', 'claude'] as const).default('default'),
   timelineStyle: z.union(['native', 'web'] as const).default(DEFAULT_TIMELINE_STYLE),
+  themeStyle: z.union(['default', 'neon-cyan'] as const).default(DEFAULT_THEME_STYLE),
   searchEnabled: z.boolean().default(DEFAULT_SEARCH_ENABLED),
   searchEngine: z.union(['bing', 'ddg', 'exa', 'tavily', 'keenable', 'perplexity', 'deepseek'] as const).default(DEFAULT_SEARCH_ENGINE),
   bingMarket: z.union(BING_MARKET_OPTIONS).default(DEFAULT_BING_MARKET),
@@ -192,6 +202,8 @@ export interface ResolvedUITweaksConfig {
   tableStyle: 'default' | 'claude'
   /** Which conversation timeline is shown: DSH's native rail or the plugin web rail. */
   timelineStyle: 'native' | 'web'
+  /** Conversation theme: stock look or one of the plugin skins. */
+  themeStyle: 'default' | 'neon-cyan'
   /** Whether the web-search feature (Settings page + provider takeover) is on. */
   searchEnabled: boolean
   /** Preferred web-search engine id. */
@@ -234,6 +246,7 @@ export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConf
     : Math.max(8, Math.round(DEFAULT_CODE_FONT_SIZE * (codeFontScale / DEFAULT_CODE_FONT_SCALE)))
   const tableStyle = config.tableStyle ?? 'default'
   const timelineStyle = config.timelineStyle ?? DEFAULT_TIMELINE_STYLE
+  const themeStyle = config.themeStyle ?? DEFAULT_THEME_STYLE
   const searchEnabled = config.searchEnabled ?? DEFAULT_SEARCH_ENABLED
   const searchEngine = config.searchEngine ?? DEFAULT_SEARCH_ENGINE
   const bingMarket = config.bingMarket ?? DEFAULT_BING_MARKET
@@ -249,6 +262,6 @@ export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConf
   const notifyTitleFlash = config.notifyTitleFlash ?? DEFAULT_NOTIFY_TITLE_FLASH
   const notifySystemNotification = config.notifySystemNotification ?? DEFAULT_NOTIFY_SYSTEM_NOTIFICATION
   const notifySound = config.notifySound ?? DEFAULT_NOTIFY_SOUND
-  const resolved: ResolvedUITweaksConfig = { codeFontScale, codeFontSize, tableStyle, timelineStyle, searchEnabled, searchEngine, bingMarket, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled, preciseCacheHitEnabled, notificationsEnabled, notifyOnlyWhenHidden, notifyOnComplete, notifyOnInteraction, notifyTitleFlash, notifySystemNotification, notifySound }
+  const resolved: ResolvedUITweaksConfig = { codeFontScale, codeFontSize, tableStyle, timelineStyle, themeStyle, searchEnabled, searchEngine, bingMarket, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled, preciseCacheHitEnabled, notificationsEnabled, notifyOnlyWhenHidden, notifyOnComplete, notifyOnInteraction, notifyTitleFlash, notifySystemNotification, notifySound }
   return resolved
 }
