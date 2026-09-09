@@ -772,10 +772,9 @@ body:not(#dsh-ui-tweaks-theme-scope){
   --dut-scroll-1:#e3e6ea;
   --dut-scroll-2:#c8cdd3;
   --dut-elev:#101418;
-  /* the user bubble: a lighter, still-saturated tone of the accent
-     rgb(255,61,154) — mixing toward white desaturated it into a washed pink.
-     Ink text sits on it in dark mode (see the userRow rule below). */
-  --dut-bubble:#ffb3dd;
+  /* the user bubble: the original pale pink in light mode; dark mode keeps the
+     wine-red tone the user settled on (a lighter pink read as washed out) */
+  --dut-bubble:#ffe4f1;
   --dut-shadow:#101418;
   --dut-drop:rgba(255,255,255,.7);
   /* Hairlines stay the host's own subtle values: the shipped 0.5px pills and
@@ -909,7 +908,7 @@ body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme]{
   --dut-scroll-1:#2a3138;
   --dut-scroll-2:#3a444d;
   --dut-elev:#1f262c;
-  --dut-bubble:#ffb3dd;
+  --dut-bubble:#2a1220;
   /* the hard sticker offset rides the frame's own ink in both schemes: black
      under the white-paper card, white under the near-black one, so the border
      and its offset band read as one shape */
@@ -977,22 +976,6 @@ body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] button[class*="newSessi
   color:var(--dut-lime) !important;
   border-color:var(--dut-lime) !important;
   box-shadow:3px 3px 0 var(--dut-lime) !important;
-}
-/* dark scheme paints the bubble pale pink, so its text needs ink rather than
-   the scheme's near-white label color (scoped to the user row's bubble) */
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[data-slot="conversation.chat.node"] [class*="userRow"] [class*="bubble"]{
-  color:#101418;
-}
-/* dark scheme also tints the SELECTED session row in the sidebar with the same
-   pale accent — the stock hover token rendered as a muddy maroon there */
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [class*="sessionRow"][aria-selected="true"],
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [class*="searchResultRow"][aria-selected="true"]{
-  background:var(--dut-bubble) !important;
-  color:#101418 !important;
-}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [class*="sessionRow"][aria-selected="true"] [class*="time"],
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [class*="searchResultRow"][aria-selected="true"] [class*="meta"]{
-  color:#5a646d !important;
 }
 .dut-panel{border:2px solid var(--dut-ink) !important;box-shadow:5px 5px 0 var(--dut-shadow) !important}
 .dut-seg button.dut-seg-active{background:var(--dut-lime) !important;color:#101418 !important}
