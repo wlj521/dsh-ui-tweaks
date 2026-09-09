@@ -139,9 +139,9 @@ const en = {
   timelineNative: 'Native',
   timelineWeb: 'Web (classic)',
   theme: 'Theme',
-  themeHint: 'Conversation skin. Default keeps DSH\u2019s stock look; Neon lime is a poster skin — paper-white with ink-black hairlines in light mode, near-black with light hairlines in dark mode, lime highlights and a magenta action accent, applied live.',
+  themeHint: 'Conversation skin. Default keeps DSH\u2019s stock look; Neon poster is a two-scheme skin — paper-white with ink-black hairlines in light mode, near-black with light hairlines in dark mode, lime highlights and an Anthropic-red action accent, applied live.',
   themeDefault: 'Default',
-  themeNeonLime: 'Neon lime',
+  themeNeonLime: 'Neon poster',
   sectionSearch: 'Web search',
   searchOn: 'On',
   searchOff: 'Off',
@@ -378,9 +378,9 @@ const zh: Record<LocaleKey, string> = {
   timelineNative: '原生',
   timelineWeb: '网页（经典）',
   theme: '主题',
-  themeHint: '对话皮肤。默认保持 DSH 原生外观；荧光黄是海报风双方案——浅色下纸白底黑粗线，深色下近黑底浅粗线，都配荧光黄高亮 + 品红点缀，切换即时生效。',
+  themeHint: '对话皮肤。默认保持 DSH 原生外观；荧光海报是海报风双方案——浅色下纸白底黑粗线，深色下近黑底浅粗线，都配荧光黄高亮 + Anthropic 红点缀，切换即时生效。',
   themeDefault: '默认',
-  themeNeonLime: '荧光黄',
+  themeNeonLime: '荧光海报',
   sectionSearch: '网络搜索',
   searchOn: '开',
   searchOff: '关',
@@ -670,12 +670,16 @@ function buildCodeFontCss(codeFontSize: number): string {
 }
 
 /**
- * Fluorescent-lime poster skin (Bilibili tech-video look), in two schemes:
- * the paper-white poster (lime highlights, magenta action accent) in light
+ * Fluorescent poster skin (Bilibili tech-video look), in two schemes:
+ * the paper-white poster (lime highlights, Anthropic-red action accent) in light
  * mode, and its dark twin in dark mode — near-black paper with the same
- * lime/magenta stickers. Popovers and menus (model switcher, open-in-app,
+ * lime/red stickers. Popovers and menus (model switcher, open-in-app,
  * stat dialogs, context panel) ride the scheme's own paper so they never read
  * as a gray slab against the conversation.
+ *
+ * The internal style id stays `neon-lime`: it is the persisted setting value,
+ * so renaming it would silently reset every saved profile. Only the labels
+ * shown in Settings changed when the accent moved to Anthropic red.
  *
  * Every colour is a `--dut-*` design variable re-pointed per scheme, and the
  * DSW alias tokens map onto those variables in one place, so buttons, links,
@@ -699,7 +703,8 @@ body:not(#dsh-ui-tweaks-theme-scope){
   --dut-paper-3:#ffffff;
   --dut-pop:#ffffff;
   --dut-ink:#101418;
-  --dut-on-ink:#c6ff00;
+  /* the markdown table header keeps an ink strip; its type rides the accent */
+  --dut-th-bg:#101418;
   --dut-code:#f7f8f9;
   --dut-text-1:#101418;
   --dut-text-2:#3d4750;
@@ -708,22 +713,21 @@ body:not(#dsh-ui-tweaks-theme-scope){
   --dut-btn-fg:#ffffff;
   --dut-lime:#c6ff00;
   --dut-lime-soft:#dcff4d;
-  --dut-magenta:#e6007e;
-  --dut-magenta-soft:rgba(230,0,126,.12);
-  --dut-hover:rgba(230,0,126,.07);
-  --dut-active:rgba(230,0,126,.13);
-  /* selection trial: a brighter fluorescent yellow than the lime inline-code
-     chip (#dcff4d), so the highlight still reads inside a code span; the dark
-     scheme selects in bright magenta instead */
-  --dut-sel-bg:#eaff00;
-  --dut-sel-fg:#101418;
+  --dut-accent:#c15f3c;
+  --dut-accent-soft:rgba(193,95,60,.12);
+  --dut-accent-pale:#eccfc4;
+  --dut-hover:rgba(193,95,60,.07);
+  --dut-active:rgba(193,95,60,.13);
+  /* text selection uses the native blue in both schemes */
+  --dut-sel-bg:Highlight;
+  --dut-sel-fg:HighlightText;
   --dut-faint:rgba(0,0,0,.06);
   --dut-scroll-1:#e3e6ea;
   --dut-scroll-2:#c8cdd3;
   --dut-elev:#101418;
-  /* the user bubble: the original pale pink in light mode; dark mode keeps the
-     wine-red tone the user settled on (a lighter pink read as washed out) */
-  --dut-bubble:#ffe4f1;
+  /* the user bubble: a pale tint of the Anthropic-red accent, so it stays in
+     the same family as the links, buttons and artifacts */
+  --dut-bubble:#ffe3d9;
   --dut-shadow:#101418;
   --dut-drop:rgba(255,255,255,.7);
   /* Hairlines stay the host's own subtle values: the shipped 0.5px pills and
@@ -740,6 +744,14 @@ body:not(#dsh-ui-tweaks-theme-scope){
   --dut-success-2:var(--dsw-static-green-400);
   --dut-success-3:var(--dsw-static-green-100);
   --dut-warn-3:var(--dsw-static-amber-100);
+  /* Two surfaces read the STATIC DeepSeek scale instead of an alias, so the
+     alias re-points below never reached them: the running-turn "深度求索中…"
+     shimmer (500 + 200 painted into the glyphs) and the ongoing state dot
+     (450). Re-point the static steps here — every alias that also derives from
+     them is already mapped explicitly, so nothing else moves. */
+  --dsw-static-deepseek-200:var(--dut-accent-pale);
+  --dsw-static-deepseek-450:var(--dut-accent);
+  --dsw-static-deepseek-500:var(--dut-accent);
   --dsw-alias-bg-base:var(--dut-paper);
   --dsw-alias-bg-layer-1:var(--dut-paper);
   --dsw-alias-bg-layer-2:var(--dut-paper-2);
@@ -763,7 +775,7 @@ body:not(#dsh-ui-tweaks-theme-scope){
   --dsw-alias-brand-primary:var(--dut-text-1);
   --dsw-alias-brand-primary-invert:var(--dut-paper);
   --dsw-alias-brand-text:var(--dut-text-1);
-  --dsw-alias-brand-primary-new-colorprimary-new-color:var(--dut-magenta);
+  --dsw-alias-brand-primary-new-colorprimary-new-color:var(--dut-accent);
   --dsw-alias-button-contrast-fill:var(--dut-text-2);
   --dsw-alias-button-elevated-fill:var(--dut-paper);
   --dsw-alias-button-floating-fill:var(--dut-paper);
@@ -771,8 +783,8 @@ body:not(#dsh-ui-tweaks-theme-scope){
   --dsw-alias-button-ghost-active-border:var(--dut-ink);
   --dsw-alias-button-ghost-active-fill:var(--dut-paper-3);
   --dsw-alias-button-ghost-active-hover:var(--dut-paper-3);
-  --dsw-alias-button-info-fill:var(--dut-magenta);
-  --dsw-alias-button-info-hover:var(--dut-magenta);
+  --dsw-alias-button-info-fill:var(--dut-accent);
+  --dsw-alias-button-info-hover:var(--dut-accent);
   --dsw-alias-button-primary-dimmed:var(--dut-paper-2);
   --dsw-alias-button-primary-fill:var(--dut-text-1);
   --dsw-alias-button-primary-hover:var(--dut-text-1);
@@ -790,21 +802,20 @@ body:not(#dsh-ui-tweaks-theme-scope){
   --dsw-alias-label-primary-inverted:var(--dut-btn-fg);
   --dsw-alias-label-secondary:var(--dut-text-2);
   --dsw-alias-label-tertiary:var(--dut-text-3);
-  --dsw-alias-link:var(--dut-magenta);
+  --dsw-alias-link:var(--dut-accent);
   --dsw-alias-markdown-citation:var(--dut-paper-2);
   --dsw-alias-markdown-code-block:var(--dut-code);
   --dsw-alias-markdown-code-block-banner:var(--dut-paper-3);
   --dsw-alias-markdown-code-segment-selected:var(--dut-paper);
   --dsw-alias-markdown-code-segment-unselected:var(--dut-paper-2);
-  --dsw-alias-markdown-inline-code:var(--dut-lime-soft);
   --dsw-alias-markdown-placeholder:var(--dut-paper-2);
   --dsw-alias-markdown-tag:var(--dut-paper-2);
   --dsw-alias-scrollbar-bg-l1:var(--dut-scroll-1);
   --dsw-alias-scrollbar-bg-l2:var(--dut-scroll-1);
   --dsw-alias-scrollbar-hover-l1:var(--dut-scroll-2);
   --dsw-alias-scrollbar-hover-l2:var(--dut-scroll-2);
-  --dsw-alias-state-business-primary:var(--dut-magenta);
-  --dsw-alias-state-business-tertiary:var(--dut-magenta-soft);
+  --dsw-alias-state-business-primary:var(--dut-accent);
+  --dsw-alias-state-business-tertiary:var(--dut-accent-soft);
   --dsw-alias-state-error-primary:var(--dut-error);
   --dsw-alias-state-error-secondary:var(--dut-error-2);
   --dsw-alias-state-success-primary:var(--dut-success);
@@ -824,7 +835,9 @@ body:not(#dsh-ui-tweaks-theme-scope){
   --dsw-specific-menu:var(--dut-pop);
   --dsw-specific-sidebar-fill:var(--dut-paper);
   --dsw-specific-sidebar-nav-item-active:var(--dut-lime-soft);
-  --dsw-specific-sidebar-nav-item-active-accent:var(--dut-lime);
+  /* NOT themed: despite the name this token feeds only the "推荐" chip in the
+     question composer, and a lime slab behind text read as a highlighter mark
+     rather than a chip — it stays on the host's own background. */
   --dsw-specific-sidebar-nav-item-hover:var(--dut-paper-2);
   --dsw-specific-tip:var(--dut-paper-2);
 }
@@ -837,8 +850,12 @@ body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme]{
   --dut-paper-2:#14181d;
   --dut-paper-3:#1e252c;
   --dut-pop:#161c22;
-  --dut-ink:#e8ecef;
-  --dut-on-ink:#101418;
+  /* the poster frame drops to translucent white in dark mode: a solid
+     near-white 2px frame plus its hard offset read as glare (see --dut-shadow) */
+  --dut-ink:rgba(232,236,239,.42);
+  /* a light strip would kill the red type here, so dark mode keeps a dark
+     header strip lifted one step off the paper */
+  --dut-th-bg:#1e252c;
   --dut-code:#171d24;
   --dut-text-1:#f2f5f3;
   --dut-text-2:#b9c3ca;
@@ -847,22 +864,23 @@ body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme]{
   --dut-btn-fg:#101418;
   --dut-lime:#c6ff00;
   --dut-lime-soft:#dcff4d;
-  --dut-magenta:#ff3d9a;
-  --dut-magenta-soft:rgba(255,61,154,.16);
-  --dut-hover:rgba(255,61,154,.16);
-  --dut-active:rgba(255,61,154,.26);
-  /* bright magenta selection: stays legible on the wine-red user bubble */
-  --dut-sel-bg:#ff3d9a;
-  --dut-sel-fg:#101418;
+  --dut-accent:#d97757;
+  --dut-accent-soft:rgba(217,119,87,.18);
+  --dut-accent-pale:#eec2b3;
+  --dut-hover:rgba(217,119,87,.16);
+  --dut-active:rgba(217,119,87,.26);
+  /* text selection uses the native blue in both schemes */
+  --dut-sel-bg:Highlight;
+  --dut-sel-fg:HighlightText;
   --dut-faint:rgba(255,255,255,.07);
   --dut-scroll-1:#2a3138;
   --dut-scroll-2:#3a444d;
   --dut-elev:#1f262c;
-  --dut-bubble:#2a1220;
-  /* the hard sticker offset rides the frame's own ink in both schemes: black
-     under the white-paper card, white under the near-black one, so the border
-     and its offset band read as one shape */
-  --dut-shadow:#e8ecef;
+  /* dark twin: the same red accent, deepened onto the near-black paper */
+  --dut-bubble:#35201a;
+  /* the hard offset band softens with it, so the sticker silhouette survives
+     while the brightness does not */
+  --dut-shadow:rgba(232,236,239,.16);
   --dut-drop:rgba(39,39,48,.7);
   --dut-line-1:rgba(255,255,255,.06);
   --dut-line-2:rgba(255,255,255,.12);
@@ -876,10 +894,10 @@ body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme]{
   --dut-warn-3:var(--dsw-static-amber-900);
 }
 ::selection{background:var(--dut-sel-bg);color:var(--dut-sel-fg)}
-/* table header: the screenshot's ink header strip with lime type */
+/* table header: the ink header strip, with the type in the accent red */
 div[data-slot="conversation.chat.node"] table th{
-  background:var(--dut-ink);
-  color:var(--dut-on-ink);
+  background:var(--dut-th-bg);
+  color:var(--dut-accent);
 }
 div[data-slot="conversation.chat.node"] pre{
   border:2px solid var(--dut-ink) !important;
@@ -888,8 +906,7 @@ div[data-slot="conversation.chat.node"] pre{
   background:var(--dut-paper) !important;
 }
 div[data-slot="conversation.chat.node"] :not(pre)>code{
-  background:var(--dut-lime-soft) !important;
-  color:#101418 !important;
+  color:var(--dut-accent) !important;
   border:none !important;
   border-radius:6px !important;
   padding:1px 6px !important;
@@ -901,10 +918,10 @@ div[data-composer-card]{
   background:var(--dut-paper) !important;
 }
 /* context-occupancy ring: the stock track/fill both read near-ink on this
-   skin; give the track a quiet gray and the used arc the magenta accent
+   skin; give the track a quiet gray and the used arc the red accent
    (scoped to the composer's svg so the class-substring match stays safe) */
 div[data-composer-card] svg [class*="track"]{stroke:var(--dut-scroll-1)}
-div[data-composer-card] svg [class*="fill"]{stroke:var(--dut-magenta)}
+div[data-composer-card] svg [class*="fill"]{stroke:var(--dut-accent)}
 /* sidebar new-session button: lime sticker. Matched by its CSS-module class,
    NOT the aria-label — the brand row button shares the same "新建会话"
    label (it doubles as the new-session shortcut) and must stay plain. */
