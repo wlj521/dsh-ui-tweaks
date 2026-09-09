@@ -766,7 +766,7 @@ body:not(#dsh-ui-tweaks-theme-scope){
   --dut-magenta-soft:rgba(230,0,126,.12);
   --dut-hover:rgba(230,0,126,.07);
   --dut-active:rgba(230,0,126,.13);
-  --dut-sel-bg:#c6ff00;
+  --dut-sel-bg:#dcff4d;
   --dut-sel-fg:#101418;
   --dut-faint:rgba(0,0,0,.06);
   --dut-scroll-1:#e3e6ea;
@@ -902,7 +902,7 @@ body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme]{
   --dut-magenta-soft:rgba(255,61,154,.16);
   --dut-hover:rgba(255,61,154,.16);
   --dut-active:rgba(255,61,154,.26);
-  --dut-sel-bg:#c6ff00;
+  --dut-sel-bg:#dcff4d;
   --dut-sel-fg:#101418;
   --dut-faint:rgba(255,255,255,.07);
   --dut-scroll-1:#2a3138;
