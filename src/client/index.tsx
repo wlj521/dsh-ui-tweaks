@@ -725,19 +725,21 @@ div[data-slot="conversation.chat.node"] table pre{
 
 /**
  * Fluorescent-lime poster skin (Bilibili tech-video look), in two schemes:
- * the paper-white poster (ink-black hairlines, lime highlights, magenta
- * action accent) in light mode, and its dark twin in dark mode — near-black
- * paper, light-ink hairlines, the same lime/magenta stickers. Popovers and
- * menus (model switcher, open-in-app, stat dialogs, context panel) ride the
- * scheme's own paper so they never read as a gray slab against the
- * conversation, separated by ink strokes.
+ * the paper-white poster (lime highlights, magenta action accent) in light
+ * mode, and its dark twin in dark mode — near-black paper with the same
+ * lime/magenta stickers. Popovers and menus (model switcher, open-in-app,
+ * stat dialogs, context panel) ride the scheme's own paper so they never read
+ * as a gray slab against the conversation.
  *
  * Every colour is a `--dut-*` design variable re-pointed per scheme, and the
  * DSW alias tokens map onto those variables in one place, so buttons, links,
  * selections, the sidebar and the plugin's own tinted controls follow
- * automatically in either host scheme. Hard offset shadows (no blur) on code
- * blocks, the composer card and the plugin's settings panels. 'default' emits
- * nothing and stays stock. Future skins add one union member plus one block.
+ * automatically in either host scheme. The host's own hairlines keep their
+ * shipped subtle values (`--dut-line-*`); the bold ink frame is applied only
+ * where this skin says so — code blocks, the composer card, the markdown
+ * table header and the settings panels, all with hard offset shadows.
+ * 'default' emits nothing and stays stock. Future skins add one union member
+ * plus one block.
  */
 const NEON_LIME_CSS = `
 body{
@@ -769,6 +771,14 @@ body{
   --dut-bubble:#ffe4f1;
   --dut-shadow:#101418;
   --dut-drop:rgba(255,255,255,.7);
+  /* Hairlines stay the host's own subtle values: the shipped 0.5px pills and
+     dividers are designed around them, and painting them poster-ink read as
+     "changed too much". The bold ink lives only in this skin's own explicit
+     rules (code blocks, composer card, table header, panels). */
+  --dut-line-1:rgba(0,0,0,.04);
+  --dut-line-2:rgba(0,0,0,.10);
+  --dut-line-3:rgba(0,0,0,.12);
+  --dut-line-4:rgba(0,0,0,.16);
   --dut-error:var(--dsw-static-red-600);
   --dut-error-2:var(--dsw-static-red-400);
   --dut-success:var(--dsw-static-green-500);
@@ -790,11 +800,11 @@ body{
   --dsw-alias-bg-skeleton:var(--dut-faint);
   --dsw-alias-border-inverted:rgba(0,0,0,0);
   --dsw-alias-border-inverted2:rgba(0,0,0,0);
-  --dsw-alias-border-l1:var(--dut-ink);
-  --dsw-alias-border-l2:var(--dut-ink);
-  --dsw-alias-border-l2-darkmode-thin:var(--dut-ink);
-  --dsw-alias-border-l3:var(--dut-ink);
-  --dsw-alias-border-l4:var(--dut-ink);
+  --dsw-alias-border-l1:var(--dut-line-1);
+  --dsw-alias-border-l2:var(--dut-line-2);
+  --dsw-alias-border-l2-darkmode-thin:var(--dut-line-2);
+  --dsw-alias-border-l3:var(--dut-line-3);
+  --dsw-alias-border-l4:var(--dut-line-4);
   --dsw-alias-brand-primary:var(--dut-text-1);
   --dsw-alias-brand-primary-invert:var(--dut-paper);
   --dsw-alias-brand-text:var(--dut-text-1);
@@ -894,6 +904,10 @@ body[data-ds-dark-theme]{
   --dut-bubble:#2a1220;
   --dut-shadow:#000000;
   --dut-drop:rgba(39,39,48,.7);
+  --dut-line-1:rgba(255,255,255,.06);
+  --dut-line-2:rgba(255,255,255,.12);
+  --dut-line-3:rgba(255,255,255,.16);
+  --dut-line-4:rgba(255,255,255,.20);
   --dut-error:var(--dsw-static-red-400);
   --dut-error-2:var(--dsw-static-red-400);
   --dut-success:var(--dsw-static-green-400);
@@ -944,14 +958,6 @@ button[aria-label="新建会话"]:hover,button[aria-label="New session"]:hover{b
 .dut-panel{border:2px solid var(--dut-ink) !important;box-shadow:5px 5px 0 var(--dut-shadow) !important}
 .dut-seg button.dut-seg-active{background:var(--dut-lime) !important;color:#101418 !important}
 .dut-btn.dut-btn-active{background:var(--dut-lime) !important;color:#101418 !important;border-color:var(--dut-ink) !important}
-/* The host draws every hairline at 0.5px (borders and the box-shadow
-   elevation stroke); on 1x displays they antialias to a washed mid-gray that
-   reads broken against the poster's bold ink. Lift them all to a full 1px —
-   style and color are untouched, so border:none stays invisible, the JSON
-   tree's ::before triangles are out of reach of the universal selector, and
-   the skin's own 2px sticker rules win back on specificity. */
-body,body *{border-width:1px !important}
-body,body *{--dsw-elevation-stroke:0 0 0 1px var(--dsw-elevation-stroke-color)}
 `
 
 function buildRuntimeCss(value: ResolvedTweaks): string {
