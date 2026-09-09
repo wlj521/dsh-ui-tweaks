@@ -728,24 +728,103 @@ div[data-slot="conversation.chat.node"] table pre{
  * surfaces, ink-black type and hairlines, lime highlights with a magenta
  * action accent — all riding the same DSW alias tokens the host paints with,
  * so buttons, links, selections and the plugin's own tinted controls follow
- * automatically. Hard offset shadows (no blur) on code blocks and the
- * plugin's settings panels. Opinionated light look in both host schemes;
- * 'default' emits nothing and stays stock. Future skins add one union member
- * plus one block like this.
+ * automatically. Hard offset shadows (no blur) on code blocks, the composer
+ * card and the plugin's settings panels.
+ *
+ * The selector covers `body[data-ds-dark-theme]` too: the host's dark block
+ * ties a plain `body` rule on specificity, and the sidebar/composer paint
+ * from `--dsw-specific-*` tokens — both are pinned here so the poster look
+ * holds in either host scheme. 'default' emits nothing and stays stock.
+ * Future skins add one union member plus one block like this.
  */
 const NEON_LIME_CSS = `
-body{
+body,body[data-ds-dark-theme]{
+  color-scheme:light;
   --dsw-alias-bg-base:#ffffff;
   --dsw-alias-bg-layer-1:#ffffff;
   --dsw-alias-bg-layer-2:#f2f5f3;
-  --dsw-alias-label-primary:#101418;
-  --dsw-alias-label-secondary:#3d4750;
-  --dsw-alias-label-tertiary:#7a8791;
+  --dsw-alias-bg-layer-3:#e9edea;
+  --dsw-alias-bg-mask-1:rgba(0,0,0,.24);
+  --dsw-alias-bg-mask-2:rgba(0,0,0,.12);
+  --dsw-alias-bg-mask-3:rgba(0,0,0,.48);
+  --dsw-alias-bg-mask-photo:rgba(0,0,0,.88);
+  --dsw-alias-bg-mask-drop:rgba(255,255,255,.7);
+  --dsw-alias-bg-module-platform:#edf0ed;
+  --dsw-alias-bg-multi-select:#eef1ef;
+  --dsw-alias-bg-overlay:#e4e9e4;
+  --dsw-alias-bg-skeleton:rgba(0,0,0,.06);
+  --dsw-alias-border-inverted:rgba(0,0,0,0);
+  --dsw-alias-border-inverted2:rgba(0,0,0,0);
   --dsw-alias-border-l1:#101418;
   --dsw-alias-border-l2:#101418;
-  --dsw-alias-state-business-primary:#e6007e;
+  --dsw-alias-border-l2-darkmode-thin:#101418;
+  --dsw-alias-border-l3:#101418;
+  --dsw-alias-border-l4:#101418;
+  --dsw-alias-brand-primary:#101418;
+  --dsw-alias-brand-primary-invert:#ffffff;
+  --dsw-alias-brand-text:#101418;
+  --dsw-alias-button-contrast-fill:#3d4750;
+  --dsw-alias-button-elevated-fill:#ffffff;
+  --dsw-alias-button-floating-fill:#ffffff;
+  --dsw-alias-button-floating-hover:#eef1ef;
+  --dsw-alias-button-ghost-active-border:#101418;
+  --dsw-alias-button-ghost-active-fill:#e4e9e4;
+  --dsw-alias-button-ghost-active-hover:#dfe4df;
+  --dsw-alias-button-info-fill:#e6007e;
+  --dsw-alias-button-info-hover:#c00068;
+  --dsw-alias-button-primary-dimmed:#eef1ef;
+  --dsw-alias-button-primary-fill:#101418;
+  --dsw-alias-button-primary-hover:#000000;
+  --dsw-alias-interactive-bg-active:rgba(16,20,24,.10);
+  --dsw-alias-interactive-bg-hover:rgba(16,20,24,.06);
+  --dsw-alias-interactive-bg-hover-accent:rgba(230,0,126,.14);
+  --dsw-alias-interactive-bg-hover-danger:rgba(236,19,19,.05);
+  --dsw-alias-interactive-bg-hover-solid:#e4e9e4;
+  --dsw-alias-label-caption:#9aa4ad;
+  --dsw-alias-label-dimmed:#d7dce1;
+  --dsw-alias-label-primary:#101418;
+  --dsw-alias-label-primary-bluish:#101418;
+  --dsw-alias-label-primary-dimmed:#101418;
+  --dsw-alias-label-primary-foreground:#ffffff;
+  --dsw-alias-label-primary-inverted:#ffffff;
+  --dsw-alias-label-secondary:#3d4750;
+  --dsw-alias-label-tertiary:#7a8791;
+  --dsw-alias-link:#e6007e;
+  --dsw-alias-markdown-citation:#eef1ef;
+  --dsw-alias-markdown-code-block:#f7f9f7;
+  --dsw-alias-markdown-code-block-banner:#eef1ef;
+  --dsw-alias-markdown-code-segment-selected:#ffffff;
+  --dsw-alias-markdown-code-segment-unselected:#eef1ef;
   --dsw-alias-markdown-inline-code:#dcff4d;
-  --dsw-alias-interactive-bg-hover:rgba(230,0,126,.08);
+  --dsw-alias-markdown-placeholder:#eef1ef;
+  --dsw-alias-markdown-tag:#eef1ef;
+  --dsw-alias-scrollbar-bg-l1:#dfe4df;
+  --dsw-alias-scrollbar-bg-l2:#dfe4df;
+  --dsw-alias-scrollbar-hover-l1:#c9d1cb;
+  --dsw-alias-scrollbar-hover-l2:#c9d1cb;
+  --dsw-alias-state-business-primary:#e6007e;
+  --dsw-alias-state-business-tertiary:rgba(230,0,126,.12);
+  --dsw-alias-state-error-primary:var(--dsw-static-red-600);
+  --dsw-alias-state-error-secondary:var(--dsw-static-red-400);
+  --dsw-alias-state-success-primary:var(--dsw-static-green-500);
+  --dsw-alias-state-success-secondary:var(--dsw-static-green-400);
+  --dsw-alias-state-success-tertiary:var(--dsw-static-green-100);
+  --dsw-alias-state-warn-label:var(--dsw-static-amber-600);
+  --dsw-alias-state-warn-primary:var(--dsw-static-amber-500);
+  --dsw-alias-state-warn-secondary:var(--dsw-static-amber-400);
+  --dsw-alias-state-warn-tertiary:var(--dsw-static-amber-100);
+  --dsw-alias-toast-bg:#101418;
+  --dsw-alias-tooltip-bg:#101418;
+  --dsw-specific-bubble:#edffb8;
+  --dsw-specific-bubble-highlight:#dcff4d;
+  --dsw-specific-input-major:#ffffff;
+  --dsw-specific-login-input:#f2f5f3;
+  --dsw-specific-selector:#eef1ef;
+  --dsw-specific-sidebar-fill:#ffffff;
+  --dsw-specific-sidebar-nav-item-active:#dcff4d;
+  --dsw-specific-sidebar-nav-item-active-accent:#c6ff00;
+  --dsw-specific-sidebar-nav-item-hover:#f2f5f3;
+  --dsw-specific-tip:#eef1ef;
 }
 ::selection{background:#c6ff00;color:#101418}
 div[data-slot="conversation.chat.node"] pre{
@@ -761,6 +840,21 @@ div[data-slot="conversation.chat.node"] :not(pre)>code{
   border-radius:6px !important;
   padding:1px 6px !important;
 }
+/* composer card: black frame + hard shadow so the input reads as one sticker */
+div[data-composer-card]{
+  border:2px solid #101418 !important;
+  box-shadow:5px 5px 0 #101418 !important;
+  background:#fff !important;
+}
+/* sidebar new-session button (zh + en aria-labels): lime sticker */
+button[aria-label="新建会话"],button[aria-label="New session"]{
+  background:#c6ff00 !important;
+  color:#101418 !important;
+  border:2px solid #101418 !important;
+  border-radius:10px !important;
+  box-shadow:3px 3px 0 #101418 !important;
+}
+button[aria-label="新建会话"]:hover,button[aria-label="New session"]:hover{background:#d4ff33 !important;color:#101418 !important}
 .dut-panel{border:2px solid #101418 !important;box-shadow:5px 5px 0 #101418 !important}
 .dut-seg button.dut-seg-active{background:#c6ff00 !important;color:#101418 !important}
 .dut-btn.dut-btn-active{background:#c6ff00 !important;color:#101418 !important;border-color:#101418 !important}
