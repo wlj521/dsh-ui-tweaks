@@ -742,7 +742,11 @@ div[data-slot="conversation.chat.node"] table pre{
  * plus one block.
  */
 const NEON_LIME_CSS = `
-body{
+/* The host injects its theme sheets at runtime, so their <style> order against
+   this one is not guaranteed; the id in :not() lifts the skin above the host's
+   body[data-ds-dark-theme] palette (same specificity, later wins) without
+   !important. The id never exists in the DOM. */
+body:not(#dsh-ui-tweaks-theme-scope){
   color-scheme:light;
   --dut-paper:#ffffff;
   --dut-paper-2:#fafbfc;
@@ -808,6 +812,7 @@ body{
   --dsw-alias-brand-primary:var(--dut-text-1);
   --dsw-alias-brand-primary-invert:var(--dut-paper);
   --dsw-alias-brand-text:var(--dut-text-1);
+  --dsw-alias-brand-primary-new-colorprimary-new-color:var(--dut-magenta);
   --dsw-alias-button-contrast-fill:var(--dut-text-2);
   --dsw-alias-button-elevated-fill:var(--dut-paper);
   --dsw-alias-button-floating-fill:var(--dut-paper);
@@ -875,7 +880,7 @@ body{
 /* Dark scheme: re-point the design variables only — every alias mapping and
    element rule follows through var() indirection, so the host's scheme toggle
    flips the whole skin without a second copy of the rules. */
-body[data-ds-dark-theme]{
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme]{
   color-scheme:dark;
   --dut-paper:#0b0d10;
   --dut-paper-2:#14181d;
@@ -893,8 +898,8 @@ body[data-ds-dark-theme]{
   --dut-lime-soft:#dcff4d;
   --dut-magenta:#ff3d9a;
   --dut-magenta-soft:rgba(255,61,154,.16);
-  --dut-hover:rgba(255,61,154,.13);
-  --dut-active:rgba(255,61,154,.22);
+  --dut-hover:rgba(255,61,154,.16);
+  --dut-active:rgba(255,61,154,.26);
   --dut-sel-bg:rgba(255,61,154,.45);
   --dut-sel-fg:#ffffff;
   --dut-faint:rgba(255,255,255,.07);
