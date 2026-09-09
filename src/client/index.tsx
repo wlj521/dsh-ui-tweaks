@@ -1496,7 +1496,11 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => {
     // Optional service: absent on hosts without the right sidebar (and on
     // plain version skew), in which case this whole effect is a no-op.
-    const tabs = (ctx as unknown as { sidebarRightTabs?: typeof ctx.sidebarRightTabs }).sidebarRightTabs
+    // NOTE: must go through `ctx.get` — a direct `ctx.sidebarRightTabs`
+    // property read throws "cannot get property without inject" when the
+    // service is not listed in this entry's `inject` (and listing it there
+    // would hard-require the sidebar on older hosts).
+    const tabs = ctx.get('sidebarRightTabs') as typeof ctx.sidebarRightTabs | undefined
     if (tabs === undefined) return () => { /* no right sidebar on this host */ }
     const disposers: Array<() => void> = []
     const sync = (): void => {
