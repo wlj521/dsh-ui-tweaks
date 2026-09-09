@@ -977,7 +977,11 @@ body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] button[class*="newSessi
   border-color:var(--dut-lime) !important;
   box-shadow:3px 3px 0 var(--dut-lime) !important;
 }
-.dut-panel{border:2px solid var(--dut-ink) !important;box-shadow:5px 5px 0 var(--dut-shadow) !important}
+/* The poster frame is the host's own 1px border (recolored) plus a 1px inset
+   ring, not a real 2px border: a 2px border stole 2px of content width and
+   wrapped the half-width alert cells ("仅页面不可见时" and its buttons broke
+   onto two lines). An inset ring costs no layout. */
+.dut-panel{border-color:var(--dut-ink) !important;box-shadow:inset 0 0 0 1px var(--dut-ink),5px 5px 0 var(--dut-shadow) !important}
 .dut-seg button.dut-seg-active{background:var(--dut-lime) !important;color:#101418 !important}
 .dut-btn.dut-btn-active{background:var(--dut-lime) !important;color:#101418 !important;border-color:var(--dut-ink) !important}
 `
