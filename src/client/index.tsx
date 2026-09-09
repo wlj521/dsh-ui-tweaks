@@ -907,7 +907,9 @@ body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme]{
   --dut-scroll-2:#3a444d;
   --dut-elev:#1f262c;
   --dut-bubble:#2a1220;
-  --dut-shadow:#000000;
+  /* the hard sticker offset: black is invisible on the near-black paper, so
+     dark mode mirrors the light scheme with a mid-gray band instead */
+  --dut-shadow:#7f8d97;
   --dut-drop:rgba(39,39,48,.7);
   --dut-line-1:rgba(255,255,255,.06);
   --dut-line-2:rgba(255,255,255,.12);
