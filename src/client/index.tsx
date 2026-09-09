@@ -906,7 +906,7 @@ body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme]{
   --dut-scroll-1:#2a3138;
   --dut-scroll-2:#3a444d;
   --dut-elev:#1f262c;
-  --dut-bubble:#2a1220;
+  --dut-bubble:#ffe4f1;
   /* the hard sticker offset rides the frame's own ink in both schemes: black
      under the white-paper card, white under the near-black one, so the border
      and its offset band read as one shape */
@@ -954,15 +954,32 @@ div[data-composer-card]{
    (scoped to the composer's svg so the class-substring match stays safe) */
 div[data-composer-card] svg [class*="track"]{stroke:var(--dut-scroll-1)}
 div[data-composer-card] svg [class*="fill"]{stroke:var(--dut-magenta)}
-/* sidebar new-session button (zh + en aria-labels): lime sticker */
-button[aria-label="新建会话"],button[aria-label="New session"]{
+/* sidebar new-session button: lime sticker. Matched by its CSS-module class,
+   NOT the aria-label — the brand row button shares the same "新建会话"
+   label (it doubles as the new-session shortcut) and must stay plain. */
+button[class*="newSession"]{
   background:var(--dut-lime) !important;
   color:#101418 !important;
   border:2px solid var(--dut-ink) !important;
   border-radius:10px !important;
   box-shadow:3px 3px 0 var(--dut-shadow) !important;
 }
-button[aria-label="新建会话"]:hover,button[aria-label="New session"]:hover{background:#d4ff33 !important;color:#101418 !important}
+button[class*="newSession"]:hover{background:#d4ff33 !important;color:#101418 !important}
+/* dark scheme: invert the sticker to a lime-outlined dark pill — a full lime
+   slab was the loudest thing in the column and the black label read as a
+   mistake next to the dark chrome */
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] button[class*="newSession"],
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] button[class*="newSession"]:hover{
+  background:var(--dut-paper) !important;
+  color:var(--dut-lime) !important;
+  border-color:var(--dut-lime) !important;
+  box-shadow:3px 3px 0 var(--dut-lime) !important;
+}
+/* dark scheme paints the bubble pale pink, so its text needs ink rather than
+   the scheme's near-white label color (scoped to the user row's bubble) */
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[data-slot="conversation.chat.node"] [class*="userRow"] [class*="bubble"]{
+  color:#101418;
+}
 .dut-panel{border:2px solid var(--dut-ink) !important;box-shadow:5px 5px 0 var(--dut-shadow) !important}
 .dut-seg button.dut-seg-active{background:var(--dut-lime) !important;color:#101418 !important}
 .dut-btn.dut-btn-active{background:var(--dut-lime) !important;color:#101418 !important;border-color:var(--dut-ink) !important}
