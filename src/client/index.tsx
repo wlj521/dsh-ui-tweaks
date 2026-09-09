@@ -772,7 +772,7 @@ body:not(#dsh-ui-tweaks-theme-scope){
   --dut-scroll-1:#e3e6ea;
   --dut-scroll-2:#c8cdd3;
   --dut-elev:#101418;
-  --dut-bubble:#ffe4f1;
+  --dut-bubble:#f3ffcc;
   --dut-shadow:#101418;
   --dut-drop:rgba(255,255,255,.7);
   /* Hairlines stay the host's own subtle values: the shipped 0.5px pills and
@@ -906,10 +906,11 @@ body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme]{
   --dut-scroll-1:#2a3138;
   --dut-scroll-2:#3a444d;
   --dut-elev:#1f262c;
-  --dut-bubble:#2a1220;
+  --dut-bubble:#1d2408;
   /* the hard sticker offset: black is invisible on the near-black paper, so
-     dark mode mirrors the light scheme with a mid-gray band instead */
-  --dut-shadow:#7f8d97;
+     dark mode mirrors the light scheme with a light-gray band that sits close
+     to the frame's own ink (a mid gray read as a disconnected second edge) */
+  --dut-shadow:#b9c3ca;
   --dut-drop:rgba(39,39,48,.7);
   --dut-line-1:rgba(255,255,255,.06);
   --dut-line-2:rgba(255,255,255,.12);
@@ -938,7 +939,7 @@ div[data-slot="conversation.chat.node"] pre{
 div[data-slot="conversation.chat.node"] :not(pre)>code{
   background:var(--dut-lime-soft) !important;
   color:#101418 !important;
-  border:1px solid var(--dut-ink) !important;
+  border:none !important;
   border-radius:6px !important;
   padding:1px 6px !important;
 }
