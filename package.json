@@ -1,6 +1,6 @@
 {
   "name": "dsh-ui-tweaks",
-  "version": "0.16.0",
+  "version": "0.16.1",
   "description": "DSH web plugin: live-tune the conversation UI — code font size (px input), a timeline switch (DSH's native turn rail, or the classic v0.11 web rail: hover to preview, click to jump; native by default), a poster theme skin (neon poster, light/dark), a GitBar (branch chip in the session header with branch management, plus terminal and code-diff tabs in the native right sidebar with per-file diff and commit & push, and a real PTY terminal over a WebSocket to a persistent node-pty shell), task alerts that call you back via tab-title flash / system notification / chime when any session finishes its turn or starts waiting for your approval, plan review or answer, an /init slash command that submits an AGENTS.md bootstrap prompt (Chinese or English) into the current session, and a precise cache-hit readout that keeps two decimal places on the stats line's cache-hit figure under the input box — from the Settings panel. Requires DSH v0.1.5-alpha.1+ (the conversation timeline and dialog width are now native to DSH).",
   "keywords": [
     "dsh",
