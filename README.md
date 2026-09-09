@@ -2,25 +2,24 @@
 
 > **依赖版本**：当前依赖 **DSH v0.1.5-alpha.1**。
 
-[DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/)（DSH）Web UI 插件：在设置面板中实时调整对话界面——代码字号、表格样式、**时间线切换**（原生回合导航轨 / 经典网页时间线）、**GitBar**（输入框工具行内的 git 状态胶囊：分支在权限旁、差异在模型前），可开关的**归档管理**（设置中的「归档」页面：查看、恢复或彻底删除已归档会话），可开关的**任务提醒**（会话完成或需要交互时，通过标签页标题闪烁 / 系统通知 / 提示音把你唤回来），以及**缓存命中率两位小数**（把输入框下方统计条的缓存命中百分比改写为精确值）。
+[DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/)（DSH）Web UI 插件：在设置面板中实时调整对话界面——代码字号、**主题皮肤**（荧光黄海报风）、**时间线切换**（原生回合导航轨 / 经典网页时间线）、**GitBar**（输入框工具行内的 git 状态胶囊：分支在权限旁、差异在模型前），可开关的**归档管理**（设置中的「归档」页面：查看、恢复或彻底删除已归档会话），可开关的**任务提醒**（会话完成或需要交互时，通过标签页标题闪烁 / 系统通知 / 提示音把你唤回来），以及**缓存命中率两位小数**（把输入框下方统计条的缓存命中百分比改写为精确值）。
 
 ## 预览
 
 | | |
 |---|---|
-| ![Claude Desktop 表格样式](assets/table.png) | ![设置面板](assets/settings.png) |
-| **表格样式**：Claude Desktop 浅灰圆角卡片风格 | **设置面板**：代码字号 / 表格样式 / Git 状态栏等功能开关 |
-| ![GitBar](assets/git.png) | ![分支面板](assets/branch.png) |
-| **GitBar**：会话头部的分支胶囊（分支管理）+ 右侧边栏里的**终端** / **代码差异**标签页，代码差异页内可直接提交 | **分支面板**：点击分支胶囊向下弹出——本地 / 远程分支列表，点击即切换，支持删除、拉取、推送远程，底部可新建分支，菜单里可打开**提交图谱**（彩色 SVG 分叉图） |
-| ![差异面板](assets/gitdiff.png) | ![终端面板](assets/terminal.png) |
-| **代码差异**：文件列表 + 逐文件 diff（默认只显示有差异的 hunk），底部提交区可提交 / 提交并推送 | **终端**：边栏里的真 PTY 终端（xterm.js + WebSocket），完整终端交互 |
-| ![归档管理](assets/archive.png) | ![MCP 管理](assets/mcp.png) |
-| **归档管理**：设置中的「归档」页面，列出所有已归档会话（标题 / 工作区 / 相对时间），支持恢复与彻底删除 | **MCP 管理**：设置中的「MCP 管理」页面，列出所有配置的 MCP 服务器及其运行状态，支持添加 / 编辑 / 启用停用 / 删除 / 重启 |
+| ![设置面板](assets/settings.png) | ![GitBar](assets/git.png) |
+| **设置面板**：代码字号 / 主题皮肤 / Git 状态栏等功能开关 | **GitBar**：会话头部的分支胶囊（分支管理）+ 右侧边栏里的**终端** / **代码差异**标签页，代码差异页内可直接提交 |
+| ![分支面板](assets/branch.png) | ![差异面板](assets/gitdiff.png) |
+| **分支面板**：点击分支胶囊向下弹出——本地 / 远程分支列表，点击即切换，支持删除、拉取、推送远程，底部可新建分支，菜单里可打开**提交图谱**（彩色 SVG 分叉图） | **代码差异**：文件列表 + 逐文件 diff（默认只显示有差异的 hunk），底部提交区可提交 / 提交并推送 |
+| ![终端面板](assets/terminal.png) | ![归档管理](assets/archive.png) |
+| **终端**：边栏里的真 PTY 终端（xterm.js + WebSocket），完整终端交互 | **归档管理**：设置中的「归档」页面，列出所有已归档会话（标题 / 工作区 / 相对时间），支持恢复与彻底删除 |
+| ![MCP 管理](assets/mcp.png) | |
+| **MCP 管理**：设置中的「MCP 管理」页面，列出所有配置的 MCP 服务器及其运行状态，支持添加 / 编辑 / 启用停用 / 删除 / 重启 | |
 
 ## 功能
 
 - **代码字号（px）**：绝对值 8–32，默认 13（正文 16 时的 DSH 原生代码块字号）；作用于代码块，行内代码按比例跟随——旧版的百分比配置（`codeFontScale`）仍然兼容，一旦设置新的 px 值即以其为准。消息正文保持 DSH 原生字号。
-- **表格样式**：可选 `默认` 或 **Claude Desktop** 风格（浅灰圆角单元格卡片、单元格间有间隙、无边框、单元格与行内代码同底色、表头不加粗）。Claude 风格下表格默认撑满列宽；放不下的宽表保持自然宽度、在表格内横向滚动（悬停出现滚动条），不会被挤压换行或裁掉后面的列。
 - **主题（布局区单选，默认即原生外观）**：可选 `默认` 或 **荧光黄**——海报风双方案皮肤：浅色模式纸白底 + 黑粗线条，深色模式近黑底 + 浅色粗线条，都配荧光黄高亮 + 品红点缀（按钮、链接、选中态跟随主题变量自动变色，代码块与输入框卡片带硬阴影贴纸效果），切换即时生效。后续皮肤会以同样方式追加为新选项。
 - **时间线（功能区内单选）**：一个开关两档，选一个：
   - **原生（默认）**：DSH 自带的回合导航轨（消息右侧的小圆点条），即官方默认行为。
@@ -50,7 +49,6 @@
 
 ```yaml
 ui-tweaks:
-  tableStyle: claude
   timelineStyle: web            # 默认 native（DSH 自带回合导航轨），web 为经典网页时间线
   themeStyle: neon-lime           # 默认 default（DSH 原生外观），neon-lime 为荧光黄皮肤
   gitBarEnabled: true     # 默认 false（关闭），设为 true 开启 GitBar
@@ -109,7 +107,7 @@ npx -y @deepseek-ai/dsh plugin --profile web add .        # 从本目录作为 b
 
 - **服务端**（`src/index.ts`）：注册 `ui-tweaks` 设置命名空间，并挂载同源路由 `/_dsh/ui-tweaks/settings`——自 rc.6 起，Web 设置 RPC 只暴露固定白名单命名空间，因此自定义路由是插件拥有配置页的方式。
 - **Git 后端**（`src/git.ts` + `src/git-web.ts`）：通过 `ctx.get('sessions')`（可选服务）解析会话 header 的 `cwd` 作为“当前项目”，用 `child_process.execFile('git', …)`（无 shell、cwd 固定、超时 + 中止传播）执行只读/写操作；同源路由 `/_dsh/ui-tweaks/git/*` 提供 status / branches / diff（hunk 或完整文件，含绝对行号）/ graph（结构化提交行，含父哈希，供前端排布分支 lane）/ commit / push / pull（仅快进）/ checkout / create / branch-delete / remote-delete。
-- **浏览器端**（`src/client/index.tsx`）：读写该路由、渲染设置页，并通过运行时 `<style>` 元素实时应用样式，覆盖稳定的 DSH 锚点（`body` 上的 markdown 代码字体 token、`[data-slot="conversation.chat.node"]` 内的 markdown 表格）。
+- **浏览器端**（`src/client/index.tsx`）：读写该路由、渲染设置页，并通过运行时 `<style>` 元素实时应用样式，覆盖稳定的 DSH 锚点（`body` 上的 markdown 代码字体 token 与主题变量、`[data-slot="conversation.chat.node"]` 内的代码块 / 表头）。
 - **GitBar**（`src/client/gitbar.tsx`）：分支胶囊挂在 `conversation.session.header.actions`（会话标题旁），终端与代码差异则注册为右侧边栏原生标签页（page 类型：`ctx.sidebarRightTabs` 注册类型与指南入口，`sidebar.right.pane.tab` 按类型 id 注册内容，代码差异另注册标题席位在页签上补未提交改动的小黄点，随 `gitBarEnabled` 开关按需挂载）。视图是全高 flex 列：文件列表 / diff / 提交区三段高度分配采用「只给被拖的那一段显式高度、diff 段 `flex:1` 吃掉余量」的方式，配合 45% 上限，拖动永远不会撑破视图；终端的 xterm 宿主同样 `flex:1` 吃掉页体高度，fit 插件 + ResizeObserver 自适应。提交保留在代码差异页底部的提交区。在外部应用中打开项目是 DSH 自带的 open-in-app 按钮，本插件的 `/open` 路由与 `openFolder` 后端已随之移除。提交图谱对话框的 lane 布局与 SVG 渲染拆在 `src/client/graphlayout.ts`（纯函数模块：父哈希 → 每行 lane / 边段，经典 first-parent 路由——第一父提交沿用原 lane 让线性历史始终一条线，合并与 fork 画贝塞尔弧线；`parents` 字段可选，兼容宿主里尚未重载的旧服务端）。
 - **归档管理**（服务端 `src/archive.ts` + 浏览器端 `src/client/archive.tsx`）：作为 `settings.section` 插槽（设置面板中的「归档」页面）。列表数据直接来自框架标准 hook `useSessions` + `useWorkspaces`（`archivedSessionIds`），无需额外查询；操作走同源路由 `/_dsh/ui-tweaks/archive`。**恢复**把会话 id 从工作区存储域的 `archivedSessionIds` 全局单例中移除（DSH 只暴露单向 `archiveSession`，无公开的取消归档 API，故直接写活体存储域句柄并同步工作区注册表的内存缓存）。**彻底删除**依次：拒绝正在运行的会话（agent `status === 'running'` 才拒绝，空闲会话先 `cancel` + `whenIdle`）→ 用持久化后端自身的 `findLog` 定位并 `rm` 会话日志目录 → 调用公开的 `WorkspaceEntity.detachSession` 摘除工作区记账 → 从归档集合移除并同步注册表内存缓存与 header 索引 → 清理 `session_projcache` → 从内存 SessionStore 摘除该会话（触发 `host/session-removed` 实时消失）。
 - **MCP 管理**（服务端 `src/mcp.ts` + 浏览器端 `src/client/mcp.tsx`）：同源路由 `/_dsh/ui-tweaks/mcp`。**列表**枚举 `ctx.loader.entries()` 中 `@deepseek-ai/dsh-mcp-client` 实例（id / config / fiber 状态：active=2、failed=3 等）并按 `mcp__<serverName>__` 前缀从工具注册表统计工具。**重启**调用 `entry.fiber.restart()`（仅运行时）。**添加 / 编辑 / 删除 / 启用停用**通过 `yaml`（eemeli）的 Document API 直接编辑 profile 的 `cordis.patch.yml`（保留注释与未知补丁结构，原子写 tmp+rename），随后由 DSH 内置的 `watchUserPatches` 热重载监视器重新应用补丁——`cordis-plugin-include` 对根组做**增量** `root.update`，因此只有被改动的 MCP 实例会重启，其它不受影响；环境变量值返回给同源浏览器（本机配置编辑需要），YAML 模式在服务端用 `yaml.parse` + 白名单校验。

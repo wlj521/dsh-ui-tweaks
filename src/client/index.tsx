@@ -58,7 +58,6 @@ interface TweaksValue {
   codeFontScale?: number
   /** Absolute code font size in px; wins over the legacy percentage. */
   codeFontSize?: number
-  tableStyle?: 'default' | 'claude'
   /** Which timeline to show: 'native' (DSH built-in rail) or 'web' (plugin classic rail). Keep in sync with src/config.ts. */
   timelineStyle?: 'native' | 'web'
   /** Conversation theme: 'default' keeps the stock look; any other value applies that skin. Keep in sync with src/config.ts. */
@@ -98,7 +97,6 @@ interface TweaksValue {
 interface ResolvedTweaks {
   /** Effective absolute code font size in px (codeFontSize, else legacy %, else stock). */
   codeFontSize: number
-  tableStyle: 'default' | 'claude'
   timelineStyle: 'native' | 'web'
   themeStyle: 'default' | 'neon-lime'
   searchEngine: string
@@ -136,10 +134,6 @@ const en = {
   sectionFeatures: 'Features',
   codeFontSize: 'Code font size',
   codeFontSizeHint: `Absolute code size in px (${MIN_CODE_FONT_SIZE}–${MAX_CODE_FONT_SIZE}); ${DEFAULT_CODE_FONT_SIZE}px is DSH's default at a 16px body. Applies to code blocks; inline code follows proportionally.`,
-  tableStyle: 'Table style',
-  tableStyleHint: 'Cell look for markdown tables: stock borders, or the Claude Desktop card style.',
-  tableStyleDefault: 'Default',
-  tableStyleClaude: 'Claude Desktop',
   timeline: 'Timeline',
   timelineHint: 'Native: DSH\u2019s built-in turn rail at the right edge (stock). Web (classic): the v0.11 right-side navigation rail — hover to preview, click to jump; auto-hidden in short conversations.',
   timelineNative: 'Native',
@@ -379,10 +373,6 @@ const zh: Record<LocaleKey, string> = {
   sectionFeatures: '功能',
   codeFontSize: '代码字号',
   codeFontSizeHint: `代码绝对字号，取值 ${MIN_CODE_FONT_SIZE}–${MAX_CODE_FONT_SIZE}px；${DEFAULT_CODE_FONT_SIZE}px 为 DSH 默认（正文 16 时）。作用于代码块，行内代码按比例跟随。`,
-  tableStyle: '表格样式',
-  tableStyleHint: 'Markdown 表格的外观：默认边框，或 Claude Desktop 卡片风格。',
-  tableStyleDefault: '默认',
-  tableStyleClaude: 'Claude Desktop',
   timeline: '时间线',
   timelineHint: '原生：DSH 自带的回合导航轨（消息右侧小圆点，默认）。网页（经典）：找回 v0.11 的右侧导航轨——悬停预览、点击跳转；会话较短时自动隐藏。',
   timelineNative: '原生',
@@ -628,7 +618,6 @@ function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
     : Math.max(8, Math.round(DEFAULT_CODE_FONT_SIZE * ((value?.codeFontScale ?? DEFAULT_CODE_FONT_SCALE) / DEFAULT_CODE_FONT_SCALE)))
   return {
     codeFontSize,
-    tableStyle: value?.tableStyle === 'claude' ? 'claude' : 'default',
     timelineStyle: value?.timelineStyle === 'web' ? 'web' : 'native',
     themeStyle: value?.themeStyle === 'neon-lime' ? 'neon-lime' : 'default',
     searchEngine: value?.searchEngine ?? 'bing',
@@ -679,49 +668,6 @@ function buildCodeFontCss(codeFontSize: number): string {
   token('dsw-font-markdown-code-block-small', codePx(12 / 13), 18, codeBlock)
   return `body{${parts.join(';')}}`
 }
-
-/**
- * Claude Desktop-ish markdown table look: light-gray rounded cell cards with
- * small gaps, no borders. Cells share the theme's inline-code background.
- * Alignment is left to the markdown renderer, so headers and cells always
- * match; font sizes stay DSH's stock values.
- */
-const CLAUDE_TABLE_CSS = `
-div[data-slot="conversation.chat.node"] table{
-  border-collapse:separate !important;
-  border-spacing:3px !important;
-  width:100% !important;
-  /* Fill the column like Claude Desktop, but never squeeze below the natural
-     (no-wrap) width: a table too wide to fit keeps its real width and scrolls
-     inside the stock table wrapper instead of hiding columns. */
-  min-width:max-content !important;
-  border:none !important;
-}
-div[data-slot="conversation.chat.node"] table thead th{
-  background:var(--dsw-alias-markdown-inline-code) !important;
-  color:inherit !important;
-  font-weight:400 !important;
-  font-size:inherit !important;
-  padding:7px 10px !important;
-  border:none !important;
-  border-radius:6px !important;
-}
-div[data-slot="conversation.chat.node"] table tbody td{
-  background:var(--dsw-alias-markdown-inline-code) !important;
-  color:inherit !important;
-  font-size:inherit !important;
-  padding:7px 10px !important;
-  vertical-align:top !important;
-  border:none !important;
-  border-radius:6px !important;
-}
-div[data-slot="conversation.chat.node"] table code,
-div[data-slot="conversation.chat.node"] table pre{
-  background:transparent !important;
-  border:none !important;
-  box-shadow:none !important;
-}
-`
 
 /**
  * Fluorescent-lime poster skin (Bilibili tech-video look), in two schemes:
@@ -926,8 +872,7 @@ body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme]{
   --dut-warn-3:var(--dsw-static-amber-900);
 }
 ::selection{background:var(--dut-sel-bg);color:var(--dut-sel-fg)}
-/* table header: the screenshot's ink header strip with lime type; plain rules
-   so the Claude table style can still win */
+/* table header: the screenshot's ink header strip with lime type */
 div[data-slot="conversation.chat.node"] table th{
   background:var(--dut-ink);
   color:var(--dut-on-ink);
@@ -998,9 +943,6 @@ function buildRuntimeCss(value: ResolvedTweaks): string {
   if (Math.abs(value.codeFontSize - DEFAULT_CODE_FONT_SIZE) > 0.5) {
     const em = (0.875 * (value.codeFontSize / DEFAULT_CODE_FONT_SIZE)).toFixed(3)
     rules.push(`div[data-slot="conversation.chat.node"] div[class*="_markdown_"] :not(pre)>code{font-size:${em}em !important}`)
-  }
-  if (value.tableStyle === 'claude') {
-    rules.push(CLAUDE_TABLE_CSS)
   }
   // Hide the DSH built-in turn-navigation rail while the timeline switch is
   // on 'web'. The rail is a `<nav>` whose inline style carries the frame's
@@ -1279,10 +1221,6 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     void controller.set('codeFontSize', clamped).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
-  const pickTableStyle = (raw: string): void => {
-    void controller.set('tableStyle', raw === 'claude' ? 'claude' : 'default').then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
-  }
-
   const stepCodeSize = (delta: number): void => {
     const next = Math.min(MAX_CODE_FONT_SIZE, Math.max(MIN_CODE_FONT_SIZE, resolved.codeFontSize + delta))
     setCodeDraft(String(next))
@@ -1422,17 +1360,6 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
                 <button type="button" aria-label="+" disabled={!writable || resolved.codeFontSize >= MAX_CODE_FONT_SIZE} onClick={() => { stepCodeSize(1) }}>+</button>
               </div>
               <button type="button" className={'dut-btn' + (resolved.codeFontSize === DEFAULT_CODE_FONT_SIZE ? ' dut-btn-active' : '')} disabled={!writable} onClick={() => { resetCodeSize() }}>{t('defaultAction')}</button>
-            </div>
-          </div>
-        </div>
-        <div className="dut-field">
-          <div className="dut-field-top">
-            <span className="dut-label">{t('tableStyle')}<Hint text={t('tableStyleHint')} /></span>
-            <div className="dut-controls">
-              <div className="dut-seg">
-                <button type="button" className={resolved.tableStyle === 'claude' ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { pickTableStyle('claude') }}>{t('tableStyleClaude')}</button>
-                <button type="button" className={resolved.tableStyle === 'default' ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { pickTableStyle('default') }}>{t('tableStyleDefault')}</button>
-              </div>
             </div>
           </div>
         </div>

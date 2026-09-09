@@ -29,8 +29,6 @@ export interface UITweaksConfig {
    * `codeFontScale` percentage, then to the stock default.
    */
   codeFontSize?: number
-  /** Markdown table presentation style. */
-  tableStyle?: 'default' | 'claude'
   /**
    * Which conversation timeline to show: `'native'` keeps DSH's built-in
    * turn-navigation rail (the stock behavior); `'web'` shows the plugin's
@@ -173,7 +171,6 @@ export const DEFAULT_NOTIFY_SOUND = false
 export const Config: Schema<UITweaksConfig> = z.object({
   codeFontScale: z.number().min(MIN_CODE_FONT_SCALE).max(MAX_CODE_FONT_SCALE).default(DEFAULT_CODE_FONT_SCALE),
   codeFontSize: z.number().min(MIN_CODE_FONT_SIZE).max(MAX_CODE_FONT_SIZE),
-  tableStyle: z.union(['default', 'claude'] as const).default('default'),
   timelineStyle: z.union(['native', 'web'] as const).default(DEFAULT_TIMELINE_STYLE),
   themeStyle: z.union(['default', 'neon-lime'] as const).default(DEFAULT_THEME_STYLE),
   searchEnabled: z.boolean().default(DEFAULT_SEARCH_ENABLED),
@@ -199,7 +196,6 @@ export interface ResolvedUITweaksConfig {
   codeFontScale: number
   /** Effective absolute code font size in px (codeFontSize, else legacy %, else stock). */
   codeFontSize: number
-  tableStyle: 'default' | 'claude'
   /** Which conversation timeline is shown: DSH's native rail or the plugin web rail. */
   timelineStyle: 'native' | 'web'
   /** Conversation theme: stock look or one of the plugin skins. */
@@ -244,7 +240,6 @@ export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConf
   const codeFontSize = typeof config.codeFontSize === 'number'
     ? Math.min(MAX_CODE_FONT_SIZE, Math.max(MIN_CODE_FONT_SIZE, config.codeFontSize))
     : Math.max(8, Math.round(DEFAULT_CODE_FONT_SIZE * (codeFontScale / DEFAULT_CODE_FONT_SCALE)))
-  const tableStyle = config.tableStyle ?? 'default'
   const timelineStyle = config.timelineStyle ?? DEFAULT_TIMELINE_STYLE
   const themeStyle = config.themeStyle ?? DEFAULT_THEME_STYLE
   const searchEnabled = config.searchEnabled ?? DEFAULT_SEARCH_ENABLED
@@ -262,6 +257,6 @@ export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConf
   const notifyTitleFlash = config.notifyTitleFlash ?? DEFAULT_NOTIFY_TITLE_FLASH
   const notifySystemNotification = config.notifySystemNotification ?? DEFAULT_NOTIFY_SYSTEM_NOTIFICATION
   const notifySound = config.notifySound ?? DEFAULT_NOTIFY_SOUND
-  const resolved: ResolvedUITweaksConfig = { codeFontScale, codeFontSize, tableStyle, timelineStyle, themeStyle, searchEnabled, searchEngine, bingMarket, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled, preciseCacheHitEnabled, notificationsEnabled, notifyOnlyWhenHidden, notifyOnComplete, notifyOnInteraction, notifyTitleFlash, notifySystemNotification, notifySound }
+  const resolved: ResolvedUITweaksConfig = { codeFontScale, codeFontSize, timelineStyle, themeStyle, searchEnabled, searchEngine, bingMarket, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled, preciseCacheHitEnabled, notificationsEnabled, notifyOnlyWhenHidden, notifyOnComplete, notifyOnInteraction, notifyTitleFlash, notifySystemNotification, notifySound }
   return resolved
 }

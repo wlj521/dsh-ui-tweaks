@@ -8,19 +8,18 @@ A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH)
 
 | | |
 |---|---|
-| ![Claude Desktop table style](assets/table.png) | ![Settings panel](assets/settings.png) |
-| **Table style**: the Claude Desktop look (light-gray rounded cards) | **Settings panel**: code font size / table style / GitBar toggles |
-| ![GitBar](assets/git.png) | ![Branch panel](assets/branch.png) |
-| **GitBar**: the branch chip in the session header (branch management) plus **terminal** / **code diff** tabs in the native right sidebar, with commit & push from the code diff page (uncommitted changes dot the branch chip and its tab) | **Branch panel**: pops up from the branch chip — local / remote branch lists, click to switch, delete, pull & push to remote, new-branch field at the bottom, plus a **commit graph** dialog (colored SVG fork/merge lanes) |
-| ![Diff panel](assets/gitdiff.png) | ![Terminal panel](assets/terminal.png) |
-| **Code diff**: file list + per-file diff (changed hunks only by default) with a commit area (commit / commit & push) at the bottom | **Terminal**: a real PTY terminal in the sidebar (xterm.js over WebSocket) — full interactivity |
-| ![Archive manager](assets/archive.png) | ![MCP manager](assets/mcp.png) |
-| **Archive manager**: an Archive page in the Settings dialog listing archived sessions (title / workspace / relative time) with Restore and Delete actions | **MCP manager**: an MCP page in the Settings dialog listing configured MCP servers with live status and full management (Add / Edit / Enable / Disable / Delete / Restart) |
+| ![Settings panel](assets/settings.png) | ![GitBar](assets/git.png) |
+| **Settings panel**: code font size / theme skin / GitBar toggles | **GitBar**: the branch chip in the session header (branch management) plus **terminal** / **code diff** tabs in the native right sidebar, with commit & push from the code diff page (uncommitted changes dot the branch chip and its tab) |
+| ![Branch panel](assets/branch.png) | ![Diff panel](assets/gitdiff.png) |
+| **Branch panel**: pops up from the branch chip — local / remote branch lists, click to switch, delete, pull & push to remote, new-branch field at the bottom, plus a **commit graph** dialog (colored SVG fork/merge lanes) | **Code diff**: file list + per-file diff (changed hunks only by default) with a commit area (commit / commit & push) at the bottom |
+| ![Terminal panel](assets/terminal.png) | ![Archive manager](assets/archive.png) |
+| **Terminal**: a real PTY terminal in the sidebar (xterm.js over WebSocket) — full interactivity | **Archive manager**: an Archive page in the Settings dialog listing archived sessions (title / workspace / relative time) with Restore and Delete actions |
+| ![MCP manager](assets/mcp.png) | |
+| **MCP manager**: an MCP page in the Settings dialog listing configured MCP servers with live status and full management (Add / Edit / Enable / Disable / Delete / Restart) | |
 
 ## Features
 
 - **Code font size (px)** — absolute 8–32px, default 13 (DSH's stock code-block size at a 16px body); applies to code blocks, with inline code following proportionally. The legacy percentage (`codeFontScale`) stays compatible and is overridden once a px value is set. Message text keeps DSH's stock sizing.
-- **Table style** — choose `Default` or the **Claude Desktop** look (light-gray rounded cell cards with small gaps, no borders; cells share the inline-code background; header not bold).
 - **Theme (single choice in Layout, stock look by default)** — choose `Default` or **Neon lime**: a two-scheme poster skin — paper-white with ink-black hairlines in light mode, near-black with light hairlines in dark mode, both with lime highlights and a magenta action accent (buttons, links and selections follow the theme tokens automatically; code blocks and the composer card get hard offset shadows), applied live. Future skins will be added as further options the same way.
 - **Timeline (single choice in Features)** — one switch, two options:
   - **Native (default)** — DSH's built-in turn rail (the row of small dots beside the messages), the stock behavior.
@@ -47,7 +46,6 @@ All changes apply **live** — no reload needed. The same values can be hand-edi
 
 ```yaml
 ui-tweaks:
-  tableStyle: claude
   timelineStyle: web            # defaults to native (DSH's built-in turn rail); web is the classic web timeline
   themeStyle: neon-lime           # defaults to default (DSH's stock look); neon-lime is the fluorescent-lime skin
   gitBarEnabled: true     # defaults to false (off); set true to enable GitBar
