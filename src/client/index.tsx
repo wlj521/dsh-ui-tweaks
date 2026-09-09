@@ -740,9 +740,11 @@ const NEON_LIME_CSS = `
 body{
   color-scheme:light;
   --dut-paper:#ffffff;
-  --dut-paper-2:#f2f5f3;
-  --dut-paper-3:#e9edea;
+  --dut-paper-2:#f4f5f6;
+  --dut-paper-3:#e8eaee;
   --dut-ink:#101418;
+  --dut-on-ink:#c6ff00;
+  --dut-code:#f7f8f9;
   --dut-text-1:#101418;
   --dut-text-2:#3d4750;
   --dut-text-3:#7a8791;
@@ -752,13 +754,14 @@ body{
   --dut-lime-soft:#dcff4d;
   --dut-magenta:#e6007e;
   --dut-magenta-soft:rgba(230,0,126,.12);
-  --dut-hover:rgba(16,20,24,.06);
-  --dut-hover-accent:rgba(230,0,126,.14);
+  --dut-hover:rgba(230,0,126,.07);
+  --dut-active:rgba(230,0,126,.13);  --dut-sel-bg:#ffd0e6;
+  --dut-sel-fg:#101418;
   --dut-faint:rgba(0,0,0,.06);
-  --dut-scroll-1:#dfe4df;
-  --dut-scroll-2:#c9d1cb;
+  --dut-scroll-1:#dfe2e6;
+  --dut-scroll-2:#c8cdd3;
   --dut-elev:#101418;
-  --dut-bubble:#edffb8;
+  --dut-bubble:#ffe4f1;
   --dut-shadow:#101418;
   --dut-drop:rgba(255,255,255,.7);
   --dut-error:var(--dsw-static-red-600);
@@ -802,9 +805,9 @@ body{
   --dsw-alias-button-primary-dimmed:var(--dut-paper-2);
   --dsw-alias-button-primary-fill:var(--dut-text-1);
   --dsw-alias-button-primary-hover:var(--dut-text-1);
-  --dsw-alias-interactive-bg-active:var(--dut-hover);
+  --dsw-alias-interactive-bg-active:var(--dut-active);
   --dsw-alias-interactive-bg-hover:var(--dut-hover);
-  --dsw-alias-interactive-bg-hover-accent:var(--dut-hover-accent);
+  --dsw-alias-interactive-bg-hover-accent:var(--dut-active);
   --dsw-alias-interactive-bg-hover-danger:rgba(236,19,19,.05);
   --dsw-alias-interactive-bg-hover-solid:var(--dut-paper-3);
   --dsw-alias-label-caption:var(--dut-text-4);
@@ -818,7 +821,7 @@ body{
   --dsw-alias-label-tertiary:var(--dut-text-3);
   --dsw-alias-link:var(--dut-magenta);
   --dsw-alias-markdown-citation:var(--dut-paper-2);
-  --dsw-alias-markdown-code-block:var(--dut-paper-2);
+  --dsw-alias-markdown-code-block:var(--dut-code);
   --dsw-alias-markdown-code-block-banner:var(--dut-paper-3);
   --dsw-alias-markdown-code-segment-selected:var(--dut-paper);
   --dsw-alias-markdown-code-segment-unselected:var(--dut-paper-2);
@@ -858,9 +861,11 @@ body{
 body[data-ds-dark-theme]{
   color-scheme:dark;
   --dut-paper:#0b0d10;
-  --dut-paper-2:#12161b;
-  --dut-paper-3:#1a2027;
+  --dut-paper-2:#14181d;
+  --dut-paper-3:#1e252c;
   --dut-ink:#e8ecef;
+  --dut-on-ink:#101418;
+  --dut-code:#171d24;
   --dut-text-1:#f2f5f3;
   --dut-text-2:#b9c3ca;
   --dut-text-3:#7f8d97;
@@ -868,13 +873,15 @@ body[data-ds-dark-theme]{
   --dut-btn-fg:#101418;
   --dut-magenta:#ff3d9a;
   --dut-magenta-soft:rgba(255,61,154,.16);
-  --dut-hover:rgba(232,236,239,.08);
-  --dut-hover-accent:rgba(255,61,154,.18);
+  --dut-hover:rgba(255,61,154,.13);
+  --dut-active:rgba(255,61,154,.22);
+  --dut-sel-bg:rgba(255,61,154,.45);
+  --dut-sel-fg:#ffffff;
   --dut-faint:rgba(255,255,255,.07);
   --dut-scroll-1:#2a3138;
   --dut-scroll-2:#3a444d;
   --dut-elev:#1f262c;
-  --dut-bubble:#18200a;
+  --dut-bubble:#2a1220;
   --dut-shadow:#000000;
   --dut-drop:rgba(39,39,48,.7);
   --dut-error:var(--dsw-static-red-400);
@@ -884,7 +891,13 @@ body[data-ds-dark-theme]{
   --dut-success-3:var(--dsw-static-green-900);
   --dut-warn-3:var(--dsw-static-amber-900);
 }
-::selection{background:var(--dut-lime);color:#101418}
+::selection{background:var(--dut-sel-bg);color:var(--dut-sel-fg)}
+/* table header: the screenshot's ink header strip with lime type (light) /
+   inverted in dark; plain rules so the Claude table style can still win */
+div[data-slot="conversation.chat.node"] table th{
+  background:var(--dut-ink);
+  color:var(--dut-on-ink);
+}
 div[data-slot="conversation.chat.node"] pre{
   border:2px solid var(--dut-ink) !important;
   border-radius:10px !important;
