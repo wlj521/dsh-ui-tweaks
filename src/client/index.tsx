@@ -712,8 +712,10 @@ body:not(#dsh-ui-tweaks-theme-scope){
   --dut-magenta-soft:rgba(230,0,126,.12);
   --dut-hover:rgba(230,0,126,.07);
   --dut-active:rgba(230,0,126,.13);
-  --dut-sel-bg:#dcff4d;
-  --dut-sel-fg:#101418;
+  /* the user bubble is pale pink here, so a wine-red selection stays obvious;
+     lime would read as just another inline-code chip */
+  --dut-sel-bg:#8c1c3f;
+  --dut-sel-fg:#ffffff;
   --dut-faint:rgba(0,0,0,.06);
   --dut-scroll-1:#e3e6ea;
   --dut-scroll-2:#c8cdd3;
@@ -889,6 +891,12 @@ div[data-slot="conversation.chat.node"] :not(pre)>code{
   border:none !important;
   border-radius:6px !important;
   padding:1px 6px !important;
+}
+/* dark scheme selects text in solid lime, so the code chip drops to a lime
+   tint with lime type: still reads as code, no longer looks selected */
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[data-slot="conversation.chat.node"] :not(pre)>code{
+  background:rgba(220,255,77,.16) !important;
+  color:var(--dut-lime-soft) !important;
 }
 /* composer card: white framed sticker (hard shadow, ink border) */
 div[data-composer-card]{
