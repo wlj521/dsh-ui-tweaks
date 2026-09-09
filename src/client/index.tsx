@@ -944,6 +944,14 @@ button[aria-label="新建会话"]:hover,button[aria-label="New session"]:hover{b
 .dut-panel{border:2px solid var(--dut-ink) !important;box-shadow:5px 5px 0 var(--dut-shadow) !important}
 .dut-seg button.dut-seg-active{background:var(--dut-lime) !important;color:#101418 !important}
 .dut-btn.dut-btn-active{background:var(--dut-lime) !important;color:#101418 !important;border-color:var(--dut-ink) !important}
+/* The host draws every hairline at 0.5px (borders and the box-shadow
+   elevation stroke); on 1x displays they antialias to a washed mid-gray that
+   reads broken against the poster's bold ink. Lift them all to a full 1px —
+   style and color are untouched, so border:none stays invisible, the JSON
+   tree's ::before triangles are out of reach of the universal selector, and
+   the skin's own 2px sticker rules win back on specificity. */
+body,body *{border-width:1px !important}
+body,body *{--dsw-elevation-stroke:0 0 0 1px var(--dsw-elevation-stroke-color)}
 `
 
 function buildRuntimeCss(value: ResolvedTweaks): string {
