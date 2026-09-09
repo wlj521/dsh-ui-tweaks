@@ -21,7 +21,7 @@ A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH)
 
 - **Code font size (px)** — absolute 8–32px, default 13 (DSH's stock code-block size at a 16px body); applies to code blocks, with inline code following proportionally. The legacy percentage (`codeFontScale`) stays compatible and is overridden once a px value is set. Message text keeps DSH's stock sizing.
 - **Table style** — choose `Default` or the **Claude Desktop** look (light-gray rounded cell cards with small gaps, no borders; cells share the inline-code background; header not bold).
-- **Theme (single choice in Layout, stock look by default)** — choose `Default` or **Neon cyan**: a dark fluorescent-cyan skin (buttons, links and selections follow the theme tokens automatically, code blocks get a cyan glow), applied live. Future skins (magenta, yellow-black, …) will be added as further options the same way.
+- **Theme (single choice in Layout, stock look by default)** — choose `Default` or **Neon lime**: a white poster skin (ink-black hairlines, lime highlights, magenta action accent; buttons, links and selections follow the theme tokens automatically, code blocks get a hard offset shadow), applied live. Future skins will be added as further options the same way.
 - **Timeline (single choice in Features)** — one switch, two options:
   - **Native (default)** — DSH's built-in turn rail (the row of small dots beside the messages), the stock behavior.
   - **Web (classic)** — the v0.11 classic right-side navigation rail, restored: vertically centered on the message area's right edge, a thin line strip when collapsed, a 240px panel on hover (message previews + current-position highlight), a per-item detail bubble with timestamp, and **click to jump** (deep history pages in automatically before landing, with a landing self-check); wheel over the rail scrubs clipped items into reach. Data comes from the server-side `dshChatTimeline` session projection (every user message, independent of the browser's loaded window); sessions with fewer than two user messages hide it. On the web option the native turn rail is hidden with one theme-independent CSS rule (matching its `--turn-natural-height` inline variable), so the two never appear together.
@@ -49,7 +49,7 @@ All changes apply **live** — no reload needed. The same values can be hand-edi
 ui-tweaks:
   tableStyle: claude
   timelineStyle: web            # defaults to native (DSH's built-in turn rail); web is the classic web timeline
-  themeStyle: neon-cyan         # defaults to default (DSH's stock look); neon-cyan is the fluorescent-cyan skin
+  themeStyle: neon-lime           # defaults to default (DSH's stock look); neon-lime is the fluorescent-lime skin
   gitBarEnabled: true     # defaults to false (off); set true to enable GitBar
   archiveManagerEnabled: true   # defaults to false (off); set true to show the Archive page
   initCommandEnabled: true      # defaults to false (off); set true to register the /init slash command

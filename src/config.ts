@@ -43,7 +43,7 @@ export interface UITweaksConfig {
    * any other value applies that skin live through the runtime stylesheet.
    * Defaults to `'default'`.
    */
-  themeStyle?: 'default' | 'neon-cyan'
+  themeStyle?: 'default' | 'neon-lime'
   /**
    * Master switch for the web-search feature: when on, a dedicated "搜索"
    * Settings page appears (engine picker + per-engine API keys, stored in
@@ -139,7 +139,7 @@ export type BingMarket = (typeof BING_MARKET_OPTIONS)[number]
 export const DEFAULT_TIMELINE_STYLE: 'native' | 'web' = 'native'
 
 /** The theme defaults to DSH's stock look — no overrides emitted. */
-export const DEFAULT_THEME_STYLE: 'default' | 'neon-cyan' = 'default'
+export const DEFAULT_THEME_STYLE: 'default' | 'neon-lime' = 'default'
 
 /** GitBar defaults to off; users turn it on in Settings. */
 export const DEFAULT_GITBAR_ENABLED = false
@@ -175,7 +175,7 @@ export const Config: Schema<UITweaksConfig> = z.object({
   codeFontSize: z.number().min(MIN_CODE_FONT_SIZE).max(MAX_CODE_FONT_SIZE),
   tableStyle: z.union(['default', 'claude'] as const).default('default'),
   timelineStyle: z.union(['native', 'web'] as const).default(DEFAULT_TIMELINE_STYLE),
-  themeStyle: z.union(['default', 'neon-cyan'] as const).default(DEFAULT_THEME_STYLE),
+  themeStyle: z.union(['default', 'neon-lime'] as const).default(DEFAULT_THEME_STYLE),
   searchEnabled: z.boolean().default(DEFAULT_SEARCH_ENABLED),
   searchEngine: z.union(['bing', 'ddg', 'exa', 'tavily', 'keenable', 'perplexity', 'deepseek'] as const).default(DEFAULT_SEARCH_ENGINE),
   bingMarket: z.union(BING_MARKET_OPTIONS).default(DEFAULT_BING_MARKET),
@@ -203,7 +203,7 @@ export interface ResolvedUITweaksConfig {
   /** Which conversation timeline is shown: DSH's native rail or the plugin web rail. */
   timelineStyle: 'native' | 'web'
   /** Conversation theme: stock look or one of the plugin skins. */
-  themeStyle: 'default' | 'neon-cyan'
+  themeStyle: 'default' | 'neon-lime'
   /** Whether the web-search feature (Settings page + provider takeover) is on. */
   searchEnabled: boolean
   /** Preferred web-search engine id. */

@@ -62,7 +62,7 @@ interface TweaksValue {
   /** Which timeline to show: 'native' (DSH built-in rail) or 'web' (plugin classic rail). Keep in sync with src/config.ts. */
   timelineStyle?: 'native' | 'web'
   /** Conversation theme: 'default' keeps the stock look; any other value applies that skin. Keep in sync with src/config.ts. */
-  themeStyle?: 'default' | 'neon-cyan'
+  themeStyle?: 'default' | 'neon-lime'
   /** Preferred web-search engine (bing | ddg | exa | tavily | keenable | perplexity | deepseek). */
   searchEngine?: string
   /** Bing market code (e.g. zh-CN). */
@@ -100,7 +100,7 @@ interface ResolvedTweaks {
   codeFontSize: number
   tableStyle: 'default' | 'claude'
   timelineStyle: 'native' | 'web'
-  themeStyle: 'default' | 'neon-cyan'
+  themeStyle: 'default' | 'neon-lime'
   searchEngine: string
   bingMarket: string
   gitBarEnabled: boolean
@@ -145,9 +145,9 @@ const en = {
   timelineNative: 'Native',
   timelineWeb: 'Web (classic)',
   theme: 'Theme',
-  themeHint: 'Conversation skin. Default keeps DSH\u2019s stock look; Neon cyan is a dark fluorescent-cyan skin applied live.',
+  themeHint: 'Conversation skin. Default keeps DSH\u2019s stock look; Neon lime is a white poster skin with ink-black hairlines, lime highlights and a magenta action accent, applied live.',
   themeDefault: 'Default',
-  themeNeonCyan: 'Neon cyan',
+  themeNeonLime: 'Neon lime',
   sectionSearch: 'Web search',
   searchOn: 'On',
   searchOff: 'Off',
@@ -388,9 +388,9 @@ const zh: Record<LocaleKey, string> = {
   timelineNative: '原生',
   timelineWeb: '网页（经典）',
   theme: '主题',
-  themeHint: '对话皮肤。默认保持 DSH 原生外观；荧光青是深色荧光青皮肤，切换即时生效。',
+  themeHint: '对话皮肤。默认保持 DSH 原生外观；荧光黄是白底海报风（黑粗线 + 荧光黄高亮 + 品红点缀），切换即时生效。',
   themeDefault: '默认',
-  themeNeonCyan: '荧光青',
+  themeNeonLime: '荧光黄',
   sectionSearch: '网络搜索',
   searchOn: '开',
   searchOff: '关',
@@ -630,7 +630,7 @@ function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
     codeFontSize,
     tableStyle: value?.tableStyle === 'claude' ? 'claude' : 'default',
     timelineStyle: value?.timelineStyle === 'web' ? 'web' : 'native',
-    themeStyle: value?.themeStyle === 'neon-cyan' ? 'neon-cyan' : 'default',
+    themeStyle: value?.themeStyle === 'neon-lime' ? 'neon-lime' : 'default',
     searchEngine: value?.searchEngine ?? 'bing',
     bingMarket: value?.bingMarket ?? 'zh-CN',
     gitBarEnabled: value?.gitBarEnabled ?? false,
@@ -724,32 +724,46 @@ div[data-slot="conversation.chat.node"] table pre{
 `
 
 /**
- * Fluorescent-cyan skin: near-black blue-tinted surfaces, cyan-white type,
- * and a neon accent riding the same DSW alias tokens the host paints with —
+ * Fluorescent-lime poster skin (Bilibili tech-video look): paper-white
+ * surfaces, ink-black type and hairlines, lime highlights with a magenta
+ * action accent — all riding the same DSW alias tokens the host paints with,
  * so buttons, links, selections and the plugin's own tinted controls follow
- * automatically. Opinionated dark look in both host schemes; 'default' emits
- * nothing and stays stock. Future skins add one union member plus one block
- * like this.
+ * automatically. Hard offset shadows (no blur) on code blocks and the
+ * plugin's settings panels. Opinionated light look in both host schemes;
+ * 'default' emits nothing and stays stock. Future skins add one union member
+ * plus one block like this.
  */
-const NEON_CYAN_CSS = `
+const NEON_LIME_CSS = `
 body{
-  --dsw-alias-bg-base:#04070c;
-  --dsw-alias-bg-layer-1:#080d15;
-  --dsw-alias-bg-layer-2:#0d1522;
-  --dsw-alias-label-primary:#d8f7ff;
-  --dsw-alias-label-secondary:#8fb8c6;
-  --dsw-alias-label-tertiary:#54707d;
-  --dsw-alias-border-l1:rgba(0,229,255,.14);
-  --dsw-alias-border-l2:rgba(0,229,255,.30);
-  --dsw-alias-state-business-primary:#00e5ff;
-  --dsw-alias-markdown-inline-code:rgba(0,229,255,.13);
-  --dsw-alias-interactive-bg-hover:rgba(0,229,255,.10);
+  --dsw-alias-bg-base:#ffffff;
+  --dsw-alias-bg-layer-1:#ffffff;
+  --dsw-alias-bg-layer-2:#f2f5f3;
+  --dsw-alias-label-primary:#101418;
+  --dsw-alias-label-secondary:#3d4750;
+  --dsw-alias-label-tertiary:#7a8791;
+  --dsw-alias-border-l1:#101418;
+  --dsw-alias-border-l2:#101418;
+  --dsw-alias-state-business-primary:#e6007e;
+  --dsw-alias-markdown-inline-code:#dcff4d;
+  --dsw-alias-interactive-bg-hover:rgba(230,0,126,.08);
 }
-::selection{background:rgba(0,229,255,.35)}
+::selection{background:#c6ff00;color:#101418}
 div[data-slot="conversation.chat.node"] pre{
-  border:1px solid rgba(0,229,255,.28) !important;
-  box-shadow:0 0 14px rgba(0,229,255,.13),inset 0 0 18px rgba(0,229,255,.04) !important;
+  border:2px solid #101418 !important;
+  border-radius:10px !important;
+  box-shadow:5px 5px 0 #101418 !important;
+  background:#fff !important;
 }
+div[data-slot="conversation.chat.node"] :not(pre)>code{
+  background:#dcff4d !important;
+  color:#101418 !important;
+  border:1px solid #101418 !important;
+  border-radius:6px !important;
+  padding:1px 6px !important;
+}
+.dut-panel{border:2px solid #101418 !important;box-shadow:5px 5px 0 #101418 !important}
+.dut-seg button.dut-seg-active{background:#c6ff00 !important;color:#101418 !important}
+.dut-btn.dut-btn-active{background:#c6ff00 !important;color:#101418 !important;border-color:#101418 !important}
 `
 
 function buildRuntimeCss(value: ResolvedTweaks): string {
@@ -776,8 +790,8 @@ function buildRuntimeCss(value: ResolvedTweaks): string {
   if (value.timelineStyle === 'web') {
     rules.push('nav[style*="--turn-natural-height"]{display:none !important}')
   }
-  if (value.themeStyle === 'neon-cyan') {
-    rules.push(NEON_CYAN_CSS)
+  if (value.themeStyle === 'neon-lime') {
+    rules.push(NEON_LIME_CSS)
   }
   return rules.join('\n')
 }
@@ -1095,7 +1109,7 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     void controller.set('preciseCacheHitEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
-  const setTheme = (value: 'default' | 'neon-cyan'): void => {
+  const setTheme = (value: 'default' | 'neon-lime'): void => {
     void controller.set('themeStyle', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
@@ -1211,7 +1225,7 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
             <span className="dut-label">{t('theme')}<Hint text={t('themeHint')} /></span>
             <div className="dut-controls">
               <div className="dut-seg">
-                <button type="button" className={resolved.themeStyle === 'neon-cyan' ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setTheme('neon-cyan') }}>{t('themeNeonCyan')}</button>
+                <button type="button" className={resolved.themeStyle === 'neon-lime' ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setTheme('neon-lime') }}>{t('themeNeonLime')}</button>
                 <button type="button" className={resolved.themeStyle === 'default' ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setTheme('default') }}>{t('themeDefault')}</button>
               </div>
             </div>
