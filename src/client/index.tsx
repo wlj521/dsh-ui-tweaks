@@ -145,7 +145,7 @@ const en = {
   timelineNative: 'Native',
   timelineWeb: 'Web (classic)',
   theme: 'Theme',
-  themeHint: 'Conversation skin. Default keeps DSH\u2019s stock look; Neon lime is a white poster skin with ink-black hairlines, lime highlights and a magenta action accent, applied live.',
+  themeHint: 'Conversation skin. Default keeps DSH\u2019s stock look; Neon lime is a poster skin — paper-white with ink-black hairlines in light mode, near-black with light hairlines in dark mode, lime highlights and a magenta action accent, applied live.',
   themeDefault: 'Default',
   themeNeonLime: 'Neon lime',
   sectionSearch: 'Web search',
@@ -388,7 +388,7 @@ const zh: Record<LocaleKey, string> = {
   timelineNative: '原生',
   timelineWeb: '网页（经典）',
   theme: '主题',
-  themeHint: '对话皮肤。默认保持 DSH 原生外观；荧光黄是白底海报风（黑粗线 + 荧光黄高亮 + 品红点缀），切换即时生效。',
+  themeHint: '对话皮肤。默认保持 DSH 原生外观；荧光黄是海报风双方案——浅色下纸白底黑粗线，深色下近黑底浅粗线，都配荧光黄高亮 + 品红点缀，切换即时生效。',
   themeDefault: '默认',
   themeNeonLime: '荧光黄',
   sectionSearch: '网络搜索',
@@ -724,140 +724,198 @@ div[data-slot="conversation.chat.node"] table pre{
 `
 
 /**
- * Fluorescent-lime poster skin (Bilibili tech-video look): paper-white
- * surfaces, ink-black type and hairlines, lime highlights with a magenta
- * action accent — all riding the same DSW alias tokens the host paints with,
- * so buttons, links, selections and the plugin's own tinted controls follow
- * automatically. Hard offset shadows (no blur) on code blocks, the composer
- * card and the plugin's settings panels.
+ * Fluorescent-lime poster skin (Bilibili tech-video look), in two schemes:
+ * the paper-white poster (ink-black hairlines, lime highlights, magenta
+ * action accent) in light mode, and its inverted twin in dark mode —
+ * near-black paper, light-ink hairlines, the same lime/magenta stickers.
  *
- * The selector covers `body[data-ds-dark-theme]` too: the host's dark block
- * ties a plain `body` rule on specificity, and the sidebar/composer paint
- * from `--dsw-specific-*` tokens — both are pinned here so the poster look
- * holds in either host scheme. 'default' emits nothing and stays stock.
- * Future skins add one union member plus one block like this.
+ * Every colour is a `--dut-*` design variable re-pointed per scheme, and the
+ * DSW alias tokens map onto those variables in one place, so buttons, links,
+ * selections, the sidebar and the plugin's own tinted controls follow
+ * automatically in either host scheme. Hard offset shadows (no blur) on code
+ * blocks, the composer card and the plugin's settings panels. 'default' emits
+ * nothing and stays stock. Future skins add one union member plus one block.
  */
 const NEON_LIME_CSS = `
-body,body[data-ds-dark-theme]{
+body{
   color-scheme:light;
-  --dsw-alias-bg-base:#ffffff;
-  --dsw-alias-bg-layer-1:#ffffff;
-  --dsw-alias-bg-layer-2:#f2f5f3;
-  --dsw-alias-bg-layer-3:#e9edea;
+  --dut-paper:#ffffff;
+  --dut-paper-2:#f2f5f3;
+  --dut-paper-3:#e9edea;
+  --dut-ink:#101418;
+  --dut-text-1:#101418;
+  --dut-text-2:#3d4750;
+  --dut-text-3:#7a8791;
+  --dut-text-4:#9aa4ad;
+  --dut-btn-fg:#ffffff;
+  --dut-lime:#c6ff00;
+  --dut-lime-soft:#dcff4d;
+  --dut-magenta:#e6007e;
+  --dut-magenta-soft:rgba(230,0,126,.12);
+  --dut-hover:rgba(16,20,24,.06);
+  --dut-hover-accent:rgba(230,0,126,.14);
+  --dut-faint:rgba(0,0,0,.06);
+  --dut-scroll-1:#dfe4df;
+  --dut-scroll-2:#c9d1cb;
+  --dut-elev:#101418;
+  --dut-bubble:#edffb8;
+  --dut-shadow:#101418;
+  --dut-drop:rgba(255,255,255,.7);
+  --dut-error:var(--dsw-static-red-600);
+  --dut-error-2:var(--dsw-static-red-400);
+  --dut-success:var(--dsw-static-green-500);
+  --dut-success-2:var(--dsw-static-green-400);
+  --dut-success-3:var(--dsw-static-green-100);
+  --dut-warn-3:var(--dsw-static-amber-100);
+  --dsw-alias-bg-base:var(--dut-paper);
+  --dsw-alias-bg-layer-1:var(--dut-paper);
+  --dsw-alias-bg-layer-2:var(--dut-paper-2);
+  --dsw-alias-bg-layer-3:var(--dut-paper-3);
   --dsw-alias-bg-mask-1:rgba(0,0,0,.24);
   --dsw-alias-bg-mask-2:rgba(0,0,0,.12);
   --dsw-alias-bg-mask-3:rgba(0,0,0,.48);
   --dsw-alias-bg-mask-photo:rgba(0,0,0,.88);
-  --dsw-alias-bg-mask-drop:rgba(255,255,255,.7);
-  --dsw-alias-bg-module-platform:#edf0ed;
-  --dsw-alias-bg-multi-select:#eef1ef;
-  --dsw-alias-bg-overlay:#e4e9e4;
-  --dsw-alias-bg-skeleton:rgba(0,0,0,.06);
+  --dsw-alias-bg-mask-drop:var(--dut-drop);
+  --dsw-alias-bg-module-platform:var(--dut-paper-3);
+  --dsw-alias-bg-multi-select:var(--dut-paper-2);
+  --dsw-alias-bg-overlay:var(--dut-paper-3);
+  --dsw-alias-bg-skeleton:var(--dut-faint);
   --dsw-alias-border-inverted:rgba(0,0,0,0);
   --dsw-alias-border-inverted2:rgba(0,0,0,0);
-  --dsw-alias-border-l1:#101418;
-  --dsw-alias-border-l2:#101418;
-  --dsw-alias-border-l2-darkmode-thin:#101418;
-  --dsw-alias-border-l3:#101418;
-  --dsw-alias-border-l4:#101418;
-  --dsw-alias-brand-primary:#101418;
-  --dsw-alias-brand-primary-invert:#ffffff;
-  --dsw-alias-brand-text:#101418;
-  --dsw-alias-button-contrast-fill:#3d4750;
-  --dsw-alias-button-elevated-fill:#ffffff;
-  --dsw-alias-button-floating-fill:#ffffff;
-  --dsw-alias-button-floating-hover:#eef1ef;
-  --dsw-alias-button-ghost-active-border:#101418;
-  --dsw-alias-button-ghost-active-fill:#e4e9e4;
-  --dsw-alias-button-ghost-active-hover:#dfe4df;
-  --dsw-alias-button-info-fill:#e6007e;
-  --dsw-alias-button-info-hover:#c00068;
-  --dsw-alias-button-primary-dimmed:#eef1ef;
-  --dsw-alias-button-primary-fill:#101418;
-  --dsw-alias-button-primary-hover:#000000;
-  --dsw-alias-interactive-bg-active:rgba(16,20,24,.10);
-  --dsw-alias-interactive-bg-hover:rgba(16,20,24,.06);
-  --dsw-alias-interactive-bg-hover-accent:rgba(230,0,126,.14);
+  --dsw-alias-border-l1:var(--dut-ink);
+  --dsw-alias-border-l2:var(--dut-ink);
+  --dsw-alias-border-l2-darkmode-thin:var(--dut-ink);
+  --dsw-alias-border-l3:var(--dut-ink);
+  --dsw-alias-border-l4:var(--dut-ink);
+  --dsw-alias-brand-primary:var(--dut-text-1);
+  --dsw-alias-brand-primary-invert:var(--dut-paper);
+  --dsw-alias-brand-text:var(--dut-text-1);
+  --dsw-alias-button-contrast-fill:var(--dut-text-2);
+  --dsw-alias-button-elevated-fill:var(--dut-paper);
+  --dsw-alias-button-floating-fill:var(--dut-paper);
+  --dsw-alias-button-floating-hover:var(--dut-paper-2);
+  --dsw-alias-button-ghost-active-border:var(--dut-ink);
+  --dsw-alias-button-ghost-active-fill:var(--dut-paper-3);
+  --dsw-alias-button-ghost-active-hover:var(--dut-paper-3);
+  --dsw-alias-button-info-fill:var(--dut-magenta);
+  --dsw-alias-button-info-hover:var(--dut-magenta);
+  --dsw-alias-button-primary-dimmed:var(--dut-paper-2);
+  --dsw-alias-button-primary-fill:var(--dut-text-1);
+  --dsw-alias-button-primary-hover:var(--dut-text-1);
+  --dsw-alias-interactive-bg-active:var(--dut-hover);
+  --dsw-alias-interactive-bg-hover:var(--dut-hover);
+  --dsw-alias-interactive-bg-hover-accent:var(--dut-hover-accent);
   --dsw-alias-interactive-bg-hover-danger:rgba(236,19,19,.05);
-  --dsw-alias-interactive-bg-hover-solid:#e4e9e4;
-  --dsw-alias-label-caption:#9aa4ad;
-  --dsw-alias-label-dimmed:#d7dce1;
-  --dsw-alias-label-primary:#101418;
-  --dsw-alias-label-primary-bluish:#101418;
-  --dsw-alias-label-primary-dimmed:#101418;
-  --dsw-alias-label-primary-foreground:#ffffff;
-  --dsw-alias-label-primary-inverted:#ffffff;
-  --dsw-alias-label-secondary:#3d4750;
-  --dsw-alias-label-tertiary:#7a8791;
-  --dsw-alias-link:#e6007e;
-  --dsw-alias-markdown-citation:#eef1ef;
-  --dsw-alias-markdown-code-block:#f7f9f7;
-  --dsw-alias-markdown-code-block-banner:#eef1ef;
-  --dsw-alias-markdown-code-segment-selected:#ffffff;
-  --dsw-alias-markdown-code-segment-unselected:#eef1ef;
-  --dsw-alias-markdown-inline-code:#dcff4d;
-  --dsw-alias-markdown-placeholder:#eef1ef;
-  --dsw-alias-markdown-tag:#eef1ef;
-  --dsw-alias-scrollbar-bg-l1:#dfe4df;
-  --dsw-alias-scrollbar-bg-l2:#dfe4df;
-  --dsw-alias-scrollbar-hover-l1:#c9d1cb;
-  --dsw-alias-scrollbar-hover-l2:#c9d1cb;
-  --dsw-alias-state-business-primary:#e6007e;
-  --dsw-alias-state-business-tertiary:rgba(230,0,126,.12);
-  --dsw-alias-state-error-primary:var(--dsw-static-red-600);
-  --dsw-alias-state-error-secondary:var(--dsw-static-red-400);
-  --dsw-alias-state-success-primary:var(--dsw-static-green-500);
-  --dsw-alias-state-success-secondary:var(--dsw-static-green-400);
-  --dsw-alias-state-success-tertiary:var(--dsw-static-green-100);
+  --dsw-alias-interactive-bg-hover-solid:var(--dut-paper-3);
+  --dsw-alias-label-caption:var(--dut-text-4);
+  --dsw-alias-label-dimmed:var(--dut-text-4);
+  --dsw-alias-label-primary:var(--dut-text-1);
+  --dsw-alias-label-primary-bluish:var(--dut-text-1);
+  --dsw-alias-label-primary-dimmed:var(--dut-text-1);
+  --dsw-alias-label-primary-foreground:var(--dut-btn-fg);
+  --dsw-alias-label-primary-inverted:var(--dut-btn-fg);
+  --dsw-alias-label-secondary:var(--dut-text-2);
+  --dsw-alias-label-tertiary:var(--dut-text-3);
+  --dsw-alias-link:var(--dut-magenta);
+  --dsw-alias-markdown-citation:var(--dut-paper-2);
+  --dsw-alias-markdown-code-block:var(--dut-paper-2);
+  --dsw-alias-markdown-code-block-banner:var(--dut-paper-3);
+  --dsw-alias-markdown-code-segment-selected:var(--dut-paper);
+  --dsw-alias-markdown-code-segment-unselected:var(--dut-paper-2);
+  --dsw-alias-markdown-inline-code:var(--dut-lime-soft);
+  --dsw-alias-markdown-placeholder:var(--dut-paper-2);
+  --dsw-alias-markdown-tag:var(--dut-paper-2);
+  --dsw-alias-scrollbar-bg-l1:var(--dut-scroll-1);
+  --dsw-alias-scrollbar-bg-l2:var(--dut-scroll-1);
+  --dsw-alias-scrollbar-hover-l1:var(--dut-scroll-2);
+  --dsw-alias-scrollbar-hover-l2:var(--dut-scroll-2);
+  --dsw-alias-state-business-primary:var(--dut-magenta);
+  --dsw-alias-state-business-tertiary:var(--dut-magenta-soft);
+  --dsw-alias-state-error-primary:var(--dut-error);
+  --dsw-alias-state-error-secondary:var(--dut-error-2);
+  --dsw-alias-state-success-primary:var(--dut-success);
+  --dsw-alias-state-success-secondary:var(--dut-success-2);
+  --dsw-alias-state-success-tertiary:var(--dut-success-3);
   --dsw-alias-state-warn-label:var(--dsw-static-amber-600);
   --dsw-alias-state-warn-primary:var(--dsw-static-amber-500);
   --dsw-alias-state-warn-secondary:var(--dsw-static-amber-400);
-  --dsw-alias-state-warn-tertiary:var(--dsw-static-amber-100);
-  --dsw-alias-toast-bg:#101418;
-  --dsw-alias-tooltip-bg:#101418;
-  --dsw-specific-bubble:#edffb8;
-  --dsw-specific-bubble-highlight:#dcff4d;
-  --dsw-specific-input-major:#ffffff;
-  --dsw-specific-login-input:#f2f5f3;
-  --dsw-specific-selector:#eef1ef;
-  --dsw-specific-sidebar-fill:#ffffff;
-  --dsw-specific-sidebar-nav-item-active:#dcff4d;
-  --dsw-specific-sidebar-nav-item-active-accent:#c6ff00;
-  --dsw-specific-sidebar-nav-item-hover:#f2f5f3;
-  --dsw-specific-tip:#eef1ef;
+  --dsw-alias-state-warn-tertiary:var(--dut-warn-3);
+  --dsw-alias-toast-bg:var(--dut-elev);
+  --dsw-alias-tooltip-bg:var(--dut-elev);
+  --dsw-specific-bubble:var(--dut-bubble);
+  --dsw-specific-bubble-highlight:var(--dut-lime-soft);
+  --dsw-specific-input-major:var(--dut-paper);
+  --dsw-specific-login-input:var(--dut-paper-2);
+  --dsw-specific-selector:var(--dut-paper-2);
+  --dsw-specific-sidebar-fill:var(--dut-paper);
+  --dsw-specific-sidebar-nav-item-active:var(--dut-lime-soft);
+  --dsw-specific-sidebar-nav-item-active-accent:var(--dut-lime);
+  --dsw-specific-sidebar-nav-item-hover:var(--dut-paper-2);
+  --dsw-specific-tip:var(--dut-paper-2);
 }
-::selection{background:#c6ff00;color:#101418}
+/* Dark scheme: re-point the design variables only — every alias mapping and
+   element rule above follows through var() indirection. */
+body[data-ds-dark-theme]{
+  color-scheme:dark;
+  --dut-paper:#0b0d10;
+  --dut-paper-2:#12161b;
+  --dut-paper-3:#1a2027;
+  --dut-ink:#e8ecef;
+  --dut-text-1:#f2f5f3;
+  --dut-text-2:#b9c3ca;
+  --dut-text-3:#7f8d97;
+  --dut-text-4:#66727c;
+  --dut-btn-fg:#101418;
+  --dut-magenta:#ff3d9a;
+  --dut-magenta-soft:rgba(255,61,154,.16);
+  --dut-hover:rgba(232,236,239,.08);
+  --dut-hover-accent:rgba(255,61,154,.18);
+  --dut-faint:rgba(255,255,255,.07);
+  --dut-scroll-1:#2a3138;
+  --dut-scroll-2:#3a444d;
+  --dut-elev:#1f262c;
+  --dut-bubble:#18200a;
+  --dut-shadow:#000000;
+  --dut-drop:rgba(39,39,48,.7);
+  --dut-error:var(--dsw-static-red-400);
+  --dut-error-2:var(--dsw-static-red-400);
+  --dut-success:var(--dsw-static-green-400);
+  --dut-success-2:var(--dsw-static-green-400);
+  --dut-success-3:var(--dsw-static-green-900);
+  --dut-warn-3:var(--dsw-static-amber-900);
+}
+::selection{background:var(--dut-lime);color:#101418}
 div[data-slot="conversation.chat.node"] pre{
-  border:2px solid #101418 !important;
+  border:2px solid var(--dut-ink) !important;
   border-radius:10px !important;
-  box-shadow:5px 5px 0 #101418 !important;
-  background:#fff !important;
+  box-shadow:5px 5px 0 var(--dut-shadow) !important;
+  background:var(--dut-paper) !important;
 }
 div[data-slot="conversation.chat.node"] :not(pre)>code{
-  background:#dcff4d !important;
+  background:var(--dut-lime-soft) !important;
   color:#101418 !important;
-  border:1px solid #101418 !important;
+  border:1px solid var(--dut-ink) !important;
   border-radius:6px !important;
   padding:1px 6px !important;
 }
-/* composer card: black frame + hard shadow so the input reads as one sticker */
+/* composer card: framed sticker so the input reads as one solid card */
 div[data-composer-card]{
-  border:2px solid #101418 !important;
-  box-shadow:5px 5px 0 #101418 !important;
-  background:#fff !important;
+  border:2px solid var(--dut-ink) !important;
+  box-shadow:5px 5px 0 var(--dut-shadow) !important;
+  background:var(--dut-paper) !important;
 }
 /* sidebar new-session button (zh + en aria-labels): lime sticker */
 button[aria-label="新建会话"],button[aria-label="New session"]{
-  background:#c6ff00 !important;
+  background:var(--dut-lime) !important;
   color:#101418 !important;
-  border:2px solid #101418 !important;
+  border:2px solid var(--dut-ink) !important;
   border-radius:10px !important;
-  box-shadow:3px 3px 0 #101418 !important;
+  box-shadow:3px 3px 0 var(--dut-shadow) !important;
 }
 button[aria-label="新建会话"]:hover,button[aria-label="New session"]:hover{background:#d4ff33 !important;color:#101418 !important}
-.dut-panel{border:2px solid #101418 !important;box-shadow:5px 5px 0 #101418 !important}
-.dut-seg button.dut-seg-active{background:#c6ff00 !important;color:#101418 !important}
-.dut-btn.dut-btn-active{background:#c6ff00 !important;color:#101418 !important;border-color:#101418 !important}
+.dut-panel{border:2px solid var(--dut-ink) !important;box-shadow:5px 5px 0 var(--dut-shadow) !important}
+.dut-seg button.dut-seg-active{background:var(--dut-lime) !important;color:#101418 !important}
+.dut-btn.dut-btn-active{background:var(--dut-lime) !important;color:#101418 !important;border-color:var(--dut-ink) !important}
 `
 
 function buildRuntimeCss(value: ResolvedTweaks): string {
