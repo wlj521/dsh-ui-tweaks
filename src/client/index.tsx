@@ -926,8 +926,8 @@ export class SettingsClient {
   }
 }
 
-/** Required client services: slots (settings.section), locale, sessions (git bar, archive, notifier), the slash-command registry, the scope-addressed conversation face, and the right-sidebar tab registry (terminal/diff tabs). */
-export const inject = ['slots', 'locale', 'sessions', 'commandUi', 'conversation', 'uiSession', 'sidebarRightTabs']
+/** Required client services: slots (settings.section), locale, sessions (git bar, archive, notifier), the slash-command registry, and the scope-addressed conversation face. The right-sidebar tab registry (terminal/diff tabs) is resolved lazily — older hosts without it still load everything else. */
+export const inject = ['slots', 'locale', 'sessions', 'commandUi', 'conversation', 'uiSession']
 
 /**
  * Hover/focus hint: a small ⓘ next to the field label; the hint text renders
@@ -1491,13 +1491,18 @@ export function apply(ctx: ClientContext): void {
   // type (no address patterns): stage one registers the type with its guide
   // box, stage two the body under the type's id. The terminal reattaches to
   // its persistent host shell on every visit, and the diff tab keeps its
-  // commit band.
+  // commit band. The tab registry is resolved lazily: hosts predating the
+  // right sidebar simply skip these tabs while everything else keeps working.
   ctx.effect(() => {
+    // Optional service: absent on hosts without the right sidebar (and on
+    // plain version skew), in which case this whole effect is a no-op.
+    const tabs = (ctx as unknown as { sidebarRightTabs?: typeof ctx.sidebarRightTabs }).sidebarRightTabs
+    if (tabs === undefined) return () => { /* no right sidebar on this host */ }
     const disposers: Array<() => void> = []
     const sync = (): void => {
       const enabled = controller.getSnapshot().value?.gitBarEnabled === true
       if (enabled && disposers.length === 0) {
-        disposers.push(ctx.sidebarRightTabs.register({
+        disposers.push(tabs.register({
           id: 'dsh-ui-tweaks/terminal',
           kind: 'ui-tweaks-terminal',
           title: () => t('terminal'),
@@ -1509,7 +1514,7 @@ export function apply(ctx: ClientContext): void {
           locale: NS,
           inject: () => ({ controller }),
         }, TerminalPanel)))
-        disposers.push(ctx.sidebarRightTabs.register({
+        disposers.push(tabs.register({
           id: 'dsh-ui-tweaks/diff',
           kind: 'ui-tweaks-diff',
           title: () => t('diffView'),
