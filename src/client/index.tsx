@@ -766,16 +766,16 @@ body:not(#dsh-ui-tweaks-theme-scope){
   --dut-magenta-soft:rgba(230,0,126,.12);
   --dut-hover:rgba(230,0,126,.07);
   --dut-active:rgba(230,0,126,.13);
-  --dut-sel-bg:#ffd0e6;
+  --dut-sel-bg:#c6ff00;
   --dut-sel-fg:#101418;
   --dut-faint:rgba(0,0,0,.06);
   --dut-scroll-1:#e3e6ea;
   --dut-scroll-2:#c8cdd3;
   --dut-elev:#101418;
-  /* the user bubble: a pale tint of the dark scheme's magenta accent
-     (rgb(255,61,154)), same in both schemes — the earlier #ffe4f1 read washed
-     out. Ink text sits on it in dark mode (see the userRow rule below). */
-  --dut-bubble:color-mix(in srgb, #ff3d9a 26%, #ffffff);
+  /* the user bubble: a lighter, still-saturated tone of the accent
+     rgb(255,61,154) — mixing toward white desaturated it into a washed pink.
+     Ink text sits on it in dark mode (see the userRow rule below). */
+  --dut-bubble:#ffb3dd;
   --dut-shadow:#101418;
   --dut-drop:rgba(255,255,255,.7);
   /* Hairlines stay the host's own subtle values: the shipped 0.5px pills and
@@ -903,13 +903,13 @@ body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme]{
   --dut-magenta-soft:rgba(255,61,154,.16);
   --dut-hover:rgba(255,61,154,.16);
   --dut-active:rgba(255,61,154,.26);
-  --dut-sel-bg:rgba(255,61,154,.45);
-  --dut-sel-fg:#ffffff;
+  --dut-sel-bg:#c6ff00;
+  --dut-sel-fg:#101418;
   --dut-faint:rgba(255,255,255,.07);
   --dut-scroll-1:#2a3138;
   --dut-scroll-2:#3a444d;
   --dut-elev:#1f262c;
-  --dut-bubble:color-mix(in srgb, #ff3d9a 26%, #ffffff);
+  --dut-bubble:#ffb3dd;
   /* the hard sticker offset rides the frame's own ink in both schemes: black
      under the white-paper card, white under the near-black one, so the border
      and its offset band read as one shape */
