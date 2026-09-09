@@ -724,24 +724,26 @@ div[data-slot="conversation.chat.node"] table pre{
 `
 
 /**
- * Fluorescent-lime poster skin (Bilibili tech-video look), in two schemes:
- * the paper-white poster (ink-black hairlines, lime highlights, magenta
- * action accent) in light mode, and its inverted twin in dark mode —
- * near-black paper, light-ink hairlines, the same lime/magenta stickers.
+ * Fluorescent-lime poster skin (Bilibili tech-video look), applied uniformly
+ * in both host schemes: paper-white surfaces, ink-black hairlines, lime
+ * highlights with a magenta action accent, hard offset shadows (no blur) on
+ * code blocks, the composer card and the plugin's settings panels. Popovers
+ * and menus (model switcher, open-in-app, stat dialogs, context panel) ride
+ * the same white paper as the conversation, separated by ink strokes.
  *
- * Every colour is a `--dut-*` design variable re-pointed per scheme, and the
- * DSW alias tokens map onto those variables in one place, so buttons, links,
- * selections, the sidebar and the plugin's own tinted controls follow
- * automatically in either host scheme. Hard offset shadows (no blur) on code
- * blocks, the composer card and the plugin's settings panels. 'default' emits
+ * Every colour is a `--dut-*` design variable, and the DSW alias tokens map
+ * onto those variables in one place, so buttons, links, selections, the
+ * sidebar and the plugin's own tinted controls follow automatically.
+ * `color-scheme:light` keeps native controls consistent. 'default' emits
  * nothing and stays stock. Future skins add one union member plus one block.
  */
 const NEON_LIME_CSS = `
-body{
+body,body[data-ds-dark-theme]{
   color-scheme:light;
   --dut-paper:#ffffff;
-  --dut-paper-2:#f4f5f6;
-  --dut-paper-3:#e8eaee;
+  --dut-paper-2:#fafbfc;
+  --dut-paper-3:#ffffff;
+  --dut-pop:#ffffff;
   --dut-ink:#101418;
   --dut-on-ink:#c6ff00;
   --dut-code:#f7f8f9;
@@ -755,10 +757,11 @@ body{
   --dut-magenta:#e6007e;
   --dut-magenta-soft:rgba(230,0,126,.12);
   --dut-hover:rgba(230,0,126,.07);
-  --dut-active:rgba(230,0,126,.13);  --dut-sel-bg:#ffd0e6;
+  --dut-active:rgba(230,0,126,.13);
+  --dut-sel-bg:#ffd0e6;
   --dut-sel-fg:#101418;
   --dut-faint:rgba(0,0,0,.06);
-  --dut-scroll-1:#dfe2e6;
+  --dut-scroll-1:#e3e6ea;
   --dut-scroll-2:#c8cdd3;
   --dut-elev:#101418;
   --dut-bubble:#ffe4f1;
@@ -847,53 +850,19 @@ body{
   --dsw-alias-tooltip-bg:var(--dut-elev);
   --dsw-specific-bubble:var(--dut-bubble);
   --dsw-specific-bubble-highlight:var(--dut-lime-soft);
-  --dsw-specific-input-major:var(--dut-paper);
+  --dsw-specific-input-major:var(--dut-pop);
   --dsw-specific-login-input:var(--dut-paper-2);
-  --dsw-specific-selector:var(--dut-paper-2);
+  --dsw-specific-selector:var(--dut-pop);
+  --dsw-specific-menu:var(--dut-pop);
   --dsw-specific-sidebar-fill:var(--dut-paper);
   --dsw-specific-sidebar-nav-item-active:var(--dut-lime-soft);
   --dsw-specific-sidebar-nav-item-active-accent:var(--dut-lime);
   --dsw-specific-sidebar-nav-item-hover:var(--dut-paper-2);
   --dsw-specific-tip:var(--dut-paper-2);
 }
-/* Dark scheme: re-point the design variables only — every alias mapping and
-   element rule above follows through var() indirection. */
-body[data-ds-dark-theme]{
-  color-scheme:dark;
-  --dut-paper:#0b0d10;
-  --dut-paper-2:#14181d;
-  --dut-paper-3:#1e252c;
-  --dut-ink:#e8ecef;
-  --dut-on-ink:#101418;
-  --dut-code:#171d24;
-  --dut-text-1:#f2f5f3;
-  --dut-text-2:#b9c3ca;
-  --dut-text-3:#7f8d97;
-  --dut-text-4:#66727c;
-  --dut-btn-fg:#101418;
-  --dut-magenta:#ff3d9a;
-  --dut-magenta-soft:rgba(255,61,154,.16);
-  --dut-hover:rgba(255,61,154,.13);
-  --dut-active:rgba(255,61,154,.22);
-  --dut-sel-bg:rgba(255,61,154,.45);
-  --dut-sel-fg:#ffffff;
-  --dut-faint:rgba(255,255,255,.07);
-  --dut-scroll-1:#2a3138;
-  --dut-scroll-2:#3a444d;
-  --dut-elev:#1f262c;
-  --dut-bubble:#2a1220;
-  --dut-shadow:#000000;
-  --dut-drop:rgba(39,39,48,.7);
-  --dut-error:var(--dsw-static-red-400);
-  --dut-error-2:var(--dsw-static-red-400);
-  --dut-success:var(--dsw-static-green-400);
-  --dut-success-2:var(--dsw-static-green-400);
-  --dut-success-3:var(--dsw-static-green-900);
-  --dut-warn-3:var(--dsw-static-amber-900);
-}
 ::selection{background:var(--dut-sel-bg);color:var(--dut-sel-fg)}
-/* table header: the screenshot's ink header strip with lime type (light) /
-   inverted in dark; plain rules so the Claude table style can still win */
+/* table header: the screenshot's ink header strip with lime type; plain rules
+   so the Claude table style can still win */
 div[data-slot="conversation.chat.node"] table th{
   background:var(--dut-ink);
   color:var(--dut-on-ink);
@@ -911,12 +880,17 @@ div[data-slot="conversation.chat.node"] :not(pre)>code{
   border-radius:6px !important;
   padding:1px 6px !important;
 }
-/* composer card: framed sticker so the input reads as one solid card */
+/* composer card: magenta-tinted framed sticker (the screenshot's pink row) */
 div[data-composer-card]{
   border:2px solid var(--dut-ink) !important;
   box-shadow:5px 5px 0 var(--dut-shadow) !important;
-  background:var(--dut-paper) !important;
+  background:var(--dut-bubble) !important;
 }
+/* context-occupancy ring: the stock track/fill both read near-ink on this
+   skin; give the track a quiet gray and the used arc the magenta accent
+   (scoped to the composer's svg so the class-substring match stays safe) */
+div[data-composer-card] svg [class*="track"]{stroke:#d8dce1}
+div[data-composer-card] svg [class*="fill"]{stroke:var(--dut-magenta)}
 /* sidebar new-session button (zh + en aria-labels): lime sticker */
 button[aria-label="新建会话"],button[aria-label="New session"]{
   background:var(--dut-lime) !important;
