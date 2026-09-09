@@ -20,7 +20,7 @@
  * @module dsh-ui-tweaks/git
  */
 
-import { execFile, spawn } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { open, readFile, stat } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -434,41 +434,6 @@ export class GitBackend {
   /** Resolve either target form to a cwd (session id first, then workspace title). */
   resolveTargetCwd(target: { session?: string | undefined; ws?: string | undefined }): string | undefined {
     return this.resolveCwd(target.session) ?? this.resolveWorkspaceCwd(target.ws)
-  }
-
-  /**
-   * Open the project folder in an external app (explorer / editors). The
-   * editor targets launch through their CLI shims (code / idea / goland /
-   * webstorm / pycharm — Toolbox puts the JetBrains ones on PATH).
-   * Fire-and-forget GUI launches: explorer exits non-zero even on success, so
-   * only a spawn FAILURE rejects; app shims missing from PATH reject with a
-   * user-visible hint instead of crashing the route.
-   */
-  async openFolder(cwd: string, target: 'explorer' | 'vscode' | 'idea' | 'goland' | 'webstorm' | 'pycharm'): Promise<void> {
-    const launch = (file: string, args: readonly string[]): Promise<void> =>
-      new Promise((resolvePromise, rejectPromise) => {
-        const child = spawn(file, args, { cwd, stdio: 'ignore', detached: true })
-        child.once('error', rejectPromise)
-        child.once('spawn', () => { child.unref(); resolvePromise() })
-      })
-    const shims: Record<string, string> = { vscode: 'code', idea: 'idea', goland: 'goland', webstorm: 'webstorm', pycharm: 'pycharm' }
-    const shim = shims[target]
-    if (process.platform === 'win32') {
-      if (shim === undefined) return launch('explorer.exe', [cwd])
-      return new Promise((resolvePromise, rejectPromise) => {
-        const child = spawn('cmd.exe', ['/c', shim, '.'], { cwd, stdio: 'ignore' })
-        child.once('error', rejectPromise)
-        child.once('exit', (code) => {
-          if (code === 0) resolvePromise()
-          else rejectPromise(new Error(`${shim} 未能启动(退出码 ${code})——可能未安装或未加入 PATH`))
-        })
-      })
-    }
-    if (shim === undefined) {
-      const opener = process.platform === 'darwin' ? 'open' : 'xdg-open'
-      return launch(opener, [cwd])
-    }
-    return launch(shim, [cwd])
   }
 
   /** Full status snapshot for a session's cwd. One merged `status -z --branch

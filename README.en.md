@@ -1,6 +1,6 @@
 # dsh-ui-tweaks
 
-> **Dependency**: currently targets **DSH v0.1.3-alpha.1**.
+> **Dependency**: currently targets **DSH v0.1.5-alpha.1**.
 
 A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH) web plugin that live-tunes the conversation UI from the Settings panel.
 
@@ -9,13 +9,11 @@ A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH)
 | | |
 |---|---|
 | ![Claude Desktop table style](assets/table.png) | ![Settings panel](assets/settings.png) |
-| **Table style**: the Claude Desktop look (light-gray rounded cards) | **Settings panel**: code font size / table style / GitBar / whale indicator toggles |
+| **Table style**: the Claude Desktop look (light-gray rounded cards) | **Settings panel**: code font size / table style / GitBar toggles |
 | ![GitBar](assets/git.png) | ![Branch panel](assets/branch.png) |
-| **GitBar**: git pills inside the composer tool row (branch after the access-mode control, diff before the model select) — branch management, per-file diff, and commit & push from the diff panel | **Branch panel**: pops up from the branch pill — local / remote branch lists, click to switch, delete, pull & push to remote, new-branch field at the bottom, plus a **commit graph** dialog (colored SVG fork/merge lanes) |
+| **GitBar**: the branch chip in the session header (branch management) plus **terminal** / **code diff** tabs in the native right sidebar, with commit & push from the code diff page (uncommitted changes dot the branch chip and its tab) | **Branch panel**: pops up from the branch chip — local / remote branch lists, click to switch, delete, pull & push to remote, new-branch field at the bottom, plus a **commit graph** dialog (colored SVG fork/merge lanes) |
 | ![Diff panel](assets/gitdiff.png) | ![Terminal panel](assets/terminal.png) |
-| **Diff panel**: file list + per-file diff (changed hunks only by default) with a commit area (commit / commit & push) at the bottom; drag to resize | **Terminal panel**: a real PTY terminal (xterm.js over WebSocket) — full interactivity, drag to resize, one-click half-screen |
-| ![Open project](assets/explorer.png) | |
-| **Open project**: the session-header icon menu — open the current project in Explorer / VS Code / IDEA / GoLand / WebStorm / PyCharm; the neighbouring terminal & diff icons toggle their panels | |
+| **Code diff**: file list + per-file diff (changed hunks only by default) with a commit area (commit / commit & push) at the bottom | **Terminal**: a real PTY terminal in the sidebar (xterm.js over WebSocket) — full interactivity |
 | ![Archive manager](assets/archive.png) | ![MCP manager](assets/mcp.png) |
 | **Archive manager**: an Archive page in the Settings dialog listing archived sessions (title / workspace / relative time) with Restore and Delete actions | **MCP manager**: an MCP page in the Settings dialog listing configured MCP servers with live status and full management (Add / Edit / Enable / Disable / Delete / Restart) |
 
@@ -26,18 +24,17 @@ A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH)
 - **Timeline (single choice in Features)** — one switch, two options:
   - **Native (default)** — DSH's built-in turn rail (the row of small dots beside the messages), the stock behavior.
   - **Web (classic)** — the v0.11 classic right-side navigation rail, restored: vertically centered on the message area's right edge, a thin line strip when collapsed, a 240px panel on hover (message previews + current-position highlight), a per-item detail bubble with timestamp, and **click to jump** (deep history pages in automatically before landing, with a landing self-check); wheel over the rail scrubs clipped items into reach. Data comes from the server-side `dshChatTimeline` session projection (every user message, independent of the browser's loaded window); sessions with fewer than two user messages hide it. On the web option the native turn rail is hidden with one theme-independent CSS rule (matching its `--turn-natural-height` inline variable), so the two never appear together.
-- **GitBar (toggleable, off by default)** — when the session's working directory is a git repository, two compact pills render **inside the composer's tool row** (styled like the native access-mode / model-select controls, so the input area no longer carries a separate row above the card):
-  - **Branch pill** — right after the access-mode control; shows the current branch and opens an upward branch panel (local / remote lists, `git switch` on click, new-branch field). A **pull** button sits beside the current branch in the panel header (`git pull --ff-only` — fast-forward only: a diverged branch aborts with git's own error instead of silently merging; hidden when the branch has no upstream), so what gets pulled is always the branch in the header. The panel's **Graph** entry opens the **commit graph** dialog: the latest 150 commits (`git log --date-order --all`) are laid out into lanes and rendered as a colored SVG fork/merge graph — dots are commits, curves are forks/merges, each branch line keeps its own color and merge arcs adopt the color of the lane they join; rows highlight on hover, refresh in the header.
-  - **Diff pill** — right before the model select; shows `+N −M · K files` and opens the right slide-over diff panel (changed-file list + per-file diff, resizable, commit band kept at its foot for 提交 / 提交并推送). The standalone commit pill is gone — commit now happens from the diff panel.
-  - **Squeeze-aware**: the composer tool row is an inline-size container, so when it tightens (e.g. the stretched diff panel pushes the column), the pills degrade like the native chrome — first hiding the "· K files" meta, then collapsing to **icon-only** — never overlapping the access / model controls.
-  - **Header utilities** — beside "Session log", an icon group: **Open project** (a menu launching Explorer / VS Code / IDEA / GoLand / WebStorm / PyCharm at the session cwd), a **real PTY terminal** panel (xterm.js over WebSocket, drag to resize, one-click half-screen) and the **diff** panel toggle; the diff icon carries the uncommitted-changes dot.
+- **GitBar (toggleable, off by default)** — the standard trio for git-repo sessions: a **branch chip** in the session header, plus **terminal** and **code diff** tabs in the native right sidebar (next to Files, opened from the sidebar guide; uncommitted changes put a dot on the code diff tab):
+  - **Branch chip** — beside the session title; shows the current branch and opens a downward branch panel (local / remote lists, `git switch` on click, new-branch field). A **pull** button sits beside the current branch in the panel header (`git pull --ff-only` — fast-forward only: a diverged branch aborts with git's own error instead of silently merging; hidden when the branch has no upstream), so what gets pulled is always the branch in the header. The panel's **Graph** entry opens the **commit graph** dialog: the latest 150 commits (`git log --date-order --all`) are laid out into lanes and rendered as a colored SVG fork/merge graph — dots are commits, curves are forks/merges, each branch line keeps its own color and merge arcs adopt the color of the lane they join; rows highlight on hover, refresh in the header.
+  - **Terminal** — a real PTY terminal in the sidebar (xterm.js over a WebSocket to a persistent shell in the session cwd) with theme-following colors. Leaving the tab only drops the frontend connection; the host shell stays alive and replays its transcript, so you come back to the same session.
+  - **Code diff** — changed-file list + per-file diff (changed hunks only by default, "Full file" toggle at the top right). The file-list / diff / commit sections split with draggable horizontal dividers (double-click resets; the message box stretches, Shift+Enter for new lines). The **commit band stays at the foot** (Commit / Commit & push, message required). Without a git repo the page shows a note instead of hiding.
+  - Opening the project in external apps is DSH's own open-in-app header button, so this plugin no longer ships one; every git op runs server-side through `execFile('git', …)` (no shell, timeouts).
 - **Archive manager (toggleable, off by default)** — an **Archive** page in the Settings dialog listing archived sessions (title / workspace / relative time) with per-row **Restore** and **Delete** actions plus batch **Restore all** / **Delete all** buttons.
   - **Restore** removes a session from the archive set (its log and workspace slot are kept, so the conversation returns to the normal sidebar list).
   - **Delete** PERMANENTLY deletes the session — the server removes its JSONL log from disk, detaches it from workspace accounting and the archive set, and clears its projection cache (irreversible). Only genuinely **running** sessions are refused; opened-but-idle sessions are also removed from the in-memory store, so the row disappears live.
   - The list refreshes live via the `host/archived-sessions-changed` event and a session-list re-pull, with no page reload.
 - **MCP manager (toggleable, off by default)** — an **MCP** page in the Settings dialog listing every configured MCP server (`@deepseek-ai/dsh-mcp-client` loader entries) with its live status, command/url, env vars and registered tools, plus full management: **Add / Edit** (a structured form — instance id, name, stdio or HTTP type, timeout ms, command, args, env — OR raw YAML, both validated), **Enable / Disable / Delete**, and **Restart** (runtime-only). Changes persist to the profile's `cordis.patch.yml` and DSH's built-in patch watcher hot-reloads just that server.
 - **`/init` slash command (toggleable, off by default)** — type `/init` in the composer (the slash menu shows "Analyze this project and generate an AGENTS.md"), pick a prompt language from the popup (**Chinese / English**), and a complete AGENTS.md bootstrap prompt is submitted into the current session: the agent explores the project on its own (README, manifests, build scripts, key directories), then writes or improves a root `AGENTS.md` addressed to future AI coding agents (overview, common commands, conventions, directory guide, gotchas; existing files are improved in place). Pure client-side contribution; enable it in the UI Tweaks settings section.
-- **Whale indicator (toggleable, off by default)** — the brand whale perched on the composer card's **top-right corner** over drifting blue waves (the Claude Desktop crab spot). It stays in its original colour the whole time: idle it floats still (hover or click it to make it swim — an easter egg); while the model works it swims (bob + sway) and **breathes between blue and its original colour** — bluest at the top of each bob, back to normal on landing, in sync with the 1.9s swim cycle — until the turn finishes. Working state = the session's `running` flag plus the input machine's claimed/submitting phases, so the swim starts the moment you press Enter. Pure CSS animation on DSH theme tokens; honors `prefers-reduced-motion`.
 - **Task alerts (toggleable, off by default)** — call you back while the tab sits in the background. Watches **all sessions** (background included) for two event kinds: **finish** (the `running` flag drops, or the host's green `completed` reminder rises; a host projection of the logged `turn/end` reason tells **completed / interrupted / failed** apart, and failure alerts carry a truncated error summary) and **interaction** (the session starts waiting for your approval / plan review / answer — the same `pendingInteraction` source as the sidebar amber dot). Three independent channels:
   - **Tab title flash** — blinks an unread counter `(2) 🔔 …` into the tab title until you come back, then restores it;
   - **System notifications** (Web Notifications API) — desktop-level; **click one to jump straight to that session**; permission is requested from the settings toggle's click gesture; the OS bark and the chime are mutually exclusive so they never double-ring;
@@ -54,7 +51,6 @@ ui-tweaks:
   gitBarEnabled: true     # defaults to false (off); set true to enable GitBar
   archiveManagerEnabled: true   # defaults to false (off); set true to show the Archive page
   initCommandEnabled: true      # defaults to false (off); set true to register the /init slash command
-  whaleIndicatorEnabled: true   # defaults to false (off); set true to enable the whale indicator
   preciseCacheHitEnabled: true  # defaults to false (off); set true to enable the two-decimal cache-hit figure
   notificationsEnabled: true    # defaults to false (off); set true to enable task alerts (event filters & channels are per-item toggles in Settings)
 ```
@@ -125,11 +121,15 @@ npx -y @deepseek-ai/dsh plugin --profile web add .        # bundle install from 
   uncached-input / cache-read / cache-write / output buckets. It computes
   `cache reads ÷ (uncached input + cache reads + cache writes)`, formats it
   with `.toFixed(2)`, and rewrites the stats line's "Cache hit N%" /
-  「缓存命中 N%」span in place — layout, truncation and tooltip behavior stay
-  DSH's own. A MutationObserver on the band re-applies whenever React repaints
-  the line (writes are idempotent, so the loop settles immediately); toggling
+  「缓存命中 N%」text in place — newer DSH renders the figure as a bare text
+  node after a separator inside the usage pill (its button `aria-label` and
+  the matching row of the click-open usage dialog are rewritten too; the
+  per-turn dialog uses its own denominator and is left alone) — layout,
+  truncation and tooltip behavior stay DSH's own. A MutationObserver on the
+  document re-applies whenever React repaints the line or opens the dialog
+  (writes are idempotent, so the loop settles immediately); toggling
   off or switching sessions restores the original texts. Registration follows
-  the whale's on-demand choreography: mounted only while
+  the /init command's on-demand choreography: mounted only while
   `preciseCacheHitEnabled` is on.
 
 ## License

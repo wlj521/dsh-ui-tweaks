@@ -1,26 +1,25 @@
 /**
  * dsh-ui-tweaks — GitBar (browser half).
  *
- * Two compact DSH-native pills that live INSIDE the composer's tool row
- * (`conversation.input.left` / `.right`), styled to match the input bar's
- * resident chrome (access mode / model select):
+ * Git integration for the conversation UI, all riding DSH-native surfaces:
  *
- * - **branch** (`conversation.input.left`, right after the access-mode
- *   control): current branch; opens a popup with local/remote branches and a
- *   new-branch field.
- * - **diff** (`conversation.input.right`, just before the model select): ±line
- *   counts; opens a right slide-over panel with the changed-file list and
- *   per-file diff (changed hunks by default, whole file on toggle). The panel
- *   keeps its commit band at the foot, so committing still works from the diff
- *   view.
+ * - **branch chip** (`conversation.session.header.actions`, beside the
+ *   title): folder + current branch; opens a popup with local/remote
+ *   branches, a new-branch field, and the commit graph.
+ * - **terminal** (right-sidebar tab): a real PTY shell (xterm.js over a
+ *   WebSocket to the host's persistent node-pty session), opened from the
+ *   sidebar guide beside 文件.
+ * - **diff** (right-sidebar tab): the changed-file list and per-file
+ *   diff (changed hunks by default, whole file on toggle) in the same
+ *   sidebar, keeping its commit band at the foot so committing works from
+ *   the tab.
  *
- * The standalone commit pill (a third pill on its own row above the composer)
- * is gone — the input area no longer carries a separate GitBar row above the
- * card, which is what kept it tall.
+ * Opening the project in external apps is DSH's own `open-in-app` header
+ * button now, so this plugin no longer ships one.
  *
  * All colors ride the DSH theme tokens (`--dsw-alias-*`), so light and dark
- * both work. Each pill renders nothing when the setting is off, the session
- * has no cwd, or the directory is not a git repository.
+ * both work. Each entry renders nothing when the setting is off; the diff tab
+ * shows a not-a-repo note when the session has no git repository.
  * @module dsh-ui-tweaks/client/gitbar
  */
 
@@ -30,7 +29,6 @@ import { createRoot } from 'react-dom/client'
 import type { ISessions, SessionSnapshot } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SettingsClient } from './index.tsx'
-import { APP_ICONS } from './appicons.ts'
 import { GRAPH_LANE_W, GRAPH_ROW_H, layoutCommitGraph } from './graphlayout.ts'
 import type { GraphRow } from './graphlayout.ts'
 
@@ -52,7 +50,7 @@ const SECTION_MAX = '45%'
 /** Locale keys the GitBar reads off the `ui-tweaks` dictionary. */
 type GitBarLabelKey =
   | 'commitMessage' | 'diffFiles' | 'branchLocal' | 'branchRemote' | 'branchNew'
-  | 'branchNewPlaceholder' | 'branchCreate' | 'diffTitle' | 'diffOnly' | 'diffFull'
+  | 'branchNewPlaceholder' | 'branchCreate' | 'diffView' | 'diffOnly' | 'diffFull'
   | 'commitTitle' | 'commitPlaceholder' | 'commitHint' | 'commitWillCommit' | 'commitViewDiff'
   | 'commitEmpty' | 'commitCancel' | 'commitSubmit' | 'commitSubmitPush'
   | 'commitBusy'
@@ -62,9 +60,9 @@ type GitBarLabelKey =
   | 'branchRemoteDelete' | 'branchFrom' | 'branchFromHead' | 'branchGraph'
   | 'branchRefresh' | 'branchCancel' | 'graphTitle'
   | 'graphColGraph' | 'graphColCommit' | 'graphColSubject' | 'graphColAuthor' | 'graphColDate'
-  | 'openProject' | 'terminal' | 'openExplorer' | 'openVscode' | 'openIdea'
-  | 'openGoland' | 'openWebstorm' | 'openPycharm'
+  | 'terminal'
   | 'termConnecting' | 'termExited' | 'termUnavailable' | 'termLost'
+  | 'notRepo'
 
 type Translate = (key: GitBarLabelKey) => string
 
@@ -233,13 +231,6 @@ function targetQuery(t: GitTarget): string {
   return ''
 }
 
-function targetFields(t: GitTarget): Record<string, string> {
-  const out: Record<string, string> = {}
-  if (t.session !== undefined) out.session = t.session
-  if (t.ws !== undefined) out.ws = t.ws
-  return out
-}
-
 /** Basename of a cwd path ('' / undefined → '—'), for the chip's folder label. */
 function basenameOf(path: string | undefined): string {
   if (path === undefined || path === '') return '—'
@@ -255,7 +246,7 @@ function basenameOf(path: string | undefined): string {
 export const GITBAR_CSS = `
 /* DSH does not force border-box globally; normalize it for the whole GitBar
    subtree (including the body-portaled panels/modal), or widths overflow. */
-.gbar,.gbar *,.gbar-side,.gbar-side *,.gbar-modal-wrap,.gbar-modal-wrap *,.gbar-notice,.gbar-notice *{box-sizing:border-box}
+.gbar,.gbar *,.gbar-view,.gbar-view *,.gbar-modal-wrap,.gbar-modal-wrap *,.gbar-notice,.gbar-notice *{box-sizing:border-box}
 /* Anchor around each pill inside the composer tool row
    (conversation.input.left / .right): the branch pill's containing block, so
    its popup opens from the pill itself. flex:0 1 auto + min-width:0 let the
@@ -470,30 +461,28 @@ export const GITBAR_CSS = `
 .gbar-c-tag .gbar-ren{opacity:0;transition:opacity .12s ease,color .12s ease,background .12s ease}
 .gbar-graph-row:hover .gbar-c-tag .gbar-ren,.gbar-c-tag .gbar-ren:focus-visible{opacity:1}
 
-/* diff side panel — fixed on the right; the conversation is pushed left via
-   #root { margin-right } so the panel never overlaps the message column. */
-.gbar-side{
-  position:fixed;right:0;top:0;bottom:0;z-index:80;
+/* terminal / diff views — fill the native conversation-view tab: full height
+   flex column; the inner head/body/foot sections keep their own rules. */
+.gbar-view{
+  position:relative;box-sizing:border-box;height:100%;min-height:0;
   display:flex;flex-direction:column;overflow:hidden;
   /* bg-base instead of bg-layer-1: in dark mode layer-1 (#232324) reads gray
      next to the conversation's base (#151517); base matches it exactly, and in
      light mode both aliases are #fff so nothing changes. */
   background:var(--dsw-alias-bg-base);
-  border-left:1px solid var(--dsw-alias-border-l2);
-  box-shadow:var(--dsw-shadow-lv2);
+  color:var(--dsw-alias-label-primary);
   animation:gbar-in .18s cubic-bezier(.32,.72,0,1);
 }
-/* drag handle on the panel's left edge */
-.gbar-resize{
-  position:absolute;left:-5px;top:0;bottom:0;width:10px;cursor:col-resize;
-  touch-action:none;
-}
-.gbar-resize::after{
-  content:"";position:absolute;left:4px;top:0;bottom:0;width:2px;
-  background:transparent;transition:background .15s ease;
-}
-.gbar-side:hover .gbar-resize::after{background:var(--dsw-alias-border-l2)}
-.gbar-resize:active::after{background:var(--dsw-alias-state-business-primary)}
+/* empty note (e.g. the diff tab without a git repository) */
+.gbar-view-empty{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;
+  font-size:12px;color:var(--dsw-alias-label-tertiary)}
+/* the xterm host stretches to the whole tab body below the slim head */
+.gbar-view .gbar-term{flex:1;min-height:0}
+/* uncommitted-changes dot in the diff tab chip — warn-primary, the same
+   signal the branch chip's tooltip carries, so the dirty state reads on the
+   tab strip without opening the tab */
+.gbar-tab-dot{display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:var(--dsw-alias-state-warn-primary);margin-left:6px;vertical-align:1px;pointer-events:none}
 @keyframes gbar-in{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
 .gbar-side-head{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--dsw-alias-border-l1)}
 .gbar-side-head .gbar-title{font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -504,8 +493,6 @@ export const GITBAR_CSS = `
 .gbar-seg{display:inline-flex;padding:3px;gap:2px;border-radius:10px;background:var(--dsw-alias-bg-module-platform);flex:none}
 .gbar-seg button{border:none;border-radius:8px;padding:4px 10px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;cursor:pointer}
 .gbar-seg button.gbar-on{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);box-shadow:var(--dsw-shadow-lv1)}
-.gbar-side-x{border:none;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:15px;cursor:pointer;width:28px;height:28px;border-radius:8px;flex:none}
-.gbar-side-x:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .gbar-side-body{flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0}
 /* The three stacked sections (files / diff / commit) are sized by drag: the two
    neighbours carry an explicit inline height and the diff pane absorbs whatever
@@ -708,6 +695,8 @@ export const GITBAR_CSS = `
 .gbar-chip:hover,.gbar-chip:focus-visible{background:var(--dsw-alias-interactive-bg-hover)}
 .gbar-chip.gbar-open{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,var(--dsw-alias-bg-module-platform));color:var(--dsw-alias-state-business-primary)}
 .gbar-chip svg{width:14px;height:14px;flex:none;opacity:.9}
+.gbar-chip-dot{width:6px;height:6px;border-radius:50%;flex:none;pointer-events:none;
+  background:var(--dsw-alias-state-warn-primary)}
 .gbar-chip .gbar-bname{max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* folder label — plain context beside the capsule: NO background (not a
    capsule), not clickable and no hover, so only the branch carries the pill.
@@ -725,49 +714,7 @@ export const GITBAR_CSS = `
    not to the whole folder + branch row */
 .gbar-bwrap{position:relative;display:inline-flex;align-items:center}
 
-/* header utilities row: 打开项目 / 终端 / 差异 */
-.gbar-hicons{margin-left:auto;display:inline-flex;align-items:center;gap:2px;position:relative}
-/* The three header utility icons are injected into the title row's utilities
-   slot (beside "Session log"), but they belong in the view-tabs row (对话 /
-   轨迹) right below it. The session header is their containing block: anchor
-   them to the right edge, vertically centred on the 16px tab text line that
-   starts under the 32px title row (12px header top padding + 32px title row
-   + 4px tab margin). The 24px button starts exactly at the title row's
-   bottom edge so its hover surface never touches "Session log" above. The
-   :has() guard keeps the in-flow position for the rare header without a
-   tablist, and z-index keeps them above the tabs' own stacking context. */
-header:has([role="tablist"]) .gbar-hicons{
-  position:absolute;
-  top:calc(12px + 32px + 4px + (16px - 24px)/2);
-  right:28px;
-  z-index:2;
-}
-.gbar-hicon{position:relative;width:32px;height:24px;display:inline-flex;align-items:center;justify-content:center;
-  border:none;background:transparent;border-radius:8px;color:var(--dsw-alias-label-secondary);cursor:pointer;
-  transition:background .14s ease,color .14s ease}
-.gbar-hicon:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.gbar-hicon.gbar-on{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);color:var(--dsw-alias-state-business-primary)}
-.gbar-hicon svg{width:16px;height:16px}
-/* uncommitted-changes dot on the diff icon — warn-primary, the same color
-   the branch chip / diff footer use for the dirty state */
-.gbar-hicon-dot{position:absolute;top:2.5px;right:2.5px;width:6px;height:6px;border-radius:50%;
-  background:var(--dsw-alias-state-warn-primary);pointer-events:none}
-
-/* 「打开项目」menu — a flat dropdown opening leftward from the icon group:
-   right edge sits 20px inside the window (the group anchors 28px from the
-   edge, so right:-8px), no bubble tail, compact rows, width fits content */
-.gbar-openmenu{position:absolute;top:calc(100% + 6px);right:-8px;min-width:150px;max-width:260px;width:max-content;z-index:130;
-  background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;
-  box-shadow:var(--dsw-shadow-lv2);padding:4px;text-align:left;animation:gpop-down .16s cubic-bezier(.32,.72,0,1)}
-.gbar-omrow{display:flex;align-items:center;gap:9px;width:100%;padding:5px 8px;border:none;border-radius:7px;
-  background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;line-height:1.2;cursor:pointer;text-align:left;
-  white-space:nowrap}
-.gbar-omrow:hover{background:var(--dsw-alias-interactive-bg-hover)}
-/* brand app icons (official full-color SVGs) — fixed slot, sized by CSS */
-.gbar-omrow .gbar-aicon{width:15px;height:15px;flex:none;display:inline-flex}
-.gbar-aicon svg{width:100%;height:100%;display:block}
-
-/* terminal panel body — follows the app theme surface (tokens live on body,
+/* terminal view body — follows the app theme surface (tokens live on body,
    and the panel portal renders inside body, so the var resolves); the xterm
    viewport is transparent, so this is also the terminal's own backdrop */
 .gbar-term{flex:1;min-height:0;background:var(--dsw-alias-bg-base,#16161b);color:var(--dsw-alias-label-primary,#d6d6dc);cursor:text;
@@ -811,7 +758,7 @@ header:has([role="tablist"]) .gbar-hicons{
 
 /* hero (new-session) floating chip wrapper */
 .gbar-hero{position:fixed;z-index:110;transform:translateY(-50%);display:inline-flex;align-items:center;gap:6px}
-@media (prefers-reduced-motion:reduce){.gbar-side,.gbar-modal,.gbar-notice,.gbar-pop,.gbar-openmenu{animation:none}}
+@media (prefers-reduced-motion:reduce){.gbar-view,.gbar-modal,.gbar-notice,.gbar-pop{animation:none}}
 `
 
 /** Install the GitBar stylesheet once (idempotent); returns the disposer. */
@@ -861,10 +808,11 @@ function statusClass(status: string): string {
 
 /**
  * Module-level snapshot cache keyed by target. Every useGitStatus instance
- * (header icons, diff panel, terminal panel) reads and writes through it, so
- * a panel mounting on click starts from the warm snapshot the header poller
- * already fetched instead of a blank state — this is what makes the diff
- * panel paint instantly instead of waiting for its own /status round-trip.
+ * (branch chip, diff view, terminal view) reads and writes through it, so
+ * a view mounting on tab switch starts from the warm snapshot the header
+ * poller already fetched instead of a blank state — this is what makes the
+ * diff view paint instantly instead of waiting for its own /status
+ * round-trip.
  */
 const snapshotCache = new Map<string, GitSnapshot>()
 
@@ -1395,6 +1343,10 @@ export function BranchChipEntry({ sessionId, sessionsService, controller, t }: B
             <path d="M12 7.3c0 3-3.5 4.8-7.5 3.4" />
           </svg>
           <span className="gbar-bname">{snapshot.branch ?? snapshot.detachedHead ?? '—'}</span>
+          {/* Uncommitted-changes dot — the old diff-icon dot, moved here so
+              the dirty state reads in the session header without opening
+              anything. */}
+          {dirty ? <span className="gbar-chip-dot" aria-hidden /> : null}
         </button>
 
         {/* Branch popup — pinned header (current branch + worktree state),
@@ -1809,8 +1761,9 @@ export function BranchChipEntry({ sessionId, sessionsService, controller, t }: B
 }
 
 // ---------------------------------------------------------------------------
-// Diff panel — opened from the header utilities' diff icon (always available,
-// even on a clean tree). Slide-over on the right; commit band at its foot.
+// Diff view — a right-sidebar tab beside 文件 (always available,
+// even on a clean tree). File list + per-file diff with the commit band at
+// the foot, filling the whole tab.
 // ---------------------------------------------------------------------------
 
 export interface DiffPanelProps {
@@ -1822,56 +1775,9 @@ export interface DiffPanelProps {
   controller: SettingsClient
   /** Locale-bound translator for the GitBar labels. */
   t: Translate
-  /** Parent closes the panel (icon toggles; outside clicks route here too). */
-  onClose: () => void
 }
 
-/**
- * Shared side-panel layout: anchor the panel below the session header, and
- * while it is open push ONLY the message area (the conversation scrollport)
- * left by `width`. Never touch `#root`: in the DSH 0.1.1 column grid `#root`
- * wraps the whole app (left sidebar + center + details), so a `#root` margin
- * collapses the left sidebar and shoves the top header — the "showing the
- * panel moves the top" bug. The scrollport is the center column's message
- * region; pushing only it leaves the sidebar and header untouched, and fixed
- * overlays docked inside the scrollport stay visible.
- *
- * @param width - panel width; the scrollport gets this much right margin.
- * @param active - whether the panel is actually showing; when false (e.g. a
- *   non-repo session opened the diff icon) no layout is pushed.
- * @returns the panel top (scrollport top) for `style.top`.
- */
-function useSidePanelLayout(width: number, active = true): number {
-  const [panelTop, setPanelTop] = useState(0)
-
-  useEffect(() => {
-    const measure = (): void => {
-      const sp = document.querySelector('[data-conversation-scroll]')
-      const top = sp === null ? 0 : Math.round(sp.getBoundingClientRect().top)
-      setPanelTop(prev => Math.abs(prev - top) < 2 ? prev : top)
-    }
-    measure()
-    window.addEventListener('resize', measure)
-    const observer = new ResizeObserver(measure)
-    const sp = document.querySelector('[data-conversation-scroll]')
-    if (sp !== null) observer.observe(sp)
-    return () => {
-      window.removeEventListener('resize', measure)
-      observer.disconnect()
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!active) return
-    const scrollport = document.querySelector('[data-conversation-scroll]') as HTMLElement | null
-    if (scrollport !== null) scrollport.style.marginRight = `${width}px`
-    return () => { if (scrollport !== null) scrollport.style.marginRight = '' }
-  }, [width, active])
-
-  return panelTop
-}
-
-export function DiffPanel({ sessionId, useSession, controller, t, onClose }: DiffPanelProps) {
+export function DiffPanel({ sessionId, useSession, controller, t }: DiffPanelProps) {
   const settingsState = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
   const enabled = settingsState.value?.gitBarEnabled ?? true
   const sessionStr = String(sessionId)
@@ -1891,8 +1797,6 @@ export function DiffPanel({ sessionId, useSession, controller, t, onClose }: Dif
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set())
-  const [diffWidth, setDiffWidth] = useState(440)
-  const panelTop = useSidePanelLayout(diffWidth, enabled && sessionStr !== undefined && snapshot !== null && snapshot.isRepo)
   const [filesHeight, setFilesHeight] = useState<number | null>(null)
   const [commitHeight, setCommitHeight] = useState<number | null>(null)
   const [dragging, setDragging] = useState<'files' | 'commit' | null>(null)
@@ -1989,7 +1893,6 @@ export function DiffPanel({ sessionId, useSession, controller, t, onClose }: Dif
         exclude: [...excluded],
         ...(tag !== '' ? { tag } : {}),
       })
-      onClose()
       setMessage('')
       setTagInput('')
       setExcluded(new Set())
@@ -2001,62 +1904,7 @@ export function DiffPanel({ sessionId, useSession, controller, t, onClose }: Dif
     })
   }
 
-  // Close the diff panel when clicking outside it (the 差异 icon toggles).
-  // The icon lives in `.gbar-hicons`, which is NOT a descendant of `.gbar`,
-  // so that container must be excluded too — otherwise mousedown on the icon
-  // fires onClose() and the following click re-opens the panel ("sometimes
-  // it opens by itself").
-  useEffect(() => {
-    const onDown = (event: MouseEvent): void => {
-      const target = event.target as Node | null
-      if (target === null) return
-      if (document.querySelector('.gbar-side')?.contains(target)) return
-      if (document.querySelector('.gbar-hicons')?.contains(target)) return
-      if (document.querySelector('.gbar')?.contains(target)) return
-      onClose()
-    }
-    document.addEventListener('mousedown', onDown)
-    return () => { document.removeEventListener('mousedown', onDown) }
-  }, [onClose])
-
-  // Drag the panel's left edge to resize it. A press WITHOUT any drag counts
-  // as a click: it snaps the panel to half the screen (or back to the width
-  // it had before expanding), so the edge doubles as a one-button maximize.
-  const prevWidthRef = useRef<number | null>(null)
-  const toggleHalfWidth = (): void => {
-    const half = Math.round(window.innerWidth / 2)
-    if (diffWidth >= half - 4) {
-      const restore = prevWidthRef.current ?? 440
-      prevWidthRef.current = null
-      setDiffWidth(restore)
-    } else {
-      prevWidthRef.current = diffWidth
-      setDiffWidth(half)
-    }
-  }
-
-  const startResize = (event: { clientX: number; preventDefault: () => void }): void => {
-    event.preventDefault()
-    const startX = event.clientX
-    const startWidth = diffWidth
-    // Manual drags may reach half the screen too — otherwise an expanded
-    // half-screen panel would instantly clamp back to the old 900px ceiling.
-    const maxWidth = Math.max(900, Math.round(window.innerWidth / 2))
-    let moved = false
-    const onMove = (move: PointerEvent): void => {
-      if (!moved && Math.abs(move.clientX - startX) > 3) moved = true
-      setDiffWidth(Math.min(maxWidth, Math.max(320, startWidth - (move.clientX - startX))))
-    }
-    const onUp = (): void => {
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-      if (!moved) toggleHalfWidth()
-    }
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
-  }
-
-  // Drag a horizontal splitter to redistribute height between the panel's
+  // Drag a horizontal splitter to redistribute height between the view's
   // sections. Only the dragged section gets an explicit height; the diff pane is
   // the flexible one, so every pixel a neighbour gains comes out of the diff and
   // the total never exceeds the panel. Double-click restores automatic sizing.
@@ -2065,7 +1913,7 @@ export function DiffPanel({ sessionId, useSession, controller, t, onClose }: Dif
     event: { clientY: number; preventDefault: () => void },
   ): void => {
     event.preventDefault()
-    const panel = document.querySelector('.gbar-side')
+    const panel = document.querySelector('.gbar-view')
     const measure = (selector: string): number => {
       const el = panel?.querySelector(selector) ?? null
       return el === null ? 0 : el.getBoundingClientRect().height
@@ -2097,39 +1945,39 @@ export function DiffPanel({ sessionId, useSession, controller, t, onClose }: Dif
   }
 
   if (!enabled || sessionStr === undefined) return null
-  // Not a repo: no panel at all (the pills hide for non-repos too).
-  if (snapshot !== null && !snapshot.isRepo) return null
+  // Not a repo: the tab keeps its place and says so (tabs cannot hide
+  // per-session the way the old pills did).
+  if (snapshot !== null && !snapshot.isRepo) {
+    return (
+      <div className="gbar-view">
+        <div className="gbar-view-empty">{t('notRepo')}</div>
+      </div>
+    )
+  }
 
-  // Cold start (no cached snapshot yet): paint the panel SHELL at once with a
-  // loading body instead of returning null — the click must give immediate
-  // feedback even while the first /status round-trip is in flight. With the
-  // shared snapshot cache this state is rare and brief.
+  // Cold start (no cached snapshot yet): paint the view SHELL at once with a
+  // loading body instead of returning null. With the shared snapshot cache
+  // this state is rare and brief.
   if (snapshot === null) {
-    return createPortal(
-      <div className="gbar-side" role="dialog" aria-label={t('diffTitle')} style={{ width: `${diffWidth}px`, top: `${panelTop}px` }}>
-        <div className="gbar-resize" onPointerDown={startResize} title="拖动调整宽度 · 点击展开到半屏" />
+    return (
+      <div className="gbar-view">
         <div className="gbar-side-head">
-          <span className="gbar-title">{t('diffTitle')}</span>
+          <span className="gbar-title">{t('diffView')}</span>
           <span className="gbar-spacer" />
-          <button type="button" className="gbar-side-x" onClick={onClose} aria-label="✕">✕</button>
         </div>
         <div className="gbar-side-body">
           <div className="gbar-diff"><div className="gbar-empty"><span className="gbar-spin" /> {t('loading')}</div></div>
         </div>
-      </div>,
-      document.body,
+      </div>
     )
   }
 
   const dirty = !snapshot.clean
-  const halfActive = diffWidth >= Math.round(window.innerWidth / 2) - 4
 
-  return createPortal(
-    <>
-    <div className="gbar-side" role="dialog" aria-label={t('diffTitle')} style={{ width: `${diffWidth}px`, top: `${panelTop}px` }}>
-      <div className="gbar-resize" onPointerDown={startResize} title="拖动调整宽度 · 点击展开到半屏" />
+  return (
+    <div className="gbar-view">
       <div className="gbar-side-head">
-        <span className="gbar-title">{diffPath ?? t('diffTitle')}</span>
+        <span className="gbar-title">{diffPath ?? t('diffView')}</span>
         <span className="gbar-sub">
           {snapshot.files.length} {t('diffFiles')} · <span className="gbar-a">+{snapshot.totalAdded}</span> <span className="gbar-d">−{snapshot.totalDeleted}</span>
         </span>
@@ -2146,18 +1994,6 @@ export function DiffPanel({ sessionId, useSession, controller, t, onClose }: Dif
             </svg>
           )}
         </button>
-        <button
-          type="button"
-          className={'gbar-side-half' + (halfActive ? ' gbar-on' : '')}
-          onClick={toggleHalfWidth}
-          title="展开到半屏 / 恢复宽度"
-          aria-pressed={halfActive}
-        >
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M6 3H3v3" /><path d="M10 13h3v-3" /><path d="M3 3l4 4" /><path d="M13 13L9 9" />
-          </svg>
-        </button>
-        <button type="button" className="gbar-side-x" onClick={onClose} aria-label="✕">✕</button>
       </div>
           <div className="gbar-side-body">
             <div
@@ -2290,28 +2126,47 @@ export function DiffPanel({ sessionId, useSession, controller, t, onClose }: Dif
               </div>
             </div>
           ) : null}
-        </div>
         {/* Transient notice */}
         {notice !== null ? (
           <div className={'gbar-notice gbar-' + notice.kind} role="status">{notice.text}</div>
         ) : null}
-      </>,
-      document.body,
-    )
-  }
+    </div>
+  )
+}
 
 // ---------------------------------------------------------------------------
-// Terminal panel — a REAL terminal: xterm.js in the browser over a WebSocket
-// to the host's persistent node-pty shell (the dsh-better-sidebar design,
-// its src/pty-manager.ts + TerminalView.tsx). Full emulation: colors, cursor
-// control, Ctrl+C, command history, interactive apps. The xterm UMD builds
-// and stylesheet are vendored by the plugin and lazy-loaded on first panel
-// open, so the always-resident GitBar bundle stays lean.
+// Diff tab title — `sidebar.right.pane.tab.title`: the chip text plus the
+// uncommitted-changes dot, so the dirty state reads on the tab strip without
+// opening the tab (the old header icon's dot, moved onto the chip).
+// ---------------------------------------------------------------------------
+
+export function DiffTabTitle({ sessionId, controller, t }: {
+  sessionId: SessionId
+  controller: SettingsClient
+  t: Translate
+}) {
+  const settingsState = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
+  const enabled = settingsState.value?.gitBarEnabled ?? true
+  const [snapshot] = useGitStatus(enabled, { session: String(sessionId) })
+  const dirty = snapshot !== null && snapshot.isRepo && !snapshot.clean
+  return (
+    <span>{t('diffView')}{dirty ? <span className="gbar-tab-dot" aria-hidden /> : null}</span>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Terminal view — a REAL terminal in a right-sidebar tab: xterm.js in
+// the browser over a WebSocket to the host's persistent node-pty shell (the
+// dsh-better-sidebar design, its src/pty-manager.ts + TerminalView.tsx).
+// Full emulation: colors, cursor control, Ctrl+C, command history,
+// interactive apps. The xterm UMD builds and stylesheet are vendored by the
+// plugin and lazy-loaded on first tab open, so the always-resident GitBar
+// bundle stays lean.
 //
-// Session lifetime mirrors better-sidebar tabs: closing the panel only drops
-// the socket — the host keeps the shell alive behind a reconnect grace, so
-// re-opening the panel reattaches to the SAME session with its transcript
-// replayed. Page refreshes recover the same way.
+// Shell lifetime survives tab switches: leaving the tab only drops the
+// socket — the host keeps the shell alive behind a reconnect grace, so coming
+// back reattaches to the SAME session with its transcript replayed. Page
+// refreshes recover the same way.
 // ---------------------------------------------------------------------------
 
 /** Vendored xterm assets served by the host half (src/git-web.ts). */
@@ -2455,41 +2310,23 @@ function xtermTheme(): Record<string, string> & { background: string; foreground
   }
 }
 
-export function TerminalPanel({ sessionId, controller, t, onClose }: {
+export function TerminalPanel({ sessionId, controller, t }: {
   sessionId: SessionId
   controller: SettingsClient
   t: Translate
-  onClose: () => void
 }) {
   const settingsState = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
   const enabled = settingsState.value?.gitBarEnabled ?? true
   const target: GitTarget = { session: String(sessionId) }
-  // Warm from the shared snapshot cache, so the cwd label paints instantly.
-  const [snapshot] = useGitStatus(enabled, target)
-  const [width, setWidth] = useState(520)
   const [status, setStatus] = useState<'boot' | 'connecting' | 'live' | 'exited' | 'error'>('boot')
   const [errorText, setErrorText] = useState('')
   const [retryNonce, setRetryNonce] = useState(0)
-  const panelTop = useSidePanelLayout(width, enabled)
-  const prevWidthRef = useRef<number | null>(null)
   const hostRef = useRef<HTMLDivElement | null>(null)
-
-  const toggleHalfWidth = (): void => {
-    const half = Math.round(window.innerWidth / 2)
-    if (width >= half - 4) {
-      const restore = prevWidthRef.current ?? 520
-      prevWidthRef.current = null
-      setWidth(restore)
-    } else {
-      prevWidthRef.current = width
-      setWidth(half)
-    }
-  }
 
   // Attach xterm + the WebSocket bridge. Re-runs on retryNonce (manual retry
   // after a fatal error). Teardown closes the socket WITHOUT a close frame,
-  // so the host's reconnect grace keeps the shell alive for the next panel
-  // open — exactly like switching tabs in dsh-better-sidebar.
+  // so the host's reconnect grace keeps the shell alive for the next tab
+  // visit — exactly like switching tabs in dsh-better-sidebar.
   useEffect(() => {
     const host = hostRef.current
     if (!enabled || host === null) return
@@ -2602,27 +2439,16 @@ export function TerminalPanel({ sessionId, controller, t, onClose }: {
 
   if (!enabled) return null
 
-  return createPortal(
-    <div className="gbar-side" role="dialog" aria-label={t('terminal')} style={{ width: `${width}px`, top: `${panelTop}px` }}>
-      <div className="side-head gbar-side-head">
-        <span className="stitle gbar-title">{t('terminal')}</span>
-        <span className="ssub gbar-sub" style={{ fontFamily: '"SF Mono",ui-monospace,Consolas,monospace' }}>{basenameOf(snapshot?.cwd)}</span>
-        <span className="sp gbar-spacer" />
-        {status !== 'live' && status !== 'error' ? (
+  // No title/cwd row: the sidebar tab chip already labels the tab, so the
+  // view is just the terminal (plus a transient connecting/exited note).
+  return (
+    <div className="gbar-view">
+      {status !== 'live' && status !== 'error' ? (
+        <div className="side-head gbar-side-head">
           <span className="ssub gbar-sub">{status === 'exited' ? t('termExited') : t('loading')}</span>
-        ) : null}
-        <button
-          type="button"
-          className={'gbar-side-half' + (width >= Math.round(window.innerWidth / 2) - 4 ? ' gbar-on' : '')}
-          onClick={toggleHalfWidth}
-          title="展开到半屏 / 恢复宽度"
-        >
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M6 3H3v3" /><path d="M10 13h3v-3" /><path d="M3 3l4 4" /><path d="M13 13L9 9" />
-          </svg>
-        </button>
-        <button type="button" className="gbar-side-x" onClick={onClose} aria-label="✕">✕</button>
-      </div>
+          <span className="sp gbar-spacer" />
+        </div>
+      ) : null}
       <div className="gbar-term gbar-xterm" ref={hostRef} />
       {status === 'error' ? (
         <div className="gbar-term-error" role="alert">
@@ -2630,161 +2456,7 @@ export function TerminalPanel({ sessionId, controller, t, onClose }: {
           <button type="button" onClick={() => { setStatus('boot'); setErrorText(''); setRetryNonce(n => n + 1) }}>↻</button>
         </div>
       ) : null}
-    </div>,
-    document.body,
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Header utilities — `conversation.session.header.utilities` (right-aligned):
-// 打开项目 / 终端 / 差异. The two panels are INDEPENDENT (same position, one
-// at a time); each icon toggles its own.
-// ---------------------------------------------------------------------------
-
-export interface HeaderUtilitiesProps {
-  sessionId: SessionId
-  useSession: <T>(selector: (snapshot: SessionSnapshot) => T) => T
-  controller: SettingsClient
-  t: Translate
-}
-
-export function HeaderUtilities({ sessionId, useSession, controller, t }: HeaderUtilitiesProps) {
-  const settingsState = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
-  const enabled = settingsState.value?.gitBarEnabled ?? true
-  const target: GitTarget = { session: String(sessionId) }
-  const [snapshot] = useGitStatus(enabled, target)
-
-  const [openMenu, setOpenMenu] = useState(false)
-  const [diffOpen, setDiffOpen] = useState(false)
-  const [termOpen, setTermOpen] = useState(false)
-  const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
-  const wrapRef = useRef<HTMLSpanElement | null>(null)
-  const iconRef = useRef<HTMLButtonElement | null>(null)
-  const menuRef = useRef<HTMLDivElement | null>(null)
-  const dirty = snapshot !== null && snapshot.isRepo && !snapshot.clean
-
-  // Close the open-project menu on outside click / Escape.
-  useEffect(() => {
-    if (!openMenu) return
-    const onDown = (event: MouseEvent): void => {
-      const node = event.target as Node | null
-      if (node === null) return
-      if (wrapRef.current?.contains(node) || menuRef.current?.contains(node)) return
-      setOpenMenu(false)
-    }
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setOpenMenu(false)
-    }
-    document.addEventListener('mousedown', onDown)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [openMenu])
-
-  const showNotice = (kind: 'ok' | 'err', text: string): void => {
-    setNotice({ kind, text })
-    window.setTimeout(() => setNotice(null), 4000)
-  }
-
-  const runOpen = async (app: 'explorer' | 'vscode' | 'idea' | 'goland' | 'webstorm' | 'pycharm'): Promise<void> => {
-    try {
-      await apiPost(`${GIT_ROUTE}/open`, { ...targetFields(target), target: app })
-      setOpenMenu(false)
-      showNotice('ok', `✓ ${app}`)
-    } catch (cause) {
-      showNotice('err', cause instanceof Error ? cause.message : String(cause))
-    }
-  }
-
-  if (!enabled) return null
-
-  return (
-    <span className="gbar-hicons" ref={wrapRef}>
-      <button
-        type="button"
-        ref={iconRef}
-        className={'gbar-hicon' + (openMenu ? ' gbar-on' : '')}
-        onClick={() => { setOpenMenu(value => !value); setTermOpen(false); setDiffOpen(false) }}
-        title={t('openProject')}
-        aria-expanded={openMenu}
-      >
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M1.5 4A1.5 1.5 0 0 1 3 2.5h3l1.5 2H13A1.5 1.5 0 0 1 14.5 6v6A1.5 1.5 0 0 1 13 13.5H3A1.5 1.5 0 0 1 1.5 12V4Z" />
-          <path d="M9.5 8.25l2.2 1.35-2.2 1.35v-2.7Z" fill="currentColor" stroke="none" />
-        </svg>
-      </button>
-      <button
-        type="button"
-        className={'gbar-hicon' + (termOpen ? ' gbar-on' : '')}
-        onClick={() => { setTermOpen(value => !value); setDiffOpen(false); setOpenMenu(false) }}
-        title={t('terminal')}
-        aria-expanded={termOpen}
-      >
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="1.5" y="2.5" width="13" height="11" rx="2" />
-          <path d="M4.5 6l2.5 2-2.5 2" />
-          <path d="M8.5 10h3" />
-        </svg>
-      </button>
-      <button
-        type="button"
-        className={'gbar-hicon' + (diffOpen ? ' gbar-on' : '')}
-        onClick={() => { setDiffOpen(value => !value); setTermOpen(false); setOpenMenu(false) }}
-        title={t('diffTitle')}
-        aria-expanded={diffOpen}
-      >
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M9.5 1.5H4A1.5 1.5 0 0 0 2.5 3v10A1.5 1.5 0 0 0 4 14.5h8A1.5 1.5 0 0 0 13.5 13V5.5l-4-4Z" />
-          <path d="M9.5 1.5V5.5h4" />
-          <path d="M5.75 10h4.5M5.75 7.5h2" />
-        </svg>
-        {/* Uncommitted-changes dot — the same dirty signal the branch chip's
-            tooltip carries, surfaced on the icon so the state reads at a
-            glance without hovering or opening the diff panel. */}
-        {dirty ? <span className="gbar-hicon-dot" aria-hidden /> : null}
-      </button>
-
-      {openMenu ? (
-        <div className="gbar-openmenu" ref={menuRef} role="menu">
-          <button type="button" className="gbar-omrow" onClick={() => { void runOpen('explorer') }}>
-            <span className="gbar-aicon" aria-hidden dangerouslySetInnerHTML={{ __html: APP_ICONS.explorer }} />
-            {t('openExplorer')}
-          </button>
-          <button type="button" className="gbar-omrow" onClick={() => { void runOpen('vscode') }}>
-            <span className="gbar-aicon" aria-hidden dangerouslySetInnerHTML={{ __html: APP_ICONS.vscode }} />
-            {t('openVscode')}
-          </button>
-          <button type="button" className="gbar-omrow" onClick={() => { void runOpen('idea') }}>
-            <span className="gbar-aicon" aria-hidden dangerouslySetInnerHTML={{ __html: APP_ICONS.idea }} />
-            {t('openIdea')}
-          </button>
-          <button type="button" className="gbar-omrow" onClick={() => { void runOpen('goland') }}>
-            <span className="gbar-aicon" aria-hidden dangerouslySetInnerHTML={{ __html: APP_ICONS.goland }} />
-            {t('openGoland')}
-          </button>
-          <button type="button" className="gbar-omrow" onClick={() => { void runOpen('webstorm') }}>
-            <span className="gbar-aicon" aria-hidden dangerouslySetInnerHTML={{ __html: APP_ICONS.webstorm }} />
-            {t('openWebstorm')}
-          </button>
-          <button type="button" className="gbar-omrow" onClick={() => { void runOpen('pycharm') }}>
-            <span className="gbar-aicon" aria-hidden dangerouslySetInnerHTML={{ __html: APP_ICONS.pycharm }} />
-            {t('openPycharm')}
-          </button>
-        </div>
-      ) : null}
-
-      {termOpen ? <TerminalPanel sessionId={sessionId} controller={controller} t={t} onClose={() => { setTermOpen(false) }} /> : null}
-      {/* The diff panel opens even while the model is running (it only reads
-          git state; committing inside stays disabled while the agent works). */}
-      {diffOpen ? <DiffPanel sessionId={sessionId} useSession={useSession} controller={controller} t={t} onClose={() => { setDiffOpen(false) }} /> : null}
-
-      {notice !== null ? createPortal(
-        <div className={'gbar-notice gbar-' + notice.kind} role="status">{notice.text}</div>,
-        document.body,
-      ) : null}
-    </span>
+    </div>
   )
 }
 

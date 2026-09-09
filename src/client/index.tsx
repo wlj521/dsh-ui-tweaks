@@ -22,19 +22,23 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 // (`settings.section`) and the client-side settings scope contract.
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 // Type-only import activates the dsh-client-ui-conversation slot declarations
-// (`conversation.input.dock`) that host the git-bar warmup seat, the whale
-// indicator and the timeline rail, and the Context declaration for
+// (`conversation.input.dock`) that host the git-bar warmup seat and the
+// timeline rail, and the Context declaration for
 // `ctx.conversation` (the /init command's scope-addressed send / input registry).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 // Type-only import activates the Context declaration for `ctx.commandUi`
 // (client slash-command contributions) and provides the contribution types.
 import type { SelectOption } from '@deepseek-ai/dsh-client-ui-commands/client'
+// Type-only import activates the Context declarations for
+// `ctx.sidebarRightTabs` (right-sidebar tab-type registry) and the
+// `sidebar.right.pane.tab` keyed seat the terminal/diff bodies render into.
+import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { BranchChipEntry, GitWarmup, HeaderUtilities, installGitBarStyles, installHeroChip } from './gitbar.tsx'
+import { BranchChipEntry, DiffPanel, DiffTabTitle, GitWarmup, TerminalPanel, installGitBarStyles, installHeroChip } from './gitbar.tsx'
+import { DiffIcon, TerminalIcon } from './icons.tsx'
 import { ArchiveSection, installArchiveStyles } from './archive.tsx'
 import { McpSection, installMcpStyles } from './mcp.tsx'
 import { SearchSection } from './search.tsx'
-import { WhaleIndicator, installWhaleStyles } from './whale.tsx'
 import { TimelineRail, installTimelineStyles } from './timeline.tsx'
 import { PreciseCacheHitEntry } from './cachehit.tsx'
 import { installTaskNotifier, previewAlerts, requestNotifyPermission } from './notifier.ts'
@@ -71,8 +75,6 @@ interface TweaksValue {
   searchEnabled?: boolean
   /** Whether the /init slash command (AGENTS.md bootstrap prompt) is registered. */
   initCommandEnabled?: boolean
-  /** Whether the whale working indicator above the input is shown. */
-  whaleIndicatorEnabled?: boolean
   /** Whether the stats-line cache-hit figure keeps two decimals. Keep in sync with src/config.ts. */
   preciseCacheHitEnabled?: boolean
   /** Whether task notifications are active. Keep in sync with src/config.ts. */
@@ -103,7 +105,6 @@ interface ResolvedTweaks {
   mcpManagerEnabled: boolean
   searchEnabled: boolean
   initCommandEnabled: boolean
-  whaleIndicatorEnabled: boolean
   preciseCacheHitEnabled: boolean
   notificationsEnabled: boolean
   notifyOnlyWhenHidden: boolean
@@ -237,10 +238,6 @@ const en = {
   initCommandHint: 'The /init slash command: pick a prompt language and the agent analyzes the project and writes AGENTS.md.',
   initCommandOn: 'On',
   initCommandOff: 'Off',
-  whaleIndicator: 'Whale indicator',
-  whaleIndicatorHint: 'A little whale above the input box: translucent while idle; while the model works it swims and breathes blue.',
-  whaleIndicatorOn: 'On',
-  whaleIndicatorOff: 'Off',
   preciseCacheHit: 'Precise cache hit',
   preciseCacheHitHint: 'Rewrites the cache-hit figure in the stats line under the input box to two decimal places (e.g. 96.35%), computed from the raw cached-read / cached-write / uncached-input token buckets instead of the stock rounded integer.',
   preciseCacheHitOn: 'On',
@@ -314,7 +311,7 @@ const en = {
   tagDelete: 'Delete Tag',
   tagCommitPlaceholder: 'Tag (optional)',
   branchCreate: 'Create',
-  diffTitle: 'Changes',
+  diffView: 'Code diff',
   diffOnly: 'Hunks',
   diffFull: 'Full file',
   commitTitle: 'Commit changes',
@@ -348,14 +345,10 @@ const en = {
   branchPull: 'Pull',
   includeFile: 'Include in commit',
   excludeFile: 'Exclude from commit',
-  openProject: 'Open project',
   terminal: 'Terminal',
-  openExplorer: 'Explorer',
-  openVscode: 'VS Code',
-  openIdea: 'IntelliJ IDEA',
-  openGoland: 'GoLand',
-  openWebstorm: 'WebStorm',
-  openPycharm: 'PyCharm',
+  terminalGuide: 'A persistent shell in the session working directory.',
+  diffGuide: 'Review working-tree changes and commit.',
+  notRepo: 'Not a git repository.',
   termConnecting: 'connecting…',
   termExited: 'shell exited',
   termUnavailable: 'PTY unavailable: node-pty failed to load on the host.',
@@ -484,10 +477,6 @@ const zh: Record<LocaleKey, string> = {
   initCommandHint: '注册 /init 斜杠命令：选择提示词语言后，让代理分析项目并生成 AGENTS.md。',
   initCommandOn: '开启',
   initCommandOff: '关闭',
-  whaleIndicator: '鲸鱼指示器',
-  whaleIndicatorHint: '输入框上方的小鲸鱼：空闲时半透明静止，模型工作时游动并在蓝黑之间呼吸变幻。',
-  whaleIndicatorOn: '开启',
-  whaleIndicatorOff: '关闭',
   preciseCacheHit: '缓存命中率两位小数',
   preciseCacheHitHint: '把输入框下方统计条里的缓存命中百分比改写为两位小数（如 96.35%）——用原始 token 数（缓存读取 ÷ 计费输入）计算，而不是 DSH 取整后的整数。',
   preciseCacheHitOn: '开启',
@@ -561,7 +550,7 @@ const zh: Record<LocaleKey, string> = {
   tagDelete: '删除 Tag',
   tagCommitPlaceholder: 'Tag（可选）',
   branchCreate: '创建',
-  diffTitle: '变更',
+  diffView: '代码差异',
   diffOnly: '仅差异',
   diffFull: '完整文件',
   commitTitle: '提交变更',
@@ -595,14 +584,10 @@ const zh: Record<LocaleKey, string> = {
   branchPull: '拉取',
   includeFile: '提交包含此文件',
   excludeFile: '提交排除此文件',
-  openProject: '打开项目',
   terminal: '终端',
-  openExplorer: '资源管理器',
-  openVscode: 'VS Code',
-  openIdea: 'IntelliJ IDEA',
-  openGoland: 'GoLand',
-  openWebstorm: 'WebStorm',
-  openPycharm: 'PyCharm',
+  terminalGuide: '在会话工作目录中打开常驻 shell。',
+  diffGuide: '查看工作区改动并提交。',
+  notRepo: '当前目录不是 git 仓库。',
   termConnecting: '连接中…',
   termExited: 'shell 已退出',
   termUnavailable: '终端不可用：宿主加载 node-pty 失败，无法启动 PTY 会话。',
@@ -641,7 +626,6 @@ function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
     mcpManagerEnabled: value?.mcpManagerEnabled ?? false,
     searchEnabled: value?.searchEnabled ?? false,
     initCommandEnabled: value?.initCommandEnabled ?? false,
-    whaleIndicatorEnabled: value?.whaleIndicatorEnabled ?? false,
     preciseCacheHitEnabled: value?.preciseCacheHitEnabled ?? false,
     notificationsEnabled: value?.notificationsEnabled ?? false,
     notifyOnlyWhenHidden: value?.notifyOnlyWhenHidden ?? true,
@@ -942,8 +926,8 @@ export class SettingsClient {
   }
 }
 
-/** Required client services: slots (settings.section), locale, sessions (git bar, whale, archive, notifier), the slash-command registry, and the scope-addressed conversation face. */
-export const inject = ['slots', 'locale', 'sessions', 'commandUi', 'conversation', 'uiSession']
+/** Required client services: slots (settings.section), locale, sessions (git bar, archive, notifier), the slash-command registry, the scope-addressed conversation face, and the right-sidebar tab registry (terminal/diff tabs). */
+export const inject = ['slots', 'locale', 'sessions', 'commandUi', 'conversation', 'uiSession', 'sidebarRightTabs']
 
 /**
  * Hover/focus hint: a small ⓘ next to the field label; the hint text renders
@@ -1061,10 +1045,6 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
 
   const setTimeline = (value: 'native' | 'web'): void => {
     void controller.set('timelineStyle', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
-  }
-
-  const setWhaleIndicator = (value: boolean): void => {
-    void controller.set('whaleIndicatorEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
   const setPreciseCacheHit = (value: boolean): void => {
@@ -1263,17 +1243,6 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
             </div>
           </div>
         </div>
-        <div className="dut-field">
-          <div className="dut-field-top">
-            <span className="dut-label">{t('whaleIndicator')}<Hint text={t('whaleIndicatorHint')} /></span>
-            <div className="dut-controls">
-              <div className="dut-seg">
-                <button type="button" className={resolved.whaleIndicatorEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setWhaleIndicator(true) }}>{t('whaleIndicatorOn')}</button>
-                <button type="button" className={!resolved.whaleIndicatorEnabled ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setWhaleIndicator(false) }}>{t('whaleIndicatorOff')}</button>
-              </div>
-            </div>
-          </div>
-        </div>
       </section>
       <section className="dut-panel dut-grid dut-grid-half">
         <div className="dut-section-label">{t('sectionNotifications')}</div>
@@ -1391,14 +1360,13 @@ const INIT_PROMPT_EN = [
  * the picked session via the scope-addressed conversation face
  * (`ctx.sessions.scope(id).conversation.send` — the same hop DSH's own
  * packages use). Contribution rows merge into the host catalog by name; the
- * description string is captured at registration time, so a mid-session
- * language switch refreshes it only after reload.
+ * description is a thunk so a mid-session language switch re-renders it live.
  */
 function registerInitCommand(ctx: ClientContext): () => void {
   const t = ctx.locale.bind(NS)
   return ctx.commandUi.register({
     name: 'init',
-    description: t('initDesc'),
+    description: () => t('initDesc'),
     available: () => true,
     ui: {
       kind: 'popupSelect',
@@ -1493,9 +1461,10 @@ export function apply(ctx: ClientContext): void {
   }, SettingsSection))
 
   // GitBar v3: the branch chip lives in the session header's action row
-  // (beside the title, AFTER the mode badge) and the 打开项目/终端/差异 icon
-  // group sits in the header's right-aligned utilities. Both are strict
-  // session slots; each renders null outside git repos.
+  // (beside the title, AFTER the mode badge); the terminal and diff tabs
+  // below take the native right sidebar. Opening the project in
+  // external apps is DSH's own open-in-app header button, so this plugin no
+  // longer ships one.
   ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
     name: 'conversation.session.header.actions',
     id: 'gitbar-branch',
@@ -1516,13 +1485,55 @@ export function apply(ctx: ClientContext): void {
     inject: () => ({}),
   }, GitWarmup))
 
-  ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
-    name: 'conversation.session.header.utilities',
-    id: 'gitbar-utils',
-    order: 10,
-    locale: NS,
-    inject: () => ({ controller }),
-  }, HeaderUtilities))
+  // Terminal + diff as native right-sidebar tabs (guide entries beside 文件;
+  // picking one opens the tab in the sidebar), registered only while the
+  // gitBarEnabled toggle in the UI Tweaks section is on. Each tab is a page
+  // type (no address patterns): stage one registers the type with its guide
+  // box, stage two the body under the type's id. The terminal reattaches to
+  // its persistent host shell on every visit, and the diff tab keeps its
+  // commit band.
+  ctx.effect(() => {
+    const disposers: Array<() => void> = []
+    const sync = (): void => {
+      const enabled = controller.getSnapshot().value?.gitBarEnabled === true
+      if (enabled && disposers.length === 0) {
+        disposers.push(ctx.sidebarRightTabs.register({
+          id: 'dsh-ui-tweaks/terminal',
+          kind: 'ui-tweaks-terminal',
+          title: () => t('terminal'),
+          guide: [{ order: 20, title: () => t('terminal'), description: () => t('terminalGuide'), icon: TerminalIcon }],
+        }))
+        disposers.push(ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
+          name: 'sidebar.right.pane.tab',
+          key: 'dsh-ui-tweaks/terminal',
+          locale: NS,
+          inject: () => ({ controller }),
+        }, TerminalPanel)))
+        disposers.push(ctx.sidebarRightTabs.register({
+          id: 'dsh-ui-tweaks/diff',
+          kind: 'ui-tweaks-diff',
+          title: () => t('diffView'),
+          guide: [{ order: 30, title: () => t('diffView'), description: () => t('diffGuide'), icon: DiffIcon }],
+        }))
+        disposers.push(ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
+          name: 'sidebar.right.pane.tab',
+          key: 'dsh-ui-tweaks/diff',
+          locale: NS,
+          inject: () => ({ controller }),
+        }, DiffPanel)))
+        disposers.push(ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({
+          name: 'sidebar.right.pane.tab.title',
+          key: 'dsh-ui-tweaks/diff',
+          locale: NS,
+          inject: () => ({ controller }),
+        }, DiffTabTitle)))
+      } else if (!enabled && disposers.length > 0) {
+        for (const dispose of disposers.splice(0).reverse()) dispose()
+      }
+    }
+    sync()
+    return controller.subscribe(sync)
+  }, 'dsh-ui-tweaks: sidebar tabs')
 
   // Hero (new-session screen): the session header does not mount there, so a
   // floating branch chip anchors beside the workspace picker instead — only
@@ -1586,35 +1597,6 @@ export function apply(ctx: ClientContext): void {
     sync()
     return controller.subscribe(sync)
   }, 'dsh-ui-tweaks: /init command')
-
-  // Whale working indicator: the brand whale centered above the composer
-  // card — translucent and still while idle, swimming while the model works.
-  // The dock entry is registered only while the whaleIndicatorEnabled toggle
-  // is on, so off costs nothing; styles ride the same toggle so an unused
-  // keyframes rule never lingers in <head>.
-  ctx.effect(() => {
-    let disposeEntry: (() => void) | undefined
-    let disposeStyles: (() => void) | undefined
-    const sync = (): void => {
-      const enabled = controller.getSnapshot().value?.whaleIndicatorEnabled === true
-      if (enabled && disposeEntry === undefined) {
-        disposeStyles = installWhaleStyles()
-        disposeEntry = ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
-          name: 'conversation.input.dock',
-          id: 'whale',
-          order: 30,
-          inject: () => ({ sessionsService: ctx.sessions }),
-        }, WhaleIndicator))
-      } else if (!enabled && disposeEntry !== undefined) {
-        disposeEntry()
-        disposeEntry = undefined
-        disposeStyles?.()
-        disposeStyles = undefined
-      }
-    }
-    sync()
-    return controller.subscribe(sync)
-  }, 'dsh-ui-tweaks: whale indicator')
 
   // Conversation timeline rail (classic web rail): mounted per session,
   // registered only while the timeline switch is on 'web', so flipping the

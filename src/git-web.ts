@@ -196,17 +196,6 @@ export class GitWebHandler {
     const ws = isRecord(body) ? str(body.ws) : undefined
 
     try {
-      if (path === `${GIT_ROUTE}/open`) {
-        const fields = requireFields(body, ['target'])
-        if (fields.target !== 'explorer' && fields.target !== 'vscode' && fields.target !== 'idea'
-          && fields.target !== 'goland' && fields.target !== 'webstorm' && fields.target !== 'pycharm') {
-          throw new TypeError('target must be "explorer", "vscode", "idea", "goland", "webstorm" or "pycharm"')
-        }
-        const cwd = this.requireCwd({ session, ws })
-        await this.backend.openFolder(cwd, fields.target as 'explorer' | 'vscode' | 'idea' | 'goland' | 'webstorm' | 'pycharm')
-        ok(res, { opened: fields.target })
-        return
-      }
       if (path === `${GIT_ROUTE}/commit`) {
         const fields = requireFields(body, ['message'])
         const push = isRecord(body) && body.push === true

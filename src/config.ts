@@ -79,13 +79,6 @@ export interface UITweaksConfig {
    */
   initCommandEnabled?: boolean
   /**
-   * Whether the whale working indicator is shown: a little brand whale
-   * centered above the input box — translucent and still while the model is
-   * idle, swimming while it works. Off by default; users turn it on in
-   * Settings.
-   */
-  whaleIndicatorEnabled?: boolean
-  /**
    * Whether the composer stats line's cache-hit figure keeps two decimal
    * places ("缓存命中 96.35%"), computed client-side from the raw
    * cached-read / cached-write / uncached-input token buckets instead of
@@ -151,9 +144,6 @@ export const DEFAULT_MCP_MANAGER_ENABLED = false
 /** The /init slash command defaults to off; users turn it on in Settings. */
 export const DEFAULT_INIT_COMMAND_ENABLED = false
 
-/** The whale working indicator defaults to off; users turn it on in Settings. */
-export const DEFAULT_WHALE_INDICATOR_ENABLED = false
-
 /** The precise cache-hit readout defaults to off; users turn it on in Settings. */
 export const DEFAULT_PRECISE_CACHE_HIT_ENABLED = false
 
@@ -183,7 +173,6 @@ export const Config: Schema<UITweaksConfig> = z.object({
   archiveManagerEnabled: z.boolean().default(DEFAULT_ARCHIVE_MANAGER_ENABLED),
   mcpManagerEnabled: z.boolean().default(DEFAULT_MCP_MANAGER_ENABLED),
   initCommandEnabled: z.boolean().default(DEFAULT_INIT_COMMAND_ENABLED),
-  whaleIndicatorEnabled: z.boolean().default(DEFAULT_WHALE_INDICATOR_ENABLED),
   preciseCacheHitEnabled: z.boolean().default(DEFAULT_PRECISE_CACHE_HIT_ENABLED),
   notificationsEnabled: z.boolean().default(DEFAULT_NOTIFICATIONS_ENABLED),
   notifyOnlyWhenHidden: z.boolean().default(DEFAULT_NOTIFY_ONLY_WHEN_HIDDEN),
@@ -217,8 +206,6 @@ export interface ResolvedUITweaksConfig {
   mcpManagerEnabled: boolean
   /** Whether the /init slash command is registered. */
   initCommandEnabled: boolean
-  /** Whether the whale working indicator above the input is shown. */
-  whaleIndicatorEnabled: boolean
   /** Whether the stats line's cache-hit figure keeps two decimals. */
   preciseCacheHitEnabled: boolean
   /** Whether task notifications (title flash / system notification / chime) are active. */
@@ -254,7 +241,6 @@ export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConf
   const archiveManagerEnabled = config.archiveManagerEnabled ?? DEFAULT_ARCHIVE_MANAGER_ENABLED
   const mcpManagerEnabled = config.mcpManagerEnabled ?? DEFAULT_MCP_MANAGER_ENABLED
   const initCommandEnabled = config.initCommandEnabled ?? DEFAULT_INIT_COMMAND_ENABLED
-  const whaleIndicatorEnabled = config.whaleIndicatorEnabled ?? DEFAULT_WHALE_INDICATOR_ENABLED
   const preciseCacheHitEnabled = config.preciseCacheHitEnabled ?? DEFAULT_PRECISE_CACHE_HIT_ENABLED
   const notificationsEnabled = config.notificationsEnabled ?? DEFAULT_NOTIFICATIONS_ENABLED
   const notifyOnlyWhenHidden = config.notifyOnlyWhenHidden ?? DEFAULT_NOTIFY_ONLY_WHEN_HIDDEN
@@ -263,6 +249,6 @@ export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConf
   const notifyTitleFlash = config.notifyTitleFlash ?? DEFAULT_NOTIFY_TITLE_FLASH
   const notifySystemNotification = config.notifySystemNotification ?? DEFAULT_NOTIFY_SYSTEM_NOTIFICATION
   const notifySound = config.notifySound ?? DEFAULT_NOTIFY_SOUND
-  const resolved: ResolvedUITweaksConfig = { codeFontScale, codeFontSize, tableStyle, timelineStyle, searchEnabled, searchEngine, bingMarket, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled, whaleIndicatorEnabled, preciseCacheHitEnabled, notificationsEnabled, notifyOnlyWhenHidden, notifyOnComplete, notifyOnInteraction, notifyTitleFlash, notifySystemNotification, notifySound }
+  const resolved: ResolvedUITweaksConfig = { codeFontScale, codeFontSize, tableStyle, timelineStyle, searchEnabled, searchEngine, bingMarket, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled, preciseCacheHitEnabled, notificationsEnabled, notifyOnlyWhenHidden, notifyOnComplete, notifyOnInteraction, notifyTitleFlash, notifySystemNotification, notifySound }
   return resolved
 }
