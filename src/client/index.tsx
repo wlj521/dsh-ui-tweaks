@@ -712,8 +712,10 @@ body:not(#dsh-ui-tweaks-theme-scope){
   --dut-magenta-soft:rgba(230,0,126,.12);
   --dut-hover:rgba(230,0,126,.07);
   --dut-active:rgba(230,0,126,.13);
-  /* selection trial: fluorescent lime here, bright magenta in the dark scheme */
-  --dut-sel-bg:#dcff4d;
+  /* selection trial: a brighter fluorescent yellow than the lime inline-code
+     chip (#dcff4d), so the highlight still reads inside a code span; the dark
+     scheme selects in bright magenta instead */
+  --dut-sel-bg:#eaff00;
   --dut-sel-fg:#101418;
   --dut-faint:rgba(0,0,0,.06);
   --dut-scroll-1:#e3e6ea;
