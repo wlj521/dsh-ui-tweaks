@@ -41,6 +41,7 @@ import { McpSection, installMcpStyles } from './mcp.tsx'
 import { SearchSection } from './search.tsx'
 import { TimelineRail, installTimelineStyles } from './timeline.tsx'
 import { PreciseCacheHitEntry } from './cachehit.tsx'
+import { installEffortTag } from './effort.tsx'
 import { installTaskNotifier, previewAlerts, requestNotifyPermission } from './notifier.ts'
 
 const NS = 'ui-tweaks'
@@ -918,6 +919,53 @@ div[data-composer-card]{
    (scoped to the composer's svg so the class-substring match stays safe) */
 div[data-composer-card] svg [class*="track"]{stroke:var(--dut-scroll-1)}
 div[data-composer-card] svg [class*="fill"]{stroke:var(--dut-accent)}
+/* composer model seat and its dropdown menu: thinking-effort labels in solid
+   band colors (Low green, Medium amber, High blue, Max Codex-violet).
+   The effort watcher tags the label spans data-dut-effort — the trigger
+   effort span, the menu root Effort cell value, and every effort-option
+   label — while option row buttons carry the same band for the hover wash;
+   Off/Default stay untagged in the stock caption. One plain span selector
+   covers all three label surfaces — the attribute only exists where the
+   watcher set it, so no hashed module class is touched. */
+[data-slot="conversation.input.model"] span[data-dut-effort],
+div[role="menu"] span[data-dut-effort]{font-weight:600}
+[data-slot="conversation.input.model"] span[data-dut-effort="low"],
+div[role="menu"] span[data-dut-effort="low"]{color:#15803d}
+[data-slot="conversation.input.model"] span[data-dut-effort="medium"],
+div[role="menu"] span[data-dut-effort="medium"]{color:#b45309}
+[data-slot="conversation.input.model"] span[data-dut-effort="high"],
+div[role="menu"] span[data-dut-effort="high"]{color:#1d4ed8}
+[data-slot="conversation.input.model"] span[data-dut-effort="max"],
+div[role="menu"] span[data-dut-effort="max"]{color:#7c3aed}
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="low"],
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] span[data-dut-effort="low"]{color:#4ade80}
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="medium"],
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] span[data-dut-effort="medium"]{color:#fbbf24}
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="high"],
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] span[data-dut-effort="high"]{color:#60a5fa}
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="max"],
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] span[data-dut-effort="max"]{color:#a78bfa}
+/* Effort option rows: on hover the row background wipes in from the left in
+   the band hue (translucent wash into transparency), overriding the stock
+   row hover fill — same specificity contest the skin always wins by naming
+   the attribute. background-size animates reliably (no background-clip text
+   involved); honoring prefers-reduced-motion. */
+div[role="menu"] button[data-dut-effort]{
+  background-repeat:no-repeat;
+  background-size:0% 100%;
+  transition:background-size .35s ease;
+}
+div[role="menu"] button[data-dut-effort="low"]:hover{background-image:linear-gradient(90deg,rgba(21,128,61,.16),rgba(21,128,61,0));background-size:100% 100%}
+div[role="menu"] button[data-dut-effort="medium"]:hover{background-image:linear-gradient(90deg,rgba(180,83,9,.16),rgba(180,83,9,0));background-size:100% 100%}
+div[role="menu"] button[data-dut-effort="high"]:hover{background-image:linear-gradient(90deg,rgba(29,78,216,.14),rgba(29,78,216,0));background-size:100% 100%}
+div[role="menu"] button[data-dut-effort="max"]:hover{background-image:linear-gradient(90deg,rgba(124,58,237,.16),rgba(124,58,237,0));background-size:100% 100%}
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] button[data-dut-effort="low"]:hover{background-image:linear-gradient(90deg,rgba(74,222,128,.18),rgba(74,222,128,0));background-size:100% 100%}
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] button[data-dut-effort="medium"]:hover{background-image:linear-gradient(90deg,rgba(251,191,36,.18),rgba(251,191,36,0));background-size:100% 100%}
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] button[data-dut-effort="high"]:hover{background-image:linear-gradient(90deg,rgba(96,165,250,.20),rgba(96,165,250,0));background-size:100% 100%}
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] button[data-dut-effort="max"]:hover{background-image:linear-gradient(90deg,rgba(167,139,250,.20),rgba(167,139,250,0));background-size:100% 100%}
+@media (prefers-reduced-motion:reduce){
+  div[role="menu"] button[data-dut-effort]{transition:none}
+}
 /* sidebar new-session button: lime sticker. Matched by its CSS-module class,
    NOT the aria-label — the brand row button shares the same "新建会话"
    label (it doubles as the new-session shortcut) and must stay plain. */
@@ -990,7 +1038,7 @@ function runtimeStyleElement(): HTMLStyleElement {
 const BASE_CSS = `
 .dut-settings{display:grid;gap:8px;max-width:680px;padding:4px 2px 24px;color:var(--dsw-alias-label-primary)}
 .dut-settings-header{display:flex;align-items:flex-start;gap:10px;padding:2px 2px 0}
-.dut-logo{flex:none;display:grid;place-items:center;width:30px;height:30px;border-radius:9px;border:1px solid var(--dsw-alias-border-l1);background:linear-gradient(135deg,color-mix(in srgb,var(--dsw-alias-state-business-primary) 16%,transparent),transparent);font-size:15px;line-height:1}
+.dut-logo{flex:none;display:grid;place-items:center;width:30px;height:30px;border-radius:9px;border:1px solid var(--dsw-alias-border-l1);background-image:linear-gradient(135deg,color-mix(in srgb,var(--dsw-alias-state-business-primary) 16%,transparent),transparent);font-size:15px;line-height:1}
 .dut-settings-header h2{font-size:16px;letter-spacing:-.01em;margin:0 0 2px}
 .dut-settings-header p{max-width:600px;margin:0;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:1.45}
 .dut-panel{display:grid;gap:0;border:1px solid var(--dsw-alias-border-l1);border-radius:14px;background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-shadow-lv1);overflow:hidden}
@@ -1921,6 +1969,31 @@ export function apply(ctx: ClientContext): void {
       disposeEntry = undefined
     }
   }, 'dsh-ui-tweaks: precise cache hit')
+
+  // Thinking-effort tint: tags thinking-effort labels — the composer
+  // trigger, the menu root Effort cell and the menu effort options — so the
+  // poster skin can paint solid band colors plus a hover background wash.
+  // Mounted only while the neon-poster theme is active — other themes keep
+  // the stock caption, and leaving the theme removes every tag.
+  ctx.effect(() => {
+    let disposeTag: (() => void) | undefined
+    const sync = (): void => {
+      const poster = controller.getSnapshot().value?.themeStyle === 'neon-lime'
+      if (poster && disposeTag === undefined) {
+        disposeTag = installEffortTag()
+      } else if (!poster && disposeTag !== undefined) {
+        disposeTag()
+        disposeTag = undefined
+      }
+    }
+    sync()
+    const unsubscribe = controller.subscribe(sync)
+    return () => {
+      unsubscribe()
+      disposeTag?.()
+      disposeTag = undefined
+    }
+  }, 'dsh-ui-tweaks: effort tint')
 
   // Task notifications: watch every session on the list feed and raise
   // tab-title / system-notification / chime alerts when one finishes its turn
