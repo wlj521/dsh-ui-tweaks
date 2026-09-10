@@ -269,6 +269,8 @@ declare const en: {
     readonly includeFile: "Include in commit";
     readonly excludeFile: "Exclude from commit";
     readonly terminal: "Terminal";
+    readonly terminalGuide: "A persistent shell in the session working directory.";
+    readonly diffGuide: "Review working-tree changes and commit.";
     readonly notRepo: "Not a git repository.";
     readonly termConnecting: "connecting…";
     readonly termExited: "shell exited";
