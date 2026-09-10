@@ -953,7 +953,7 @@ body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] span[d
 div[role="menu"] button[data-dut-effort]{
   background-repeat:no-repeat;
   background-size:0% 100%;
-  transition:background-size .35s ease;
+  transition:background-size .6s ease;
 }
 div[role="menu"] button[data-dut-effort="low"]:hover{background-image:linear-gradient(90deg,rgba(21,128,61,.16),rgba(21,128,61,0));background-size:100% 100%}
 div[role="menu"] button[data-dut-effort="medium"]:hover{background-image:linear-gradient(90deg,rgba(180,83,9,.16),rgba(180,83,9,0));background-size:100% 100%}
