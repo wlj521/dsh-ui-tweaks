@@ -347,8 +347,6 @@ const en = {
   includeFile: 'Include in commit',
   excludeFile: 'Exclude from commit',
   terminal: 'Terminal',
-  terminalGuide: 'A persistent shell in the session working directory.',
-  diffGuide: 'Review working-tree changes and commit.',
   notRepo: 'Not a git repository.',
   termConnecting: 'connecting…',
   termExited: 'shell exited',
@@ -586,8 +584,6 @@ const zh: Record<LocaleKey, string> = {
   includeFile: '提交包含此文件',
   excludeFile: '提交排除此文件',
   terminal: '终端',
-  terminalGuide: '在会话工作目录中打开常驻 shell。',
-  diffGuide: '查看工作区改动并提交。',
   notRepo: '当前目录不是 git 仓库。',
   termConnecting: '连接中…',
   termExited: 'shell 已退出',
@@ -1730,7 +1726,7 @@ export function apply(ctx: ClientContext): void {
   // picking one opens the tab in the sidebar), registered only while the
   // gitBarEnabled toggle in the UI Tweaks section is on. Each tab is a page
   // type (no address patterns): stage one registers the type with its guide
-  // box, stage two the body under the type's id. The terminal reattaches to
+  // capsule, stage two the body under the type's id. The terminal reattaches to
   // its persistent host shell on every visit, and the diff tab keeps its
   // commit band. The tab registry is resolved lazily: hosts predating the
   // right sidebar simply skip these tabs while everything else keeps working.
@@ -1751,7 +1747,7 @@ export function apply(ctx: ClientContext): void {
           id: 'dsh-ui-tweaks/terminal',
           kind: 'ui-tweaks-terminal',
           title: () => t('terminal'),
-          guide: [{ order: 20, title: () => t('terminal'), description: () => t('terminalGuide'), icon: TerminalIcon }],
+          guide: [{ order: 20, title: () => t('terminal'), icon: TerminalIcon }],
         }))
         disposers.push(ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
           name: 'sidebar.right.pane.tab',
@@ -1763,7 +1759,7 @@ export function apply(ctx: ClientContext): void {
           id: 'dsh-ui-tweaks/diff',
           kind: 'ui-tweaks-diff',
           title: () => t('diffView'),
-          guide: [{ order: 30, title: () => t('diffView'), description: () => t('diffGuide'), icon: DiffIcon }],
+          guide: [{ order: 30, title: () => t('diffView'), icon: DiffIcon }],
         }))
         disposers.push(ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
           name: 'sidebar.right.pane.tab',
