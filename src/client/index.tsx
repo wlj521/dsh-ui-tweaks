@@ -945,6 +945,21 @@ body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversatio
 body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] span[data-dut-effort="high"]{color:#60a5fa}
 body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="max"],
 body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] span[data-dut-effort="max"]{color:#a78bfa}
+/* Trigger chip: the input-box effort label additionally rides a translucent
+   pill in its band hue (menu labels stay plain text). Padding/radius work
+   as-is — the trigger is flex, so its spans are already blockified. */
+[data-slot="conversation.input.model"] span[data-dut-effort]{
+  padding:1px 7px;
+  border-radius:999px;
+}
+[data-slot="conversation.input.model"] span[data-dut-effort="low"]{background:rgba(21,128,61,.12)}
+[data-slot="conversation.input.model"] span[data-dut-effort="medium"]{background:rgba(180,83,9,.12)}
+[data-slot="conversation.input.model"] span[data-dut-effort="high"]{background:rgba(29,78,216,.10)}
+[data-slot="conversation.input.model"] span[data-dut-effort="max"]{background:rgba(124,58,237,.12)}
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="low"]{background:rgba(74,222,128,.18)}
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="medium"]{background:rgba(251,191,36,.18)}
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="high"]{background:rgba(96,165,250,.18)}
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="max"]{background:rgba(167,139,250,.20)}
 /* Effort option rows: on hover the row background wipes in from the left in
    the band hue (translucent wash into transparency), overriding the stock
    row hover fill — same specificity contest the skin always wins by naming
