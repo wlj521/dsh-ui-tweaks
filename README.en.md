@@ -1,6 +1,6 @@
 # dsh-ui-tweaks
 
-> **Dependency**: currently targets **DSH v0.1.5-alpha.1**.
+> **Dependency**: currently targets **DSH v0.1.5-alpha.2**.
 
 A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH) web plugin that live-tunes the conversation UI from the Settings panel.
 
@@ -8,14 +8,12 @@ A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH)
 
 | | |
 |---|---|
-| ![Settings panel](assets/settings.png) | ![GitBar](assets/git.png) |
-| **Settings panel**: code font size / theme skin / GitBar toggles | **GitBar**: the branch chip in the session header (branch management) plus **terminal** / **code diff** tabs in the native right sidebar, with commit & push from the code diff page (uncommitted changes dot the branch chip and its tab) |
-| ![Branch panel](assets/branch.png) | ![Diff panel](assets/gitdiff.png) |
-| **Branch panel**: pops up from the branch chip — local / remote branch lists, click to switch, delete, pull & push to remote, new-branch field at the bottom, plus a **commit graph** dialog (colored SVG fork/merge lanes) | **Code diff**: file list + per-file diff (changed hunks only by default) with a commit area (commit / commit & push) at the bottom |
-| ![Terminal panel](assets/terminal.png) | ![Archive manager](assets/archive.png) |
-| **Terminal**: a real PTY terminal in the sidebar (xterm.js over WebSocket) — full interactivity | **Archive manager**: an Archive page in the Settings dialog listing archived sessions (title / workspace / relative time) with Restore and Delete actions |
-| ![MCP manager](assets/mcp.png) | |
-| **MCP manager**: an MCP page in the Settings dialog listing configured MCP servers with live status and full management (Add / Edit / Enable / Disable / Delete / Restart) | |
+| ![Settings panel](assets/settings.png) | ![Branch panel](assets/git.png) |
+| **Settings panel**: code font size / neon-poster theme / two-decimal cache hit / web search / timeline / GitBar toggles, with dedicated **Archive**, **MCP** and **Search** pages in the left nav | **Branch panel**: pops down from the branch chip in the session header — local / remote branch lists, click to switch; pull button (fast-forward only) in the header, new-branch field at the bottom, plus a **commit graph** dialog (colored SVG fork/merge lanes) and **Tag** management |
+| ![Diff panel](assets/gitdiff.png) | ![Terminal panel](assets/terminal.png) |
+| **Code diff**: the code-diff tab in the right sidebar — file list (per-file checkboxes for partial commits) + per-file diff (changed hunks only by default, "Full file" toggle at the top right), with a commit area at the bottom for the message, an optional Tag, and Commit / Commit & push | **Terminal**: a real PTY terminal in the sidebar (xterm.js over WebSocket) — full interactivity |
+| ![Archive manager](assets/archive.png) | ![MCP manager](assets/mcp.png) |
+| **Archive manager**: an Archive page in the Settings dialog listing archived sessions (title / workspace / relative time) with per-row Restore / Delete and batch Restore all / Delete all | **MCP manager**: an MCP page in the Settings dialog listing configured MCP servers with live status and tool counts, plus full management (Add / Edit / Enable / Disable / Delete / Restart) |
 
 ## Features
 
