@@ -61,7 +61,7 @@ Settings entry: **Settings → UI Tweaks**.
 # from npm (recommended, prebuilt)
 npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks
 
-# from GitHub (source; runs the self-contained prepare build)
+# from GitHub (source with prebuilt artifacts; no local build needed)
 npx -y @deepseek-ai/dsh plugin --profile web add github:wlj521/dsh-ui-tweaks
 ```
 
@@ -73,15 +73,7 @@ npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks@0.12.0           
 npx -y @deepseek-ai/dsh plugin --profile web add github:wlj521/dsh-ui-tweaks#v0.12.0     # pin a git tag
 ```
 
-For GitHub installs, pnpm may ask you to approve the package's build script —
-add the exact key it prints to the profile's `pnpm-workspace.yaml`:
-
-```yaml
-allowBuilds:
-  dsh-ui-tweaks: true
-```
-
-…then run `add` again. Restart DSH web once after installing (bundle plugins
+Restart DSH web once after installing (bundle plugins
 are scanned at process start).
 
 > If pnpm reports symlink/hoist errors, set `nodeLinker: hoisted` in the

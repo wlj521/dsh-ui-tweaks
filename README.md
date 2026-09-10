@@ -64,7 +64,7 @@ ui-tweaks:
 # 方式一：从 npm 安装（推荐，预构建产物，一条命令装好）
 npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks
 
-# 方式二：从 GitHub 仓库安装（源码，会运行自包含的 prepare 构建）
+# 方式二：从 GitHub 仓库安装（源码 + 预构建产物，无需本地构建）
 npx -y @deepseek-ai/dsh plugin --profile web add github:wlj521/dsh-ui-tweaks
 ```
 
@@ -75,14 +75,7 @@ npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks@0.12.0           
 npx -y @deepseek-ai/dsh plugin --profile web add github:wlj521/dsh-ui-tweaks#v0.12.0     # 锁定 git tag
 ```
 
-从 GitHub 安装时，pnpm 可能要求批准该包的构建脚本——把提示的包键加进该 profile 的 `pnpm-workspace.yaml`：
-
-```yaml
-allowBuilds:
-  dsh-ui-tweaks: true
-```
-
-然后重新执行 `add`。安装完成后**重启一次 `dsh web`**（bundle 插件在进程启动时扫描）。
+安装完成后**重启一次 `dsh web`**（bundle 插件在进程启动时扫描）。
 
 > 若 pnpm 报符号链接/hoist 相关错误，可在 profile 的 `pnpm-workspace.yaml` 中设置 `nodeLinker: hoisted`。
 
