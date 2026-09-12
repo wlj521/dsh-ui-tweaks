@@ -1,6 +1,14 @@
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { transform } from 'esbuild'
+
+// DSH STORE's automatic review blocks any runtime file over 256 KB, and the
+// assembled bundle is far over, so the shipped lib/client.js is minified.
+// DSH_CLIENT_DEV=1 keeps the readable bundle (and its sectioned source map)
+// for local debugging.
+const PER_FILE_LIMIT = 262_144
+const dev = process.env.DSH_CLIENT_DEV === '1'
 
 // Bundles the tsc-compiled client sources (.client-build/*.js) into the single
 // browser bundle the DSH ModuleLoader expects: `window.__ModuleLoader__.load`.
@@ -62,10 +70,32 @@ for (const line of [
 const wrapped = lines.join('\n')
 
 await mkdir(dirname(outputPath), { recursive: true })
-await writeFile(outputPath, wrapped)
-
-for (const section of sections) {
-  section.map.file = 'client.js'
+if (dev) {
+  await writeFile(outputPath, wrapped)
+  for (const section of sections) {
+    section.map.file = 'client.js'
+  }
+  await writeFile(`${outputPath}.map`, `${JSON.stringify({ version: 3, file: 'client.js', sections })}\n`)
+} else {
+  const result = await transform(wrapped, {
+    minify: true,
+    target: 'es2022',
+    charset: 'utf8',
+    legalComments: 'none',
+    sourcefile: 'client.js',
+    sourcemap: 'external',
+    sourcesContent: false,
+    logLevel: 'warning',
+  })
+  const code = result.code.replace(/\n?\/\/# sourceMappingURL=.*$/u, '')
+  const map = result.map !== undefined && Buffer.byteLength(result.map) <= PER_FILE_LIMIT ? result.map : undefined
+  if (map === undefined) {
+    await rm(`${outputPath}.map`, { force: true })
+    await writeFile(outputPath, `${code}\n`)
+  } else {
+    await writeFile(`${outputPath}.map`, map)
+    await writeFile(outputPath, `${code}\n//# sourceMappingURL=client.js.map\n`)
+  }
+  console.log(`client bundle: ${Buffer.byteLength(code)} bytes minified (limit ${PER_FILE_LIMIT}), map ${map === undefined ? 'dropped' : `${Buffer.byteLength(map)} bytes`}`)
 }
-await writeFile(`${outputPath}.map`, `${JSON.stringify({ version: 3, file: 'client.js', sections })}\n`)
 await rm(compiledRoot, { recursive: true, force: true })

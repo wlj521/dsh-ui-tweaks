@@ -1,6 +1,6 @@
 # dsh-ui-tweaks
 
-> **Dependency**: currently targets **DSH v0.1.5-rc.1**.
+> **Dependency**: currently targets **DSH v0.1.5-rc.2**.
 
 A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH) web plugin that live-tunes the conversation UI from the Settings panel.
 
