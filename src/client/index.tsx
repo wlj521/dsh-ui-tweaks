@@ -31,11 +31,11 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SelectOption } from '@deepseek-ai/dsh-client-ui-commands/client'
 // Type-only import activates the Context declarations for
 // `ctx.sidebarRightTabs` (right-sidebar tab-type registry) and the
-// `sidebar.right.pane.tab` keyed seat the terminal/diff bodies render into.
+// `sidebar.right.pane.tab` keyed seat the diff body renders into.
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { BranchChipEntry, DiffPanel, DiffTabTitle, GitWarmup, TerminalPanel, installGitBarStyles, installHeroChip } from './gitbar.tsx'
-import { DiffIcon, TerminalIcon } from './icons.tsx'
+import { BranchChipEntry, DiffPanel, DiffTabTitle, GitWarmup, installGitBarStyles, installHeroChip } from './gitbar.tsx'
+import { DiffIcon } from './icons.tsx'
 import { ArchiveSection, installArchiveStyles } from './archive.tsx'
 import { McpSection, installMcpStyles } from './mcp.tsx'
 import { SearchSection } from './search.tsx'
@@ -347,14 +347,8 @@ const en = {
   branchPull: 'Pull',
   includeFile: 'Include in commit',
   excludeFile: 'Exclude from commit',
-  terminal: 'Terminal',
-  terminalGuide: 'A persistent shell in the session working directory.',
   diffGuide: 'Review working-tree changes and commit.',
   notRepo: 'Not a git repository.',
-  termConnecting: 'connecting…',
-  termExited: 'shell exited',
-  termUnavailable: 'PTY unavailable: node-pty failed to load on the host.',
-  termLost: 'connection lost',
   initDesc: 'Analyze this project and generate an AGENTS.md for future coding agents',
   initOptionZh: 'AGENTS.md — Chinese prompt',
   initOptionZhDetail: 'Submit a Chinese prompt asking the agent to analyze the project and write or improve AGENTS.md.',
@@ -586,14 +580,8 @@ const zh: Record<LocaleKey, string> = {
   branchPull: '拉取',
   includeFile: '提交包含此文件',
   excludeFile: '提交排除此文件',
-  terminal: '终端',
-  terminalGuide: '在会话工作目录中打开常驻 shell。',
   diffGuide: '查看工作区改动并提交。',
   notRepo: '当前目录不是 git 仓库。',
-  termConnecting: '连接中…',
-  termExited: 'shell 已退出',
-  termUnavailable: '终端不可用：宿主加载 node-pty 失败，无法启动 PTY 会话。',
-  termLost: '连接已断开',
   initDesc: '分析当前项目并生成 AGENTS.md，供未来的 AI 编码代理使用',
   initOptionZh: 'AGENTS.md（中文提示词）',
   initOptionZhDetail: '向会话提交中文提示词，让代理分析项目并生成或改进 AGENTS.md。',
@@ -1230,7 +1218,7 @@ export class SettingsClient {
   }
 }
 
-/** Required client services: slots (settings.section), locale, sessions (git bar, archive, notifier), the slash-command registry, and the scope-addressed conversation face. The right-sidebar tab registry (terminal/diff tabs) is resolved lazily — older hosts without it still load everything else. */
+/** Required client services: slots (settings.section), locale, sessions (git bar, archive, notifier), the slash-command registry, and the scope-addressed conversation face. The right-sidebar tab registry (diff tab) is resolved lazily — older hosts without it still load everything else. */
 export const inject = ['slots', 'locale', 'sessions', 'commandUi', 'conversation', 'uiSession']
 
 /**
@@ -1765,8 +1753,8 @@ export function apply(ctx: ClientContext): void {
   }, SettingsSection))
 
   // GitBar v3: the branch chip lives in the session header's action row
-  // (beside the title, AFTER the mode badge); the terminal and diff tabs
-  // below take the native right sidebar. Opening the project in
+  // (beside the title, AFTER the mode badge); the diff tab below takes the
+  // native right sidebar. Opening the project in
   // external apps is DSH's own open-in-app header button, so this plugin no
   // longer ships one.
   ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
@@ -1789,15 +1777,14 @@ export function apply(ctx: ClientContext): void {
     inject: () => ({}),
   }, GitWarmup))
 
-  // Terminal + diff as native right-sidebar tabs (guide entries beside 文件;
-  // picking one opens the tab in the sidebar), registered only while the
-  // gitBarEnabled toggle in the UI Tweaks section is on. Each tab is a page
-  // type (no address patterns): stage one registers the type with its guide
-  // capsule (description shows while the guide lists ≤4 entries), stage two
-  // the body under the type's id. The terminal reattaches to
-  // its persistent host shell on every visit, and the diff tab keeps its
-  // commit band. The tab registry is resolved lazily: hosts predating the
-  // right sidebar simply skip these tabs while everything else keeps working.
+  // Diff as a native right-sidebar tab (guide entry beside 文件; picking it
+  // opens the tab in the sidebar), registered only while the gitBarEnabled
+  // toggle in the UI Tweaks section is on. The tab is a page type (no address
+  // patterns): stage one registers the type with its guide capsule
+  // (description shows while the guide lists ≤4 entries), stage two the body
+  // under the type's id. The diff tab keeps its commit band. The tab registry
+  // is resolved lazily: hosts predating the right sidebar simply skip this tab
+  // while everything else keeps working.
   ctx.effect(() => {
     // Optional service: absent on hosts without the right sidebar (and on
     // plain version skew), in which case this whole effect is a no-op.
@@ -1812,22 +1799,10 @@ export function apply(ctx: ClientContext): void {
       const enabled = controller.getSnapshot().value?.gitBarEnabled === true
       if (enabled && disposers.length === 0) {
         disposers.push(tabs.register({
-          id: 'dsh-ui-tweaks/terminal',
-          kind: 'ui-tweaks-terminal',
-          title: () => t('terminal'),
-          guide: [{ order: 20, title: () => t('terminal'), description: () => t('terminalGuide'), icon: TerminalIcon }],
-        }))
-        disposers.push(ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
-          name: 'sidebar.right.pane.tab',
-          key: 'dsh-ui-tweaks/terminal',
-          locale: NS,
-          inject: () => ({ controller }),
-        }, TerminalPanel)))
-        disposers.push(tabs.register({
           id: 'dsh-ui-tweaks/diff',
           kind: 'ui-tweaks-diff',
           title: () => t('diffView'),
-          guide: [{ order: 30, title: () => t('diffView'), description: () => t('diffGuide'), icon: DiffIcon }],
+          guide: [{ id: 'dsh-ui-tweaks/diff', order: 30, title: () => t('diffView'), description: () => t('diffGuide'), icon: DiffIcon }],
         }))
         disposers.push(ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
           name: 'sidebar.right.pane.tab',

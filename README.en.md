@@ -1,6 +1,6 @@
 # dsh-ui-tweaks
 
-> **Dependency**: currently targets **DSH v0.1.5-rc.2**.
+> **Dependency**: currently targets **DSH v0.1.6-alpha.1**.
 
 A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH) web plugin that live-tunes the conversation UI from the Settings panel.
 
@@ -10,10 +10,10 @@ A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH)
 |---|---|
 | ![Settings panel](assets/settings.png) | ![Branch panel](assets/git.png) |
 | **Settings panel**: code font size / neon-poster theme / two-decimal cache hit / web search / timeline / GitBar toggles, with dedicated **Archive**, **MCP** and **Search** pages in the left nav | **Branch panel**: pops down from the branch chip in the session header — local / remote branch lists, click to switch; pull button (fast-forward only) in the header, new-branch field at the bottom, plus a **commit graph** dialog (colored SVG fork/merge lanes) and **Tag** management |
-| ![Diff panel](assets/gitdiff.png) | ![Terminal panel](assets/terminal.png) |
-| **Code diff**: the code-diff tab in the right sidebar — file list (per-file checkboxes for partial commits) + per-file diff (changed hunks only by default, "Full file" toggle at the top right), with a commit area at the bottom for the message, an optional Tag, and Commit / Commit & push | **Terminal**: a real PTY terminal in the sidebar (xterm.js over WebSocket) — full interactivity |
-| ![Archive manager](assets/archive.png) | ![MCP manager](assets/mcp.png) |
-| **Archive manager**: an Archive page in the Settings dialog listing archived sessions (title / workspace / relative time) with per-row Restore / Delete and batch Restore all / Delete all | **MCP manager**: an MCP page in the Settings dialog listing configured MCP servers with live status and tool counts, plus full management (Add / Edit / Enable / Disable / Delete / Restart) |
+| ![Diff panel](assets/gitdiff.png) | ![Archive manager](assets/archive.png) |
+| **Code diff**: the code-diff tab in the right sidebar — file list (per-file checkboxes for partial commits) + per-file diff (changed hunks only by default, "Full file" toggle at the top right), with a commit area at the bottom for the message, an optional Tag, and Commit / Commit & push | **Archive manager**: an Archive page in the Settings dialog listing archived sessions (title / workspace / relative time) with per-row Restore / Delete and batch Restore all / Delete all |
+| ![MCP manager](assets/mcp.png) | |
+| **MCP manager**: an MCP page in the Settings dialog listing configured MCP servers with live status and tool counts, plus full management (Add / Edit / Enable / Disable / Delete / Restart) | |
 
 ## Features
 
@@ -22,9 +22,8 @@ A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH)
 - **Timeline (single choice in Features)** — one switch, two options:
   - **Native (default)** — DSH's built-in turn rail (the row of small dots beside the messages), the stock behavior.
   - **Web (classic)** — the v0.11 classic right-side navigation rail, restored: vertically centered on the message area's right edge, a thin line strip when collapsed, a 240px panel on hover (message previews + current-position highlight), a per-item detail bubble with timestamp, and **click to jump** (deep history pages in automatically before landing, with a landing self-check); wheel over the rail scrubs clipped items into reach. Data comes from the server-side `dshChatTimeline` session projection (every user message, independent of the browser's loaded window); sessions with fewer than two user messages hide it. On the web option the native turn rail is hidden with one theme-independent CSS rule (matching its `--turn-natural-height` inline variable), so the two never appear together.
-- **GitBar (toggleable, off by default)** — the standard trio for git-repo sessions: a **branch chip** in the session header, plus **terminal** and **code diff** tabs in the native right sidebar (next to Files, opened from the sidebar guide; uncommitted changes put a dot on the code diff tab):
+- **GitBar (toggleable, off by default)** — the standard pair for git-repo sessions: a **branch chip** in the session header, plus a **code diff** tab in the native right sidebar (next to Files, opened from the sidebar guide; uncommitted changes put a dot on the code diff tab):
   - **Branch chip** — beside the session title; shows the current branch and opens a downward branch panel (local / remote lists, `git switch` on click, new-branch field). A **pull** button sits beside the current branch in the panel header (`git pull --ff-only` — fast-forward only: a diverged branch aborts with git's own error instead of silently merging; hidden when the branch has no upstream), so what gets pulled is always the branch in the header. The panel's **Graph** entry opens the **commit graph** dialog: the latest 150 commits (`git log --date-order --all`) are laid out into lanes and rendered as a colored SVG fork/merge graph — dots are commits, curves are forks/merges, each branch line keeps its own color and merge arcs adopt the color of the lane they join; rows highlight on hover, refresh in the header.
-  - **Terminal** — a real PTY terminal in the sidebar (xterm.js over a WebSocket to a persistent shell in the session cwd) with theme-following colors. Leaving the tab only drops the frontend connection; the host shell stays alive and replays its transcript, so you come back to the same session.
   - **Code diff** — changed-file list + per-file diff (changed hunks only by default, "Full file" toggle at the top right). The file-list / diff / commit sections split with draggable horizontal dividers (double-click resets; the message box stretches, Shift+Enter for new lines). The **commit band stays at the foot** (Commit / Commit & push, message required). Without a git repo the page shows a note instead of hiding.
   - Opening the project in external apps is DSH's own open-in-app header button, so this plugin no longer ships one; every git op runs server-side through `execFile('git', …)` (no shell, timeouts).
 - **Archive manager (toggleable, off by default)** — an **Archive** page in the Settings dialog listing archived sessions (title / workspace / relative time) with per-row **Restore** and **Delete** actions plus batch **Restore all** / **Delete all** buttons.

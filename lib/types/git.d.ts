@@ -11,12 +11,6 @@
  * as an argv array, cwd pinned, bounded timeout, abort propagation — so
  * repo-controlled strings cannot escape into a shell and a hung remote cannot
  * wedge the plugin.
- *
- * The terminal panel additionally runs a PERSISTENT REAL PTY per target
- * (node-pty — conpty on Windows), streamed to the browser over a WebSocket
- * and rendered with xterm.js: shell state, colors, Ctrl+C and interactive
- * apps work exactly like the DSH-better-sidebar terminal, whose pty-manager
- * design (transcript ring replay + reconnect grace) this follows.
  * @module dsh-ui-tweaks/git
  */
 import type { Context } from '@deepseek-ai/cordis';
@@ -118,8 +112,6 @@ export interface GitDiffResult {
  */
 export declare class GitBackend {
     private readonly ctx;
-    /** Persistent PTY shell sessions for the terminal panel (WebSocket-streamed). */
-    readonly terminals: TerminalSessionManager;
     constructor(ctx: Context);
     /** Resolve the session's working directory, or undefined when absent. */
     resolveCwd(sessionId: string | undefined): string | undefined;
@@ -219,89 +211,4 @@ export declare class GitBackend {
      */
     createBranch(cwd: string, name: string, base: string | undefined, pushRemote: boolean, signal?: AbortSignal): Promise<void>;
 }
-/**
- * Duck-typed face of the `node-pty` module — only what this plugin touches.
- * Kept structural so a broken native install degrades into a clear
- * "pty unavailable" error instead of crashing plugin activation.
- */
-interface NodePtyModule {
-    spawn(file: string, args: readonly string[], options: {
-        name: string;
-        cols: number;
-        rows: number;
-        cwd: string;
-        env: NodeJS.ProcessEnv;
-    }): IPtyLike;
-}
-/** Duck-typed face of one node-pty terminal handle. */
-interface IPtyLike {
-    pid: number;
-    write(data: string): void;
-    resize(cols: number, rows: number): void;
-    kill(): void;
-    onData(listener: (data: string) => void): unknown;
-    onExit(listener: (event: {
-        exitCode: number;
-        signal?: number;
-    }) => void): unknown;
-}
-/** A browser socket attached to one terminal (the WebSocket adapter). */
-export interface TerminalClient {
-    /** Push one chunk to the browser: raw pty bytes or a JSON control frame. */
-    send(text: string): void;
-    /** Whether the connection can still carry frames. */
-    readonly alive: boolean;
-}
-interface TerminalSession {
-    key: string;
-    cwd: string;
-    pty: IPtyLike;
-    /** Output accumulated since spawn (bounded; head dropped when over the limit). */
-    transcript: string;
-    exited: boolean;
-    exitCode: number | null;
-    clients: Set<TerminalClient>;
-    closeTimer: ReturnType<typeof setTimeout> | null;
-}
-/**
- * Owns the terminal shells, keyed by target (`session:<id>` / `ws:<name>`).
- * One live process per key: re-attach reuses it (transcript replay makes the
- * panel reopen seamless), an exited or cwd-changed handle is replaced with a
- * fresh spawn. Socket drops schedule a grace close that a timely re-attach
- * cancels; only the explicit close frame and teardown kill immediately.
- */
-export declare class TerminalSessionManager {
-    private readonly sessions;
-    private readonly nodePty;
-    constructor(loadPty?: () => NodePtyModule | undefined);
-    /** Whether the native pty module could not be loaded (degraded mode). */
-    get unavailable(): boolean;
-    /**
-     * Attach one browser client to the target's terminal, opening (or replacing)
-     * the underlying shell as needed.
-     * @returns the session whose `transcript` must be replayed to the client
-     *   before live data (empty on a fresh spawn).
-     */
-    attach(key: string, cwd: string, cols: number, rows: number, client: TerminalClient): TerminalSession;
-    /** Remove one client; when the last one leaves, arm the reconnect grace. */
-    detach(key: string, client: TerminalClient): void;
-    /** Forward raw stdin bytes from the browser to the shell. */
-    input(key: string, data: string): void;
-    /** Propagate the xterm viewport size to the pty. */
-    resize(key: string, cols: number, rows: number): void;
-    /** Kill the target's shell now (explicit close frame / teardown path). */
-    close(key: string): void;
-    /** Kill every shell (plugin teardown). */
-    disposeAll(): void;
-    private spawn;
-    /** Fan one pty chunk out to every attached, still-open client. */
-    private broadcast;
-    /** Make room for a new shell: drop exited records first, then detached ones. */
-    private evictForNewSession;
-    /** Arm (or re-arm) the delayed destruction used for bare socket drops. */
-    private scheduleClose;
-    /** Cancel a pending scheduled close (a client re-attached in time). */
-    private cancelClose;
-}
-export {};
 //# sourceMappingURL=git.d.ts.map

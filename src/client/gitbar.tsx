@@ -6,9 +6,6 @@
  * - **branch chip** (`conversation.session.header.actions`, beside the
  *   title): folder + current branch; opens a popup with local/remote
  *   branches, a new-branch field, and the commit graph.
- * - **terminal** (right-sidebar tab): a real PTY shell (xterm.js over a
- *   WebSocket to the host's persistent node-pty session), opened from the
- *   sidebar guide beside 文件.
  * - **diff** (right-sidebar tab): the changed-file list and per-file
  *   diff (changed hunks by default, whole file on toggle) in the same
  *   sidebar, keeping its commit band at the foot so committing works from
@@ -60,8 +57,6 @@ type GitBarLabelKey =
   | 'branchRemoteDelete' | 'branchFrom' | 'branchFromHead' | 'branchGraph'
   | 'branchRefresh' | 'branchCancel' | 'graphTitle'
   | 'graphColGraph' | 'graphColCommit' | 'graphColSubject' | 'graphColAuthor' | 'graphColDate'
-  | 'terminal'
-  | 'termConnecting' | 'termExited' | 'termUnavailable' | 'termLost'
   | 'notRepo'
 
 type Translate = (key: GitBarLabelKey) => string
@@ -461,8 +456,8 @@ export const GITBAR_CSS = `
 .gbar-c-tag .gbar-ren{opacity:0;transition:opacity .12s ease,color .12s ease,background .12s ease}
 .gbar-graph-row:hover .gbar-c-tag .gbar-ren,.gbar-c-tag .gbar-ren:focus-visible{opacity:1}
 
-/* terminal / diff views — fill the native conversation-view tab: full height
-   flex column; the inner head/body/foot sections keep their own rules. */
+/* diff view — fills the native conversation-view tab: full height flex
+   column; the inner head/body/foot sections keep their own rules. */
 .gbar-view{
   position:relative;box-sizing:border-box;height:100%;min-height:0;
   display:flex;flex-direction:column;overflow:hidden;
@@ -476,8 +471,6 @@ export const GITBAR_CSS = `
 /* empty note (e.g. the diff tab without a git repository) */
 .gbar-view-empty{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;
   font-size:12px;color:var(--dsw-alias-label-tertiary)}
-/* the xterm host stretches to the whole tab body below the slim head */
-.gbar-view .gbar-term{flex:1;min-height:0}
 /* uncommitted-changes dot in the diff tab chip — warn-primary, the same
    signal the branch chip's tooltip carries, so the dirty state reads on the
    tab strip without opening the tab */
@@ -714,38 +707,6 @@ export const GITBAR_CSS = `
    not to the whole folder + branch row */
 .gbar-bwrap{position:relative;display:inline-flex;align-items:center}
 
-/* terminal view body — follows the app theme surface (tokens live on body,
-   and the panel portal renders inside body, so the var resolves); the xterm
-   viewport is transparent, so this is also the terminal's own backdrop */
-.gbar-term{flex:1;min-height:0;background:var(--dsw-alias-bg-base,#16161b);color:var(--dsw-alias-label-primary,#d6d6dc);cursor:text;
-  font-family:var(--dsw-font-markdown-code-font-family,"SF Mono",Consolas,monospace);font-size:12px;line-height:1.75;
-  padding:10px 14px;overflow:auto;scrollbar-width:thin}
-.gbar-term:focus-visible{outline:none}
-.gbar-term .gbar-ps1{color:#7d94ff}
-.gbar-term .gbar-tcmd{color:#ffffff}
-.gbar-term .gbar-tout{white-space:pre-wrap;word-break:break-all;opacity:.88}
-.gbar-term .gbar-tdim{opacity:.45}
-.gbar-term .gbar-terr{color:#ef6b70}
-.gbar-term .gbar-tin{display:flex;align-items:baseline}
-.gbar-term .gbar-tin input{flex:1;min-width:0;background:transparent;border:none;outline:none;color:#ffffff;
-  font:inherit;font-size:12px;line-height:1.75;caret-color:#7d94ff;padding:0}
-
-/* xterm host variant — the emulator fills the body and sizes itself via the
-   fit addon, so the container clips instead of scrolling. */
-.gbar-xterm{padding:4px 6px;overflow:hidden;cursor:normal}
-.gbar-xterm .xterm{height:100%}
-.gbar-xterm .xterm .xterm-viewport{background:transparent !important}
-
-/* fatal terminal error banner (pty unavailable / socket refused) */
-.gbar-term-error{position:absolute;left:12px;right:12px;bottom:12px;z-index:6;display:flex;align-items:center;gap:10px;
-  padding:9px 12px;border-radius:10px;border:1px solid color-mix(in srgb,#ef6b70 45%,transparent);
-  background:var(--dsw-alias-bg-base,#16161b);box-shadow:0 8px 24px rgba(0,0,0,.25)}
-.gbar-term-error-text{flex:1;min-width:0;font-size:12px;color:var(--dsw-alias-label-primary);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.gbar-term-error button{border:1px solid var(--dsw-alias-border-l1);background:transparent;border-radius:7px;
-  color:var(--dsw-alias-label-secondary);width:26px;height:26px;cursor:pointer;flex:none;font-size:13px}
-.gbar-term-error button:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-
 /* icon buttons in side-panel heads (half-screen toggle, diff refresh) */
 .gbar-side-half{border:1px solid var(--dsw-alias-border-l1);background:transparent;color:var(--dsw-alias-label-tertiary);
   width:28px;height:28px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;
@@ -808,7 +769,7 @@ function statusClass(status: string): string {
 
 /**
  * Module-level snapshot cache keyed by target. Every useGitStatus instance
- * (branch chip, diff view, terminal view) reads and writes through it, so
+ * (branch chip, diff view) reads and writes through it, so
  * a view mounting on tab switch starts from the warm snapshot the header
  * poller already fetched instead of a blank state — this is what makes the
  * diff view paint instantly instead of waiting for its own /status
@@ -2151,312 +2112,6 @@ export function DiffTabTitle({ sessionId, controller, t }: {
   const dirty = snapshot !== null && snapshot.isRepo && !snapshot.clean
   return (
     <span>{t('diffView')}{dirty ? <span className="gbar-tab-dot" aria-hidden /> : null}</span>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Terminal view — a REAL terminal in a right-sidebar tab: xterm.js in
-// the browser over a WebSocket to the host's persistent node-pty shell (the
-// dsh-better-sidebar design, its src/pty-manager.ts + TerminalView.tsx).
-// Full emulation: colors, cursor control, Ctrl+C, command history,
-// interactive apps. The xterm UMD builds and stylesheet are vendored by the
-// plugin and lazy-loaded on first tab open, so the always-resident GitBar
-// bundle stays lean.
-//
-// Shell lifetime survives tab switches: leaving the tab only drops the
-// socket — the host keeps the shell alive behind a reconnect grace, so coming
-// back reattaches to the SAME session with its transcript replayed. Page
-// refreshes recover the same way.
-// ---------------------------------------------------------------------------
-
-/** Vendored xterm assets served by the host half (src/git-web.ts). */
-const VENDOR_BASE = `${GIT_ROUTE}/vendor`
-
-/** Duck-typed face of the xterm Terminal instance this panel touches. */
-interface XTermLike {
-  cols: number
-  rows: number
-  /** Live option updates (`theme` re-render is supported by xterm 5). */
-  options: { theme?: Record<string, string> | undefined }
-  open(host: HTMLElement): void
-  write(data: string): void
-  focus(): void
-  resize(cols: number, rows: number): void
-  dispose(): void
-  loadAddon(addon: unknown): void
-  onData(listener: (data: string) => void): { dispose(): void }
-  onResize(listener: (dims: { cols: number; rows: number }) => void): { dispose(): void }
-}
-
-/** Duck-typed face of @xterm/addon-fit. */
-interface FitAddonLike {
-  fit(): void
-}
-
-type XTermCtor = new (options: Record<string, unknown>) => XTermLike
-type FitAddonCtor = new () => FitAddonLike
-
-interface XTermGlobals { Terminal: XTermCtor; FitAddon: FitAddonCtor }
-
-let xtermGlobalsPromise: Promise<XTermGlobals> | null = null
-
-/** Inject one vendored script exactly once; resolves on load, rejects on error. */
-function loadVendorScript(src: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const existing = document.querySelector(`script[data-gbar-vendor="${CSS.escape(src)}"]`)
-    if (existing !== null) {
-      // An already-complete script never fires `load` again.
-      if (existing.getAttribute('data-gbar-loaded') === '1') {
-        resolve()
-        return
-      }
-      existing.addEventListener('load', () => resolve())
-      existing.addEventListener('error', () => reject(new Error(`failed to load ${src}`)))
-      return
-    }
-    const script = document.createElement('script')
-    script.src = src
-    script.async = true
-    script.dataset.gbarVendor = src
-    script.addEventListener('load', () => {
-      script.setAttribute('data-gbar-loaded', '1')
-      resolve()
-    })
-    script.addEventListener('error', () => reject(new Error(`failed to load ${src}`)))
-    document.head.appendChild(script)
-  })
-}
-
-/** Load the vendored xterm UMD builds once per page; caches the globals. */
-function loadXterm(): Promise<XTermGlobals> {
-  xtermGlobalsPromise ??= (async () => {
-    try {
-      if (document.querySelector('link[data-gbar-xterm-css]') === null) {
-        const link = document.createElement('link')
-        link.rel = 'stylesheet'
-        link.href = `${VENDOR_BASE}/xterm.css`
-        link.dataset.gbarXtermCss = '1'
-        document.head.appendChild(link)
-      }
-      await loadVendorScript(`${VENDOR_BASE}/xterm.js`)
-      await loadVendorScript(`${VENDOR_BASE}/addon-fit.js`)
-      const win = window as unknown as Record<string, unknown>
-      const TerminalCtor = win.Terminal as XTermCtor | undefined
-      const fitNamespace = win.FitAddon as { FitAddon?: FitAddonCtor } | undefined
-      if (typeof TerminalCtor !== 'function' || typeof fitNamespace?.FitAddon !== 'function') {
-        throw new Error('xterm assets loaded but globals are missing')
-      }
-      return { Terminal: TerminalCtor, FitAddon: fitNamespace.FitAddon }
-    } catch (cause) {
-      // Allow a retry on the next panel open instead of caching the failure.
-      xtermGlobalsPromise = null
-      throw cause
-    }
-  })()
-  return xtermGlobalsPromise
-}
-
-// Curated ANSI palettes (one-dark / one-light families), matching the
-// dsh-better-sidebar terminal so both plugins render shells identically.
-const ANSI_DARK: Record<string, string> = {
-  black: '#282c34', red: '#e06c75', green: '#98c379', yellow: '#e5c07b',
-  blue: '#61afef', magenta: '#c678dd', cyan: '#56b6c2', white: '#abb2bf',
-  brightBlack: '#5c6370', brightRed: '#e06c75', brightGreen: '#98c379',
-  brightYellow: '#e5c07b', brightBlue: '#61afef', brightMagenta: '#c678dd',
-  brightCyan: '#56b6c2', brightWhite: '#ffffff',
-}
-const ANSI_LIGHT: Record<string, string> = {
-  black: '#383a42', red: '#e45649', green: '#50a14f', yellow: '#c18401',
-  blue: '#0184bc', magenta: '#a626a4', cyan: '#0997b3', white: '#a0a1a7',
-  brightBlack: '#4f525e', brightRed: '#e45649', brightGreen: '#50a14f',
-  brightYellow: '#c18401', brightBlue: '#0184bc', brightMagenta: '#a626a4',
-  brightCyan: '#0997b3', brightWhite: '#fafafa',
-}
-
-/**
- * Whether the DSH app is currently in its dark theme. The real switch is the
- * `data-ds-dark-theme` attribute the theme plugin puts on <body> — the same
- * signal the DSW token stylesheet keys on (`body[data-ds-dark-theme]{…}`), so
- * it is correct no matter how the theme was chosen (app setting or system
- * follow). Tokens being readable without the attribute means the light block
- * is active; only a composition with neither falls back to the system media
- * query.
- */
-function isDarkScheme(): boolean {
-  if (document.body.hasAttribute('data-ds-dark-theme')) return true
-  const style = getComputedStyle(document.body)
-  if (style.getPropertyValue('--dsw-alias-bg-base').trim() !== '') return false
-  return window.matchMedia('(prefers-color-scheme: dark)').matches
-}
-
-/**
- * The xterm theme for the current scheme (surface from tokens, curated ANSI).
- * The DSW alias tokens are defined on <body> (not :root), and custom
- * properties inherit downward only — reading them off documentElement always
- * yields '', so read the body's computed values.
- */
-function xtermTheme(): Record<string, string> & { background: string; foreground: string } {
-  const dark = isDarkScheme()
-  const style = getComputedStyle(document.body)
-  const background = style.getPropertyValue('--dsw-alias-bg-base').trim() || (dark ? '#151517' : '#ffffff')
-  const foreground = style.getPropertyValue('--dsw-alias-label-primary').trim() || (dark ? '#e6e6e6' : '#1a1a1a')
-  return {
-    background,
-    foreground,
-    cursor: foreground,
-    cursorAccent: background,
-    selectionBackground: dark ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.12)',
-    ...(dark ? ANSI_DARK : ANSI_LIGHT),
-  }
-}
-
-export function TerminalPanel({ sessionId, controller, t }: {
-  sessionId: SessionId
-  controller: SettingsClient
-  t: Translate
-}) {
-  const settingsState = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
-  const enabled = settingsState.value?.gitBarEnabled ?? true
-  const target: GitTarget = { session: String(sessionId) }
-  const [status, setStatus] = useState<'boot' | 'connecting' | 'live' | 'exited' | 'error'>('boot')
-  const [errorText, setErrorText] = useState('')
-  const [retryNonce, setRetryNonce] = useState(0)
-  const hostRef = useRef<HTMLDivElement | null>(null)
-
-  // Attach xterm + the WebSocket bridge. Re-runs on retryNonce (manual retry
-  // after a fatal error). Teardown closes the socket WITHOUT a close frame,
-  // so the host's reconnect grace keeps the shell alive for the next tab
-  // visit — exactly like switching tabs in dsh-better-sidebar.
-  useEffect(() => {
-    const host = hostRef.current
-    if (!enabled || host === null) return
-    let disposed = false
-    let socket: WebSocket | null = null
-    let retryTimer: number | undefined
-    let failures = 0
-    let term: XTermLike | null = null
-    const cleanups: Array<() => void> = []
-
-    const sendFrame = (frame: Record<string, unknown>): void => {
-      if (socket !== null && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(frame))
-    }
-
-    const connect = (): void => {
-      if (disposed || term === null) return
-      setStatus('connecting')
-      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-      socket = new WebSocket(`${proto}//${location.host}${GIT_ROUTE}/terminal-ws?${targetQuery(target)}&cols=${term.cols}&rows=${term.rows}`)
-      socket.onopen = () => {
-        failures = 0
-        setStatus('live')
-        setErrorText('')
-        if (term !== null) sendFrame({ type: 'resize', cols: term.cols, rows: term.rows })
-      }
-      socket.onmessage = (event) => {
-        if (typeof event.data !== 'string' || term === null) return
-        if (event.data.startsWith('{')) {
-          try {
-            const frame = JSON.parse(event.data) as { type?: unknown }
-            if (frame.type === 'exit') {
-              setStatus('exited')
-              return
-            }
-          } catch {
-            // Literal braces typed into the shell — render them.
-          }
-        }
-        term.write(event.data)
-      }
-      socket.onclose = (event) => {
-        socket = null
-        if (disposed) return
-        // A reasoned 1011 refusal is fatal (spawn failure / pty missing);
-        // every other drop recovers with backoff — the host replays the
-        // transcript on reconnect, so the retry is seamless.
-        if (event.code === 1011 && event.reason !== '') {
-          setStatus('error')
-          setErrorText(event.reason === 'pty-unavailable' ? t('termUnavailable') : event.reason)
-          return
-        }
-        failures += 1
-        if (failures > 5) {
-          setStatus('error')
-          setErrorText(`${t('termLost')} (${event.code})`)
-          return
-        }
-        retryTimer = window.setTimeout(connect, Math.min(8000, 400 * failures))
-      }
-    }
-
-    void (async () => {
-      try {
-        const globals = await loadXterm()
-        if (disposed) return
-        // Surface colors track the app theme: the host backdrop matches the
-        // theme background exactly (the xterm viewport is transparent), and a
-        // theme flip while the panel is open re-applies live.
-        const applyTheme = (): void => {
-          const theme = xtermTheme()
-          host.style.backgroundColor = theme.background
-          if (term !== null) term.options.theme = theme
-        }
-        term = new globals.Terminal({
-          cursorBlink: true,
-          fontSize: 12.5,
-          fontFamily: '"SF Mono",ui-monospace,Consolas,"Courier New",monospace',
-          scrollback: 4000,
-          theme: xtermTheme(),
-        })
-        applyTheme()
-        const fit = new globals.FitAddon()
-        term.loadAddon(fit)
-        term.open(host)
-        try { fit.fit() } catch { /* zero-size host before layout settles */ }
-        term.onData(data => sendFrame({ type: 'input', data }))
-        term.onResize(dims => sendFrame({ type: 'resize', cols: dims.cols, rows: dims.rows }))
-        const observer = new ResizeObserver(() => { try { fit.fit() } catch { /* mid-layout */ } })
-        observer.observe(host)
-        // DSH flips themes by toggling body's data-ds-dark-theme attribute.
-        const themeObserver = new MutationObserver(applyTheme)
-        themeObserver.observe(document.body, { attributes: true, attributeFilter: ['data-ds-dark-theme'] })
-        cleanups.push(() => observer.disconnect(), () => themeObserver.disconnect(), () => term?.dispose())
-        connect()
-      } catch (cause) {
-        if (disposed) return
-        setStatus('error')
-        setErrorText(cause instanceof Error ? cause.message : String(cause))
-      }
-    })()
-
-    return () => {
-      disposed = true
-      if (retryTimer !== undefined) clearTimeout(retryTimer)
-      socket?.close()
-      for (const cleanup of cleanups.reverse()) cleanup()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, retryNonce])
-
-  if (!enabled) return null
-
-  // No title/cwd row: the sidebar tab chip already labels the tab, so the
-  // view is just the terminal (plus a transient connecting/exited note).
-  return (
-    <div className="gbar-view">
-      {status !== 'live' && status !== 'error' ? (
-        <div className="side-head gbar-side-head">
-          <span className="ssub gbar-sub">{status === 'exited' ? t('termExited') : t('loading')}</span>
-          <span className="sp gbar-spacer" />
-        </div>
-      ) : null}
-      <div className="gbar-term gbar-xterm" ref={hostRef} />
-      {status === 'error' ? (
-        <div className="gbar-term-error" role="alert">
-          <span className="gbar-term-error-text">{errorText}</span>
-          <button type="button" onClick={() => { setStatus('boot'); setErrorText(''); setRetryNonce(n => n + 1) }}>↻</button>
-        </div>
-      ) : null}
-    </div>
   )
 }
 

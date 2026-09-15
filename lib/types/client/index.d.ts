@@ -268,14 +268,8 @@ declare const en: {
     readonly branchPull: "Pull";
     readonly includeFile: "Include in commit";
     readonly excludeFile: "Exclude from commit";
-    readonly terminal: "Terminal";
-    readonly terminalGuide: "A persistent shell in the session working directory.";
     readonly diffGuide: "Review working-tree changes and commit.";
     readonly notRepo: "Not a git repository.";
-    readonly termConnecting: "connecting…";
-    readonly termExited: "shell exited";
-    readonly termUnavailable: "PTY unavailable: node-pty failed to load on the host.";
-    readonly termLost: "connection lost";
     readonly initDesc: "Analyze this project and generate an AGENTS.md for future coding agents";
     readonly initOptionZh: "AGENTS.md — Chinese prompt";
     readonly initOptionZhDetail: "Submit a Chinese prompt asking the agent to analyze the project and write or improve AGENTS.md.";
@@ -311,7 +305,7 @@ export declare class SettingsClient {
     set(field: string, value: unknown): Promise<void>;
     unset(field: string): Promise<void>;
 }
-/** Required client services: slots (settings.section), locale, sessions (git bar, archive, notifier), the slash-command registry, and the scope-addressed conversation face. The right-sidebar tab registry (terminal/diff tabs) is resolved lazily — older hosts without it still load everything else. */
+/** Required client services: slots (settings.section), locale, sessions (git bar, archive, notifier), the slash-command registry, and the scope-addressed conversation face. The right-sidebar tab registry (diff tab) is resolved lazily — older hosts without it still load everything else. */
 export declare const inject: string[];
 export declare function apply(ctx: ClientContext): void;
 export {};

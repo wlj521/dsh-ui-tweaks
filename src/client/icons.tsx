@@ -1,9 +1,9 @@
 /**
  * dsh-ui-tweaks — sidebar guide entry glyphs (browser half).
  *
- * Outline icons for the terminal / diff guide boxes in DSH's right sidebar,
- * drawn in the stock `ic_ds_*` style (16px viewBox, `currentColor` stroke,
- * round caps) so the boxes match the shipped 文件 entry. The glyphs bundle
+ * Outline icon for the diff guide box in DSH's right sidebar, drawn in the
+ * stock `ic_ds_*` style (16px viewBox, `currentColor` stroke, round caps) so
+ * the box matches the shipped 文件 entry. The glyph bundles
  * with the plugin and need no host module beyond what the tab registry
  * already requires.
  * @module dsh-ui-tweaks/client/icons
@@ -20,17 +20,6 @@ export interface GuideIconProps {
   size?: number | undefined
   /** Extra class for layout placement; color rides currentColor. */
   className?: string | undefined
-}
-
-/** Terminal prompt (`>_`) inside a rounded screen. */
-export function TerminalIcon({ size = 16, className }: GuideIconProps) {
-  return (
-    <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M4.5 6l2.5 2-2.5 2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M8.5 10h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
 }
 
 /** Document with changed lines, for the diff tab. */
