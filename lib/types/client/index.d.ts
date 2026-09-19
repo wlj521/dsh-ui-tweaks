@@ -305,7 +305,7 @@ export declare class SettingsClient {
     set(field: string, value: unknown): Promise<void>;
     unset(field: string): Promise<void>;
 }
-/** Required client services: slots (settings.section), locale, sessions (git bar, archive, notifier), the slash-command registry, and the scope-addressed conversation face. The right-sidebar tab registry (diff tab) is resolved lazily — older hosts without it still load everything else. */
+/** Required client services: slots (settings.section), locale, sessions (git bar, archive, notifier), the slash-command registry, the scope-addressed conversation face, the unified session-status source, and workspace navigation. The right-sidebar tab registry (diff tab) is resolved lazily — older hosts without it still load everything else. */
 export declare const inject: string[];
 export declare function apply(ctx: ClientContext): void;
 export {};

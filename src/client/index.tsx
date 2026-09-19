@@ -33,6 +33,10 @@ import type { SelectOption } from '@deepseek-ai/dsh-client-ui-commands/client'
 // `ctx.sidebarRightTabs` (right-sidebar tab-type registry) and the
 // `sidebar.right.pane.tab` keyed seat the diff body renders into.
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
+// Type-only import activates the Context declaration for `ctx.uiWorkspace`,
+// whose `openSession` replaced the removed `ctx.sessions.open` in DSH
+// 0.1.6-alpha.2 — the notification click navigates through it.
+import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { BranchChipEntry, DiffPanel, DiffTabTitle, GitWarmup, installGitBarStyles, installHeroChip } from './gitbar.tsx'
 import { DiffIcon } from './icons.tsx'
@@ -1218,8 +1222,8 @@ export class SettingsClient {
   }
 }
 
-/** Required client services: slots (settings.section), locale, sessions (git bar, archive, notifier), the slash-command registry, and the scope-addressed conversation face. The right-sidebar tab registry (diff tab) is resolved lazily — older hosts without it still load everything else. */
-export const inject = ['slots', 'locale', 'sessions', 'commandUi', 'conversation', 'uiSession']
+/** Required client services: slots (settings.section), locale, sessions (git bar, archive, notifier), the slash-command registry, the scope-addressed conversation face, the unified session-status source, and workspace navigation. The right-sidebar tab registry (diff tab) is resolved lazily — older hosts without it still load everything else. */
+export const inject = ['slots', 'locale', 'sessions', 'commandUi', 'conversation', 'uiSession', 'uiWorkspace']
 
 /**
  * Hover/focus hint: a small ⓘ next to the field label; the hint text renders
@@ -2002,7 +2006,8 @@ export function apply(ctx: ClientContext): void {
       if (enabled && disposeNotifier === undefined) {
         disposeNotifier = installTaskNotifier({
           sessionsService: ctx.sessions,
-          pendingInteractions: ctx.uiSession.pendingInteractions,
+          sessionStatus: ctx.uiSession.sessionStatus,
+          openSession: (target) => { ctx.uiWorkspace.openSession(target) },
           text: {
             notifyTitleDone: t('notifyTitleDone'),
             notifyTitleAborted: t('notifyTitleAborted'),

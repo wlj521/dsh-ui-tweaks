@@ -1,14 +1,15 @@
 /**
  * dsh-ui-tweaks — task notifications (browser half).
  *
- * Watches the sessions list feed (the same store the sidebar's running flag,
- * amber interaction dot and green "done" reminder project from) and raises a
- * browser-side heads-up when a session finishes its turn or starts blocking
- * on the user — so a backgrounded tab can call you back:
+ * Watches the sessions list feed together with the unified session-status
+ * source (the same facts the sidebar's running flag, amber interaction dot and
+ * green "done" reminder project from) and raises a browser-side heads-up when a
+ * session finishes its turn or starts blocking on the user — so a backgrounded
+ * tab can call you back:
  *
  * - "Finished" = a session's `running` flag drops (true → false) without an
- *   interaction taking over, or its host-tracked `completed` reminder rises
- *   (finished while not selected). The host `dshTurnOutcome` session
+ *   interaction taking over, or its host-tracked `completionUnread` reminder
+ *   rises (finished while not selected). The host `dshTurnOutcome` session
  *   projection (`src/turn-outcome.ts`, folded from `turn/end` reasons) says
  *   WHY it finished, so the copy distinguishes a clean completion from a
  *   user abort and from a failed request (with the error text); when the
@@ -24,8 +25,9 @@
  *   and on stop we restore the pre-flash capture (worst case a stale base).
  * - System notification: the Web Notifications API; permission is requested
  *   from the settings toggle's user gesture (`requestNotifyPermission`).
- *   Clicking one focuses the window and opens that session. `silent` tracks
- *   the chime channel so the two never double-beep.
+ *   Clicking one focuses the window and opens that session through the
+ *   workspace navigation service. `silent` tracks the chime channel so the
+ *   two never double-beep.
  * - Chime: a tiny WebAudio two-note motif (rising = done, falling = needs
  *   you), synthesized in-process — no audio assets. Autoplay policy allows
  *   this once the user has interacted with the origin (sticky activation),
@@ -40,6 +42,7 @@
  */
 
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 
 /** Client-side view of the host `dshTurnOutcome` fold (see src/turn-outcome.ts). */
@@ -116,17 +119,24 @@ export interface NotifierChannels {
 
 /** Install-time wiring for {@link installTaskNotifier}. */
 export interface TaskNotifierInput {
-  /** The client sessions service whose list feed carries the watch states. */
+  /** The client sessions service whose list feed carries the rows' identity, title and turn-outcome projection. */
   sessionsService: ISessions
   /** Localized copy snapshot used across the notifier's lifetime. */
   text: NotifierText
   /** Fresh behavior switches + channel toggles, read on every tick. */
   readState(): { options: NotifierOptions; channels: NotifierChannels }
-  /** Per-session pending-user-interaction map (alpha.2 `useSessionPendingInteraction` source). */
-  pendingInteractions: {
-    getSnapshot(): ReadonlyMap<SessionId, { kind: string }>
+  /**
+   * Unified per-session UI status (DSH 0.1.6-alpha.2): running, the
+   * highest-precedence pending interaction, and the unread completion
+   * reminder. Replaces the alpha.1 `uiSession.pendingInteractions` map and
+   * the list row's removed `completed` flag.
+   */
+  sessionStatus: {
+    getSnapshot(): SessionStatusSnapshot
     subscribe(listener: () => void): () => void
   }
+  /** Select a session and show its conversation — the notification click target. */
+  openSession(target: SessionId): void
 }
 
 /** Per-session state the transition detector compares against. */
@@ -289,13 +299,15 @@ function playChime(shape: 'up' | 'down'): void {
  * @returns disposer — unsubscribes, restores the tab title and tears the channels down.
  */
 export function installTaskNotifier(input: TaskNotifierInput): () => void {
-  const { sessionsService, text, readState, pendingInteractions } = input
+  const { sessionsService, text, readState, sessionStatus, openSession } = input
   const list = sessionsService.list
   /** Pending-user-interaction kind for a session, absent when it is not waiting on the user. */
   const pendingOf = (id: SessionId): NotifyPendingKind | undefined => {
-    const kind = pendingInteractions.getSnapshot().get(id)?.kind
+    const kind = sessionStatus.getSnapshot().get(id)?.pendingInteraction?.kind
     return kind === 'approval' || kind === 'plan-review' || kind === 'question' ? kind : undefined
   }
+  /** Unread completion reminder for a session — the sidebar's green "done" dot. */
+  const completedOf = (id: SessionId): boolean => sessionStatus.getSnapshot().get(id)?.completionUnread === true
 
   // --- detector state ------------------------------------------------------
   const watch = new Map<SessionId, WatchState>()
@@ -364,7 +376,7 @@ export function installTaskNotifier(input: TaskNotifierInput): () => void {
       const n = new Notification(heading, options)
       n.onclick = (): void => {
         try { window.focus() } catch { /* ignore */ }
-        try { sessionsService.open(sessionId) } catch { /* session already gone — focus alone is fine */ }
+        try { openSession(sessionId) } catch { /* session already gone — focus alone is fine */ }
         n.close()
       }
     } catch {
@@ -421,7 +433,7 @@ export function installTaskNotifier(input: TaskNotifierInput): () => void {
     for (const row of Object.values(list.getSnapshot().byId)) {
       if (row.parentId !== undefined || row.blank) continue
       const outcome = row.projectionValues?.[TURN_OUTCOME_KEY] ?? undefined
-      watch.set(row.id, { running: row.running, pending: pendingOf(row.id), completed: row.completed === true, outcome })
+      watch.set(row.id, { running: row.running, pending: pendingOf(row.id), completed: completedOf(row.id), outcome })
     }
   }
 
@@ -438,7 +450,7 @@ export function installTaskNotifier(input: TaskNotifierInput): () => void {
       seen.add(row.id)
       const prev = watch.get(row.id)
       const outcome = row.projectionValues?.[TURN_OUTCOME_KEY] ?? undefined
-      watch.set(row.id, { running: row.running, pending: pendingOf(row.id), completed: row.completed === true, outcome })
+      watch.set(row.id, { running: row.running, pending: pendingOf(row.id), completed: completedOf(row.id), outcome })
       if (prev === undefined) continue
 
       // Interaction outranks completion: a turn ending ON a question must
@@ -451,7 +463,7 @@ export function installTaskNotifier(input: TaskNotifierInput): () => void {
       }
 
       const finished = prev.running && !row.running && pendingOf(row.id) === undefined
-      const completedReminder = !prev.completed && row.completed === true
+      const completedReminder = !prev.completed && completedOf(row.id)
       if (finished || completedReminder) {
         // The green `completed` reminder often arrives a re-pull AFTER the
         // running-drop already announced the same finish — inside the
@@ -486,11 +498,11 @@ export function installTaskNotifier(input: TaskNotifierInput): () => void {
 
   armBaseline()
   const disposeFeed = list.subscribe(check)
-  const disposePending = pendingInteractions.subscribe(check)
+  const disposeStatus = sessionStatus.subscribe(check)
 
   return () => {
     disposeFeed()
-    disposePending()
+    disposeStatus()
     stopTitleFlash()
     window.removeEventListener('focus', settleIfBack)
     document.removeEventListener('visibilitychange', onVisibilityChange)

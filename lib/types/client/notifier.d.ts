@@ -1,14 +1,15 @@
 /**
  * dsh-ui-tweaks — task notifications (browser half).
  *
- * Watches the sessions list feed (the same store the sidebar's running flag,
- * amber interaction dot and green "done" reminder project from) and raises a
- * browser-side heads-up when a session finishes its turn or starts blocking
- * on the user — so a backgrounded tab can call you back:
+ * Watches the sessions list feed together with the unified session-status
+ * source (the same facts the sidebar's running flag, amber interaction dot and
+ * green "done" reminder project from) and raises a browser-side heads-up when a
+ * session finishes its turn or starts blocking on the user — so a backgrounded
+ * tab can call you back:
  *
  * - "Finished" = a session's `running` flag drops (true → false) without an
- *   interaction taking over, or its host-tracked `completed` reminder rises
- *   (finished while not selected). The host `dshTurnOutcome` session
+ *   interaction taking over, or its host-tracked `completionUnread` reminder
+ *   rises (finished while not selected). The host `dshTurnOutcome` session
  *   projection (`src/turn-outcome.ts`, folded from `turn/end` reasons) says
  *   WHY it finished, so the copy distinguishes a clean completion from a
  *   user abort and from a failed request (with the error text); when the
@@ -24,8 +25,9 @@
  *   and on stop we restore the pre-flash capture (worst case a stale base).
  * - System notification: the Web Notifications API; permission is requested
  *   from the settings toggle's user gesture (`requestNotifyPermission`).
- *   Clicking one focuses the window and opens that session. `silent` tracks
- *   the chime channel so the two never double-beep.
+ *   Clicking one focuses the window and opens that session through the
+ *   workspace navigation service. `silent` tracks the chime channel so the
+ *   two never double-beep.
  * - Chime: a tiny WebAudio two-note motif (rising = done, falling = needs
  *   you), synthesized in-process — no audio assets. Autoplay policy allows
  *   this once the user has interacted with the origin (sticky activation),
@@ -39,6 +41,7 @@
  * @module dsh-ui-tweaks/client/notifier
  */
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client';
+import type { SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client';
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
 /** Client-side view of the host `dshTurnOutcome` fold (see src/turn-outcome.ts). */
 interface TurnOutcomeSnapshot {
@@ -99,7 +102,7 @@ export interface NotifierChannels {
 }
 /** Install-time wiring for {@link installTaskNotifier}. */
 export interface TaskNotifierInput {
-    /** The client sessions service whose list feed carries the watch states. */
+    /** The client sessions service whose list feed carries the rows' identity, title and turn-outcome projection. */
     sessionsService: ISessions;
     /** Localized copy snapshot used across the notifier's lifetime. */
     text: NotifierText;
@@ -108,13 +111,18 @@ export interface TaskNotifierInput {
         options: NotifierOptions;
         channels: NotifierChannels;
     };
-    /** Per-session pending-user-interaction map (alpha.2 `useSessionPendingInteraction` source). */
-    pendingInteractions: {
-        getSnapshot(): ReadonlyMap<SessionId, {
-            kind: string;
-        }>;
+    /**
+     * Unified per-session UI status (DSH 0.1.6-alpha.2): running, the
+     * highest-precedence pending interaction, and the unread completion
+     * reminder. Replaces the alpha.1 `uiSession.pendingInteractions` map and
+     * the list row's removed `completed` flag.
+     */
+    sessionStatus: {
+        getSnapshot(): SessionStatusSnapshot;
         subscribe(listener: () => void): () => void;
     };
+    /** Select a session and show its conversation — the notification click target. */
+    openSession(target: SessionId): void;
 }
 /**
  * Ask the browser for desktop-notification permission. Must run inside a user
