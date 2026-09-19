@@ -28,7 +28,24 @@ type JsonResponse<T> = {
         message: string;
     };
 };
-/** Accept state-changing requests only from the DSH Web application's origin. */
+/**
+ * Accept state-changing requests only from the DSH Web application.
+ *
+ * Deliberately the same policy as DSH's own `/api` browser-trust fence
+ * (`isTrustedApiRequest` in `@deepseek-ai/dsh-client-connection`):
+ *
+ * - an explicit `Sec-Fetch-Site: cross-site` marker is refused;
+ * - an attached `Origin` must be `http(s)` and match the request `Host`;
+ * - an **absent** `Origin` is accepted — the Host fence already bound the
+ *   request, and non-browser clients can forge any header anyway.
+ *
+ * The absent-Origin case is what the Desktop shell produces: it serves the
+ * renderer from `dsh-app://app` and forwards non-static requests to the Host
+ * with `origin`, `cookie`, `sec-fetch-site` and `host` stripped
+ * (`apps/desktop/src/web-document.ts`), so neither browser marker survives.
+ * Requiring `sec-fetch-site` there rejected every plugin POST inside the
+ * Desktop application with `origin-rejected`.
+ */
 export declare function sameOriginPost(req: IncomingMessage): boolean;
 export declare function isRecord(value: unknown): value is Record<string, unknown>;
 export declare function json<T>(res: ServerResponse, status: number, body: JsonResponse<T>): void;
