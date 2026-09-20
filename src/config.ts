@@ -38,10 +38,11 @@ export interface UITweaksConfig {
   timelineStyle?: 'native' | 'web'
   /**
    * Conversation theme: `'default'` keeps DSH's stock look (no overrides);
-   * any other value applies that skin live through the runtime stylesheet.
-   * Defaults to `'default'`.
+   * `'minimal'` keeps the stock look too and only tints markdown inline code;
+   * `'neon-lime'` applies the full poster skin. Every skin is applied live
+   * through the runtime stylesheet. Defaults to `'default'`.
    */
-  themeStyle?: 'default' | 'neon-lime'
+  themeStyle?: 'default' | 'minimal' | 'neon-lime'
   /**
    * Master switch for the web-search feature: when on, a dedicated "搜索"
    * Settings page appears (engine picker + per-engine API keys, stored in
@@ -137,7 +138,7 @@ export type BingMarket = (typeof BING_MARKET_OPTIONS)[number]
 export const DEFAULT_TIMELINE_STYLE: 'native' | 'web' = 'native'
 
 /** The theme defaults to DSH's stock look — no overrides emitted. */
-export const DEFAULT_THEME_STYLE: 'default' | 'neon-lime' = 'default'
+export const DEFAULT_THEME_STYLE: 'default' | 'minimal' | 'neon-lime' = 'default'
 
 /** GitBar defaults to off; users turn it on in Settings. */
 export const DEFAULT_GITBAR_ENABLED = false
@@ -172,7 +173,7 @@ export const Config: Schema<UITweaksConfig> = z.object({
   codeFontScale: z.number().min(MIN_CODE_FONT_SCALE).max(MAX_CODE_FONT_SCALE).default(DEFAULT_CODE_FONT_SCALE),
   codeFontSize: z.number().min(MIN_CODE_FONT_SIZE).max(MAX_CODE_FONT_SIZE),
   timelineStyle: z.union(['native', 'web'] as const).default(DEFAULT_TIMELINE_STYLE),
-  themeStyle: z.union(['default', 'neon-lime'] as const).default(DEFAULT_THEME_STYLE),
+  themeStyle: z.union(['default', 'minimal', 'neon-lime'] as const).default(DEFAULT_THEME_STYLE),
   searchEnabled: z.boolean().default(DEFAULT_SEARCH_ENABLED),
   searchEngine: z.union(['bing', 'ddg', 'exa', 'tavily', 'keenable', 'perplexity', 'deepseek'] as const).default(DEFAULT_SEARCH_ENGINE),
   bingMarket: z.union(BING_MARKET_OPTIONS).default(DEFAULT_BING_MARKET),
@@ -198,8 +199,8 @@ export interface ResolvedUITweaksConfig {
   codeFontSize: number
   /** Which conversation timeline is shown: DSH's native rail or the plugin web rail. */
   timelineStyle: 'native' | 'web'
-  /** Conversation theme: stock look or one of the plugin skins. */
-  themeStyle: 'default' | 'neon-lime'
+  /** Conversation theme: stock look, the minimal inline-code tint, or a skin. */
+  themeStyle: 'default' | 'minimal' | 'neon-lime'
   /** Whether the web-search feature (Settings page + provider takeover) is on. */
   searchEnabled: boolean
   /** Preferred web-search engine id. */

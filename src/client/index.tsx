@@ -65,8 +65,8 @@ interface TweaksValue {
   codeFontSize?: number
   /** Which timeline to show: 'native' (DSH built-in rail) or 'web' (plugin classic rail). Keep in sync with src/config.ts. */
   timelineStyle?: 'native' | 'web'
-  /** Conversation theme: 'default' keeps the stock look; any other value applies that skin. Keep in sync with src/config.ts. */
-  themeStyle?: 'default' | 'neon-lime'
+  /** Conversation theme: 'default' keeps the stock look, 'minimal' only tints markdown inline code; any other value applies that skin. Keep in sync with src/config.ts. */
+  themeStyle?: 'default' | 'minimal' | 'neon-lime'
   /** Preferred web-search engine (bing | ddg | exa | tavily | keenable | perplexity | deepseek). */
   searchEngine?: string
   /** Bing market code (e.g. zh-CN). */
@@ -103,7 +103,7 @@ interface ResolvedTweaks {
   /** Effective absolute code font size in px (codeFontSize, else legacy %, else stock). */
   codeFontSize: number
   timelineStyle: 'native' | 'web'
-  themeStyle: 'default' | 'neon-lime'
+  themeStyle: 'default' | 'minimal' | 'neon-lime'
   searchEngine: string
   bingMarket: string
   gitBarEnabled: boolean
@@ -144,8 +144,9 @@ const en = {
   timelineNative: 'Native',
   timelineWeb: 'Web (classic)',
   theme: 'Theme',
-  themeHint: 'Conversation skin. Default keeps DSH\u2019s stock look; Neon poster is a two-scheme skin — paper-white with ink-black hairlines in light mode, near-black with light hairlines in dark mode, lime highlights and an Anthropic-red action accent, applied live.',
+  themeHint: 'Conversation skin. Default keeps DSH\u2019s stock look; Minimal leaves the stock look alone and only tints markdown inline code with the Anthropic red (#c15f3c in light, #d97757 in dark); Neon poster is a two-scheme skin — paper-white with ink-black hairlines in light mode, near-black with light hairlines in dark mode, lime highlights and an Anthropic-red action accent, applied live.',
   themeDefault: 'Default',
+  themeMinimal: 'Minimal',
   themeNeonLime: 'Neon poster',
   sectionSearch: 'Web search',
   searchOn: 'On',
@@ -377,8 +378,9 @@ const zh: Record<LocaleKey, string> = {
   timelineNative: '原生',
   timelineWeb: '网页（经典）',
   theme: '主题',
-  themeHint: '对话皮肤。默认保持 DSH 原生外观；荧光海报是海报风双方案——浅色下纸白底黑粗线，深色下近黑底浅粗线，都配荧光黄高亮 + Anthropic 红点缀，切换即时生效。',
+  themeHint: '对话皮肤。默认保持 DSH 原生外观；简约同样保持原生外观，只把 Markdown 行内代码染成 Anthropic 红（浅色 #c15f3c / 深色 #d97757）；荧光海报是海报风双方案——浅色下纸白底黑粗线，深色下近黑底浅粗线，都配荧光黄高亮 + Anthropic 红点缀，切换即时生效。',
   themeDefault: '默认',
+  themeMinimal: '简约',
   themeNeonLime: '荧光海报',
   sectionSearch: '网络搜索',
   searchOn: '开',
@@ -612,7 +614,7 @@ function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
   return {
     codeFontSize,
     timelineStyle: value?.timelineStyle === 'web' ? 'web' : 'native',
-    themeStyle: value?.themeStyle === 'neon-lime' ? 'neon-lime' : 'default',
+    themeStyle: value?.themeStyle === 'neon-lime' ? 'neon-lime' : value?.themeStyle === 'minimal' ? 'minimal' : 'default',
     searchEngine: value?.searchEngine ?? 'bing',
     bingMarket: value?.bingMarket ?? 'zh-CN',
     gitBarEnabled: value?.gitBarEnabled ?? false,
@@ -1007,6 +1009,35 @@ body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] button[class*="newSessi
 .dut-btn.dut-btn-active{background:var(--dut-lime) !important;color:#101418 !important;border-color:var(--dut-ink) !important}
 `
 
+/**
+ * Minimal skin: keep DSH's stock look entirely and change exactly one thing —
+ * markdown inline code is tinted with the Anthropic red instead of inheriting
+ * the body ink. The hexes mirror the poster skin's own `--dut-accent` pair
+ * (deep #c15f3c on light paper, #d97757 on its dark twin), so both skins share
+ * one accent; the deeper light-mode value also keeps small code legible on
+ * white (4.2:1 against paper, where a bright teal sat at 2.2:1).
+ *
+ * The host renders both markdown bodies and their compact twins (reasoning
+ * rows, tool payloads) with the CSS-modules class `_markdown_<hash>_<line>` —
+ * currently `_markdown_uddqf_5` — the same anchor the code-font rule above
+ * already matches on. The host's inline-code rule
+ * `._markdown_* :not(pre)>code` (0,1,2) declares no colour, so code inherits
+ * the markdown root's ink; the attribute selectors here (0,2,3 light, 0,3,4
+ * dark) therefore win without `!important` and without depending on sheet
+ * order (the host's only `color !important` for code is scoped to `pre`).
+ *
+ * Only markdown inline code inside the conversation is touched — including
+ * markdown the host renders inside tool and search cards, which is intended —
+ * while `<pre>` blocks and non-markdown `<code>` (terminal output, code-block
+ * card chrome, context / turn-error rows) keep their own palette, as do tables,
+ * buttons, popovers and every colour token. The dark rule hangs off
+ * `body[data-ds-dark-theme]`, which is where the host puts the scheme marker.
+ */
+const MINIMAL_CSS = `
+div[data-slot="conversation.chat.node"] [class*="_markdown_"] :not(pre)>code{color:#c15f3c}
+body[data-ds-dark-theme] div[data-slot="conversation.chat.node"] [class*="_markdown_"] :not(pre)>code{color:#d97757}
+`
+
 function buildRuntimeCss(value: ResolvedTweaks): string {
   const rules: string[] = []
   // Code font tokens, emitted only when the code size leaves the stock 13px;
@@ -1030,6 +1061,9 @@ function buildRuntimeCss(value: ResolvedTweaks): string {
   }
   if (value.themeStyle === 'neon-lime') {
     rules.push(NEON_LIME_CSS)
+  }
+  if (value.themeStyle === 'minimal') {
+    rules.push(MINIMAL_CSS)
   }
   return rules.join('\n')
 }
@@ -1343,7 +1377,7 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     void controller.set('preciseCacheHitEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
-  const setTheme = (value: 'default' | 'neon-lime'): void => {
+  const setTheme = (value: 'default' | 'minimal' | 'neon-lime'): void => {
     void controller.set('themeStyle', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
@@ -1448,8 +1482,9 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
             <span className="dut-label">{t('theme')}<Hint text={t('themeHint')} /></span>
             <div className="dut-controls">
               <div className="dut-seg">
-                <button type="button" className={resolved.themeStyle === 'neon-lime' ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setTheme('neon-lime') }}>{t('themeNeonLime')}</button>
                 <button type="button" className={resolved.themeStyle === 'default' ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setTheme('default') }}>{t('themeDefault')}</button>
+                <button type="button" className={resolved.themeStyle === 'minimal' ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setTheme('minimal') }}>{t('themeMinimal')}</button>
+                <button type="button" className={resolved.themeStyle === 'neon-lime' ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setTheme('neon-lime') }}>{t('themeNeonLime')}</button>
               </div>
             </div>
           </div>

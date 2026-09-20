@@ -9,7 +9,7 @@ A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH)
 | | |
 |---|---|
 | ![Settings panel](assets/settings.png) | ![Branch panel](assets/git.png) |
-| **Settings panel**: code font size / neon-poster theme / two-decimal cache hit / web search / timeline / GitBar toggles, with dedicated **Archive**, **MCP** and **Search** pages in the left nav | **Branch panel**: pops down from the branch chip in the session header — local / remote branch lists, click to switch; pull button (fast-forward only) in the header, new-branch field at the bottom, plus a **commit graph** dialog (colored SVG fork/merge lanes) and **Tag** management |
+| **Settings panel**: code font size / theme skins (minimal · neon poster) / two-decimal cache hit / web search / timeline / GitBar toggles, with dedicated **Archive**, **MCP** and **Search** pages in the left nav | **Branch panel**: pops down from the branch chip in the session header — local / remote branch lists, click to switch; pull button (fast-forward only) in the header, new-branch field at the bottom, plus a **commit graph** dialog (colored SVG fork/merge lanes) and **Tag** management |
 | ![Diff panel](assets/gitdiff.png) | ![Archive manager](assets/archive.png) |
 | **Code diff**: the code-diff tab in the right sidebar — file list (per-file checkboxes for partial commits) + per-file diff (changed hunks only by default, "Full file" toggle at the top right), with a commit area at the bottom for the message, an optional Tag, and Commit / Commit & push | **Archive manager**: an Archive page in the Settings dialog listing archived sessions (title / workspace / relative time) with per-row Restore / Delete and batch Restore all / Delete all |
 | ![MCP manager](assets/mcp.png) | |
@@ -18,7 +18,7 @@ A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH)
 ## Features
 
 - **Code font size (px)** — absolute 8–32px, default 13 (DSH's stock code-block size at a 16px body); applies to code blocks, with inline code following proportionally. The legacy percentage (`codeFontScale`) stays compatible and is overridden once a px value is set. Message text keeps DSH's stock sizing.
-- **Theme (single choice in Layout, stock look by default)** — choose `Default` or **Neon poster**: a two-scheme poster skin — paper-white with ink-black hairlines in light mode, near-black with light hairlines in dark mode, both with lime highlights and an Anthropic-red action accent (buttons, links and selections follow the theme tokens automatically; code blocks and the composer card get hard offset shadows), and the composer's reasoning-effort label is tinted by intensity (green / amber / blue / violet, with a same-hue wash sweeping option rows on hover), applied live. Future skins will be added as further options the same way.
+- **Theme (single choice in Layout, stock look by default)** — choose `Default`, **Minimal** or **Neon poster**. **Minimal** keeps DSH's stock look untouched and changes exactly one thing: markdown inline code is tinted with the Anthropic red (`#c15f3c` in light, `#d97757` in dark — the same accent the poster skin uses) in the conversation. **Neon poster** is a two-scheme poster skin — paper-white with ink-black hairlines in light mode, near-black with light hairlines in dark mode, both with lime highlights and an Anthropic-red action accent (buttons, links and selections follow the theme tokens automatically; code blocks and the composer card get hard offset shadows), and the composer's reasoning-effort label is tinted by intensity (green / amber / blue / violet, with a same-hue wash sweeping option rows on hover), applied live. Future skins will be added as further options the same way.
 - **Timeline (single choice in Features)** — one switch, two options:
   - **Native (default)** — DSH's built-in turn rail (the row of small dots beside the messages), the stock behavior.
   - **Web (classic)** — the v0.11 classic right-side navigation rail, restored: vertically centered on the message area's right edge, a thin line strip when collapsed, a 240px panel on hover (message previews + current-position highlight), a per-item detail bubble with timestamp, and **click to jump** (deep history pages in automatically before landing, with a landing self-check); wheel over the rail scrubs clipped items into reach. Data comes from the server-side `dshChatTimeline` session projection (every user message, independent of the browser's loaded window); sessions with fewer than two user messages hide it. On the web option the native turn rail is hidden with one theme-independent CSS rule (matching its `--turn-natural-height` inline variable), so the two never appear together.
@@ -44,7 +44,7 @@ All changes apply **live** — no reload needed. The same values can be hand-edi
 ```yaml
 ui-tweaks:
   timelineStyle: web            # defaults to native (DSH's built-in turn rail); web is the classic web timeline
-  themeStyle: neon-lime           # defaults to default (DSH's stock look); neon-lime is the neon-poster skin
+  themeStyle: minimal           # defaults to default (DSH's stock look); minimal tints markdown inline code Anthropic red (#c15f3c light / #d97757 dark), neon-lime is the neon-poster skin
   gitBarEnabled: true     # defaults to false (off); set true to enable GitBar
   archiveManagerEnabled: true   # defaults to false (off); set true to show the Archive page
   initCommandEnabled: true      # defaults to false (off); set true to register the /init slash command
@@ -60,9 +60,18 @@ Settings entry: **Settings → UI Tweaks**.
 # from npm (recommended, prebuilt)
 npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks
 
-# from GitHub (source with prebuilt artifacts; no local build needed)
+# from GitHub (source; built on install by `prepare`)
 npx -y @deepseek-ai/dsh plugin --profile web add github:wlj521/dsh-ui-tweaks
 ```
+
+> **The GitHub path builds locally**: `lib/` is a build artifact and is not tracked; it is produced by `prepare` at install time. Since pnpm 10.26, `prepare` of git-hosted dependencies is **blocked by default** (supply-chain hardening), so allow it in the profile's `pnpm-workspace.yaml` first — otherwise the install ships no `lib/` and the plugin fails to load:
+>
+> ```yaml
+> allowBuilds:
+>   dsh-ui-tweaks: true
+> ```
+>
+> Prefer the npm path if you would rather not build locally (its tarball already contains the artifacts).
 
 The package spec after `add` is forwarded to pnpm verbatim, so versions can be
 pinned — `@version` for the npm package, `#tag` for the GitHub source:
