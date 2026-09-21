@@ -14,8 +14,8 @@ export const UI_TWEAKS_SETTINGS_NAMESPACE = 'ui-tweaks'
 /** Raw user-facing configuration (partial inputs receive schema defaults). */
 export interface UITweaksConfig {
   /**
-   * Code font size as a percentage of the stock message font size (16px).
-   * 81 is the stock ratio (13px code block at a 16px body); 100 makes code
+   * Code font size as a percentage of the stock message font size (14px).
+   * 81 is the legacy default and maps to the stock code block; 100 makes code
    * match the body.
    *
    * @deprecated Legacy percent input, kept for migration; prefer
@@ -23,8 +23,8 @@ export interface UITweaksConfig {
    */
   codeFontScale?: number
   /**
-   * Absolute code font size in px (8–32). 13 matches the stock DSH code block
-   * at a 16px body. Drives the code block directly; inline code and the small
+   * Absolute code font size in px (8–32). 11 matches the stock DSH code block
+   * at a 14px body. Drives the code block directly; inline code and the small
    * code font follow proportionally. When unset, falls back to the legacy
    * `codeFontScale` percentage, then to the stock default.
    */
@@ -111,15 +111,19 @@ export interface UITweaksConfig {
   notifySound?: boolean
 }
 
-/** 81% = the stock code ratio (13px code block at a 16px body). Legacy input. */
+/** 81% = the legacy default, which resolves to the stock code block. Legacy input. */
 export const MIN_CODE_FONT_SCALE = 50
 export const MAX_CODE_FONT_SCALE = 150
 export const DEFAULT_CODE_FONT_SCALE = 81
 
-/** Absolute code font size (px): 13 is the stock DSH code block at a 16px body. */
+/**
+ * Absolute code font size (px): 11 is the stock DSH code block at a 14px body.
+ * Verified against `dsh-client-ui-theme`'s `--dsw-font-markdown-code-block`
+ * (11px/19px) in DSH 0.1.6-alpha.2.
+ */
 export const MIN_CODE_FONT_SIZE = 8
 export const MAX_CODE_FONT_SIZE = 32
-export const DEFAULT_CODE_FONT_SIZE = 13
+export const DEFAULT_CODE_FONT_SIZE = 11
 
 /** Web search defaults to off; users turn it on in Settings. */
 export const DEFAULT_SEARCH_ENABLED = false
@@ -237,7 +241,7 @@ export interface ResolvedUITweaksConfig {
 export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConfig {
   const codeFontScale = config.codeFontScale ?? DEFAULT_CODE_FONT_SCALE
   // Effective code size: the absolute px input wins; otherwise derive px from
-  // the legacy percentage at the stock 16px body; otherwise stock.
+  // the legacy percentage at the stock 14px body; otherwise stock.
   const codeFontSize = typeof config.codeFontSize === 'number'
     ? Math.min(MAX_CODE_FONT_SIZE, Math.max(MIN_CODE_FONT_SIZE, config.codeFontSize))
     : Math.max(8, Math.round(DEFAULT_CODE_FONT_SIZE * (codeFontScale / DEFAULT_CODE_FONT_SCALE)))

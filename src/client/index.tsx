@@ -51,15 +51,38 @@ import { installTaskNotifier, previewAlerts, requestNotifyPermission } from './n
 const NS = 'ui-tweaks'
 const SETTINGS_ROUTE = '/_dsh/ui-tweaks/settings'
 
-/** Legacy: code font as a percentage of the stock 16px body (81% = stock 13/16). */
+/** Legacy: code font as a percentage of the stock 14px body (81% resolves to the stock 11px code block). */
 const DEFAULT_CODE_FONT_SCALE = 81
-/** Absolute code font size (px): 13 is the stock DSH code block at a 16px body. */
-const DEFAULT_CODE_FONT_SIZE = 13
+/**
+ * Absolute code font size (px): 11 is the stock DSH code block at a 14px body.
+ * Keep in sync with src/config.ts.
+ */
+const DEFAULT_CODE_FONT_SIZE = 11
 const MIN_CODE_FONT_SIZE = 8
 const MAX_CODE_FONT_SIZE = 32
 
+/**
+ * Stock DSH code-type metrics the scaled tokens preserve, read off
+ * `dsh-client-ui-theme`'s `body{}` rule in DSH 0.1.6-alpha.2: inline code is
+ * 12px against an 11px block, the small block variant keeps the block's own
+ * size, and the two line-heights are 19px and 16px.
+ */
+const CODE_INLINE_RATIO = 12 / 11
+const CODE_SMALL_RATIO = 1
+/** Stock line-heights (px) for the code tokens; only the glyph size should move. */
+const CODE_LINE_HEIGHT = 19
+const CODE_SMALL_LINE_HEIGHT = 16
+/**
+ * Sentinel id that never exists in the DOM. The host declares the same tokens
+ * on a plain `body{}` rule, so a plain `body{}` here would be a specificity
+ * tie decided purely by `<style>` order — and the host re-appends its sheet
+ * whenever its plugin re-activates. `:not(#id)` lifts this rule to (0,1,1) so
+ * it wins regardless of order, the same guard NEON_LIME_CSS uses.
+ */
+const CODE_FONT_SCOPE_ID = 'dsh-ui-tweaks-code-font-scope'
+
 interface TweaksValue {
-  /** Code font size as a percentage of the stock 16px body (81 = stock). Legacy input. */
+  /** Code font size as a percentage of the stock 14px body (81 = stock). Legacy input. */
   codeFontScale?: number
   /** Absolute code font size in px; wins over the legacy percentage. */
   codeFontSize?: number
@@ -138,7 +161,7 @@ const en = {
   sectionLayout: 'Layout',
   sectionFeatures: 'Features',
   codeFontSize: 'Code font size',
-  codeFontSizeHint: `Absolute code size in px (${MIN_CODE_FONT_SIZE}–${MAX_CODE_FONT_SIZE}); ${DEFAULT_CODE_FONT_SIZE}px is DSH's default at a 16px body. Applies to code blocks; inline code follows proportionally.`,
+  codeFontSizeHint: `Absolute code size in px (${MIN_CODE_FONT_SIZE}–${MAX_CODE_FONT_SIZE}); ${DEFAULT_CODE_FONT_SIZE}px is DSH's default at a 14px body. Applies to code blocks; inline code follows proportionally.`,
   timeline: 'Timeline',
   timelineHint: 'Native: DSH\u2019s built-in turn rail at the right edge (stock). Web (classic): the v0.11 right-side navigation rail — hover to preview, click to jump; auto-hidden in short conversations.',
   timelineNative: 'Native',
@@ -372,7 +395,7 @@ const zh: Record<LocaleKey, string> = {
   sectionLayout: '布局',
   sectionFeatures: '功能',
   codeFontSize: '代码字号',
-  codeFontSizeHint: `代码绝对字号，取值 ${MIN_CODE_FONT_SIZE}–${MAX_CODE_FONT_SIZE}px；${DEFAULT_CODE_FONT_SIZE}px 为 DSH 默认（正文 16 时）。作用于代码块，行内代码按比例跟随。`,
+  codeFontSizeHint: `代码绝对字号，取值 ${MIN_CODE_FONT_SIZE}–${MAX_CODE_FONT_SIZE}px；${DEFAULT_CODE_FONT_SIZE}px 为 DSH 默认（正文 14 时）。作用于代码块，行内代码按比例跟随。`,
   timeline: '时间线',
   timelineHint: '原生：DSH 自带的回合导航轨（消息右侧小圆点，默认）。网页（经典）：找回 v0.11 的右侧导航轨——悬停预览、点击跳转；会话较短时自动隐藏。',
   timelineNative: '原生',
@@ -607,7 +630,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
 function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
   // Effective code size: the absolute px input wins; otherwise derive px from
-  // the legacy percentage at the stock 16px body; otherwise stock.
+  // the legacy percentage at the stock 14px body; otherwise stock.
   const codeFontSize = typeof value?.codeFontSize === 'number'
     ? Math.min(MAX_CODE_FONT_SIZE, Math.max(MIN_CODE_FONT_SIZE, value.codeFontSize))
     : Math.max(8, Math.round(DEFAULT_CODE_FONT_SIZE * ((value?.codeFontScale ?? DEFAULT_CODE_FONT_SCALE) / DEFAULT_CODE_FONT_SCALE)))
@@ -650,18 +673,21 @@ function buildCodeFontCss(codeFontSize: number): string {
 
   const parts: string[] = []
   // Code sizes hang off the absolute code-block size, with inline code slightly
-  // larger and the small variant slightly smaller, preserving DSH's hierarchy
-  // (14/13 and 12/13 of the block); line-heights stay at the stock values.
+  // larger and the small variant the same size, preserving DSH's own hierarchy
+  // (12/11 of the block for inline code, 1/1 for the small block). Line-heights
+  // stay at the stock values, so only the glyph size moves.
   const token = (shorthand: string, size: number, baseLine: number, family: string): void => {
     parts.push(`--${shorthand}:${size}px/${baseLine}px ${family}`)
     parts.push(`--${shorthand}-font-size:${size}px`)
     parts.push(`--${shorthand}-line-height:${baseLine}px`)
   }
   const codePx = (blockRatio: number): number => Math.max(8, Math.round(codeFontSize * blockRatio))
-  token('dsw-font-markdown-code', codePx(14 / 13), 22, code)
-  token('dsw-font-markdown-code-block', codePx(1), 22, codeBlock)
-  token('dsw-font-markdown-code-block-small', codePx(12 / 13), 18, codeBlock)
-  return `body{${parts.join(';')}}`
+  token('dsw-font-markdown-code', codePx(CODE_INLINE_RATIO), CODE_LINE_HEIGHT, code)
+  token('dsw-font-markdown-code-block', codePx(1), CODE_LINE_HEIGHT, codeBlock)
+  token('dsw-font-markdown-code-block-small', codePx(CODE_SMALL_RATIO), CODE_SMALL_LINE_HEIGHT, codeBlock)
+  // See CODE_FONT_SCOPE_ID: the sentinel lifts this above the host's plain
+  // `body{}` token rule so the override survives `<style>` reordering.
+  return `body:not(#${CODE_FONT_SCOPE_ID}){${parts.join(';')}}`
 }
 
 /**
@@ -1040,13 +1066,13 @@ body[data-ds-dark-theme] div[data-slot="conversation.chat.node"] [class*="_markd
 
 function buildRuntimeCss(value: ResolvedTweaks): string {
   const rules: string[] = []
-  // Code font tokens, emitted only when the code size leaves the stock 13px;
+  // Code font tokens, emitted only when the code size leaves the stock 11px;
   // the message body, headings, user messages and composer stay theme stock.
   const fontCss = buildCodeFontCss(value.codeFontSize)
   if (fontCss !== '') rules.push(fontCss)
   // Inline code is pinned by DSH to 0.875em of the surrounding text (it ignores
   // the code token); scale that em by how far the chosen code size sits from
-  // the stock ratio (a 13px block at the stock 16px body).
+  // the stock ratio (an 11px block at the stock 14px body).
   if (Math.abs(value.codeFontSize - DEFAULT_CODE_FONT_SIZE) > 0.5) {
     const em = (0.875 * (value.codeFontSize / DEFAULT_CODE_FONT_SIZE)).toFixed(3)
     rules.push(`div[data-slot="conversation.chat.node"] div[class*="_markdown_"] :not(pre)>code{font-size:${em}em !important}`)
