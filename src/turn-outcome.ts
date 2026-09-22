@@ -25,7 +25,7 @@ import type { ZodType } from 'zod'
 export const TURN_OUTCOME_PROJECTION_KEY = 'dshTurnOutcome'
 
 /** The stock `TurnEndReason` kinds (the map is merge-extensible upstream). */
-export type TurnOutcomeKind = 'completed' | 'aborted' | 'blocked' | 'error' | 'max-tokens' | 'interrupted'
+export type TurnOutcomeKind = 'completed' | 'aborted' | 'blocked' | 'error' | 'max-tokens' | 'interrupted' | 'forked'
 
 /** Whole projection value: why the latest turn ended. */
 export interface TurnOutcomeValue {

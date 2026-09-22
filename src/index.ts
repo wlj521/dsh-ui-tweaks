@@ -1,13 +1,18 @@
 /**
  * dsh-ui-tweaks — server half.
  *
- * Registers the `ui-tweaks` settings namespace so users can tune the
- * conversation UI either from the Settings panel or by editing the settings
- * document directly (settings.yaml `ui-tweaks:` section). All rendering work
+ * Owns the `ui-tweaks` settings namespace so users can tune the conversation
+ * UI either from the Settings panel or by editing the profile patch
+ * (`cordis.patch.yml` `ui-tweaks` entry; settings.yaml was retired in DSH
+ * 0.1.7, which migrated its sections there). Since 0.1.7 the Settings panel
+ * derives each form from the plugin's exported `Config` schema — there is no
+ * explicit `settings.register()` anymore — so this module re-exports
+ * `Config` and opts out of the auto-generated form page (the browser half
+ * owns its sections through the `settings.section` slot). All rendering work
  * happens in the browser bundle (`src/client`), which reads and writes this
  * namespace through the same-origin route mounted here — the Web settings RPC
- * only exposes a fixed allowlist of namespaces since rc.6, so a custom route is
- * the supported way for a plugin to own a configuration page.
+ * only exposes a fixed allowlist of namespaces since rc.6, so a custom route
+ * is the supported way for a plugin to own a configuration page.
  * @module dsh-ui-tweaks
  */
 
@@ -28,16 +33,26 @@ import { createSearchProvider, type SearchProviderConfig, type WebSearchSeam } f
 
 export const name = 'dsh-ui-tweaks'
 
+/**
+ * Re-export the Config schema so the Cordis loader attaches it to this
+ * plugin's runtime: since DSH 0.1.7 `SettingsForms` reads
+ * `entry.fiber.runtime.Config` to derive the settings form (the old
+ * `ctx.settings.register()` call no longer exists).
+ */
+export { Config }
+
 /** Required services: the settings seam is the whole server-side surface. */
 export const inject = ['settings', 'web']
 
 export function apply(ctx: Context): void {
-  ctx.settings.register(UI_TWEAKS_SETTINGS_NAMESPACE, Config, {
-    applies: 'live',
-  })
+  // The Settings form is derived from the exported `Config` schema (DSH
+  // 0.1.7+). This client owns its Settings sections through the
+  // `settings.section` slot, so opt the instance out of the auto-generated
+  // form page instead of registering a namespace by hand.
+  ctx.effect(() => ctx.settings.configure({ auto: false }, ctx.fiber))
 
   // The task notifier classifies turn endings (completed / aborted / failed)
-  // through this session projection (same registration pattern as above).
+  // through this session projection (registered when present).
   installTurnOutcomeProjection(ctx)
 
   // The conversation timeline rail enumerates user messages through this
@@ -70,7 +85,7 @@ export function apply(ctx: Context): void {
 
   // Free web search: registering a provider into the web seam makes the
   // harness's built-in `web_search` tool use it. The preferred engine and
-  // Bing market come live from the ui-tweaks settings document; engine API
+  // Bing market come live from the ui-tweaks settings form; engine API
   // keys resolve through the credentials center (~/.dsh/.credentials.yaml)
   // first, then the process environment.
   const web = ctx as Context & { web?: WebSearchSeam }
@@ -78,7 +93,8 @@ export function apply(ctx: Context): void {
     const row = ctx.settings.describe().find(candidate => candidate.ns === UI_TWEAKS_SETTINGS_NAMESPACE)
     return ((row?.value as { searchEnabled?: unknown } | undefined)?.searchEnabled) === true
   }
-  if (web.web) {
+  const seam = web.web
+  if (seam) {
     const readConfig = (): SearchProviderConfig => {
       const row = ctx.settings.describe().find(candidate => candidate.ns === UI_TWEAKS_SETTINGS_NAMESPACE)
       const value = row?.value as { searchEnabled?: unknown; searchEngine?: unknown; bingMarket?: unknown } | undefined
@@ -103,22 +119,28 @@ export function apply(ctx: Context): void {
       return process.env[envName]
     }
     const provider = createSearchProvider({ readConfig, resolveApiKey })
-    web.web.registerSearchProvider(provider)
-    // Takeover only while the feature is enabled: registration alone must not
-    // hijack web_search when the toggle is off. Runtime availability still
+    seam.registerSearchProvider(provider)
+    // Startup reconcile — deferred until this fiber is ACTIVE: since DSH
+    // 0.1.7 `settings.describe()` only lists ACTIVE entries, and inside
+    // apply() our own fiber is still LOADING, so a synchronous read here
+    // would always see "off" and `syncSearchPatch(false)` would write that
+    // back over the user's enabled patch entry on every boot. Takeover only
+    // happens while the feature is enabled; runtime availability still
     // re-reads the setting live, so turning it off always wins.
-    if (searchEnabledNow() && !web.web.searchProviderId) {
-      web.web.searchProviderId = provider.id
-    }
-    // Startup reconcile: mirror the toggle into the profile patch so the
-    // harness's built-in web_search is activated / restored even if the
-    // setting was changed by hand (settings.yaml) between restarts.
-    void searchBackend.syncSearchPatch(searchEnabledNow()).catch((error: unknown) => {
+    void ctx.fiber.await().then(() => {
+      if (searchEnabledNow() && !seam.searchProviderId) {
+        seam.searchProviderId = provider.id
+      }
+      // Mirror the toggle into the profile patch so the harness's built-in
+      // web_search is activated / restored even if the setting was changed
+      // by hand between restarts.
+      return searchBackend.syncSearchPatch(searchEnabledNow())
+    }).catch((error: unknown) => {
       ctx.logger.warn('[dsh-ui-tweaks] search patch sync failed: %s', error instanceof Error ? error.message : String(error))
     })
   } else {
     ctx.logger.warn('[dsh-ui-tweaks] web seam not found; built-in web_search stays on the stock backend')
   }
 
-  ctx.logger.info('[dsh-ui-tweaks] settings namespace registered and Web routes mounted')
+  ctx.logger.info('[dsh-ui-tweaks] settings schema exported and Web routes mounted')
 }

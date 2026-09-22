@@ -6,7 +6,6 @@
  */
 
 import z from '@deepseek-ai/schemastery'
-import type Schema from '@deepseek-ai/schemastery'
 
 /** Settings document namespace owned by this plugin. */
 export const UI_TWEAKS_SETTINGS_NAMESPACE = 'ui-tweaks'
@@ -172,27 +171,32 @@ export const DEFAULT_NOTIFY_TITLE_FLASH = true
 export const DEFAULT_NOTIFY_SYSTEM_NOTIFICATION = true
 export const DEFAULT_NOTIFY_SOUND = false
 
-/** Configuration schema with documented defaults. */
-export const Config: Schema<UITweaksConfig> = z.object({
-  codeFontScale: z.number().min(MIN_CODE_FONT_SCALE).max(MAX_CODE_FONT_SCALE).default(DEFAULT_CODE_FONT_SCALE),
-  codeFontSize: z.number().min(MIN_CODE_FONT_SIZE).max(MAX_CODE_FONT_SIZE),
-  timelineStyle: z.union(['native', 'web'] as const).default(DEFAULT_TIMELINE_STYLE),
-  themeStyle: z.union(['default', 'minimal', 'neon-lime'] as const).default(DEFAULT_THEME_STYLE),
-  searchEnabled: z.boolean().default(DEFAULT_SEARCH_ENABLED),
-  searchEngine: z.union(['bing', 'ddg', 'exa', 'tavily', 'keenable', 'perplexity', 'deepseek'] as const).default(DEFAULT_SEARCH_ENGINE),
-  bingMarket: z.union(BING_MARKET_OPTIONS).default(DEFAULT_BING_MARKET),
-  gitBarEnabled: z.boolean().default(DEFAULT_GITBAR_ENABLED),
-  archiveManagerEnabled: z.boolean().default(DEFAULT_ARCHIVE_MANAGER_ENABLED),
-  mcpManagerEnabled: z.boolean().default(DEFAULT_MCP_MANAGER_ENABLED),
-  initCommandEnabled: z.boolean().default(DEFAULT_INIT_COMMAND_ENABLED),
-  preciseCacheHitEnabled: z.boolean().default(DEFAULT_PRECISE_CACHE_HIT_ENABLED),
-  notificationsEnabled: z.boolean().default(DEFAULT_NOTIFICATIONS_ENABLED),
-  notifyOnlyWhenHidden: z.boolean().default(DEFAULT_NOTIFY_ONLY_WHEN_HIDDEN),
-  notifyOnComplete: z.boolean().default(DEFAULT_NOTIFY_ON_COMPLETE),
-  notifyOnInteraction: z.boolean().default(DEFAULT_NOTIFY_ON_INTERACTION),
-  notifyTitleFlash: z.boolean().default(DEFAULT_NOTIFY_TITLE_FLASH),
-  notifySystemNotification: z.boolean().default(DEFAULT_NOTIFY_SYSTEM_NOTIFICATION),
-  notifySound: z.boolean().default(DEFAULT_NOTIFY_SOUND),
+/**
+ * Configuration schema with documented defaults. Every field is marked
+ * `.volatile()` (schemastery ≥3.18.3): since DSH 0.1.7 the Settings panel
+ * derives each plugin's form from its exported `Config` schema, and only
+ * volatile fields appear in the form (and stay editable without a remount).
+ */
+export const Config = z.object({
+  codeFontScale: z.number().min(MIN_CODE_FONT_SCALE).max(MAX_CODE_FONT_SCALE).default(DEFAULT_CODE_FONT_SCALE).volatile(),
+  codeFontSize: z.number().min(MIN_CODE_FONT_SIZE).max(MAX_CODE_FONT_SIZE).volatile(),
+  timelineStyle: z.union(['native', 'web'] as const).default(DEFAULT_TIMELINE_STYLE).volatile(),
+  themeStyle: z.union(['default', 'minimal', 'neon-lime'] as const).default(DEFAULT_THEME_STYLE).volatile(),
+  searchEnabled: z.boolean().default(DEFAULT_SEARCH_ENABLED).volatile(),
+  searchEngine: z.union(['bing', 'ddg', 'exa', 'tavily', 'keenable', 'perplexity', 'deepseek'] as const).default(DEFAULT_SEARCH_ENGINE).volatile(),
+  bingMarket: z.union(BING_MARKET_OPTIONS).default(DEFAULT_BING_MARKET).volatile(),
+  gitBarEnabled: z.boolean().default(DEFAULT_GITBAR_ENABLED).volatile(),
+  archiveManagerEnabled: z.boolean().default(DEFAULT_ARCHIVE_MANAGER_ENABLED).volatile(),
+  mcpManagerEnabled: z.boolean().default(DEFAULT_MCP_MANAGER_ENABLED).volatile(),
+  initCommandEnabled: z.boolean().default(DEFAULT_INIT_COMMAND_ENABLED).volatile(),
+  preciseCacheHitEnabled: z.boolean().default(DEFAULT_PRECISE_CACHE_HIT_ENABLED).volatile(),
+  notificationsEnabled: z.boolean().default(DEFAULT_NOTIFICATIONS_ENABLED).volatile(),
+  notifyOnlyWhenHidden: z.boolean().default(DEFAULT_NOTIFY_ONLY_WHEN_HIDDEN).volatile(),
+  notifyOnComplete: z.boolean().default(DEFAULT_NOTIFY_ON_COMPLETE).volatile(),
+  notifyOnInteraction: z.boolean().default(DEFAULT_NOTIFY_ON_INTERACTION).volatile(),
+  notifyTitleFlash: z.boolean().default(DEFAULT_NOTIFY_TITLE_FLASH).volatile(),
+  notifySystemNotification: z.boolean().default(DEFAULT_NOTIFY_SYSTEM_NOTIFICATION).volatile(),
+  notifySound: z.boolean().default(DEFAULT_NOTIFY_SOUND).volatile(),
 })
 
 /** Configuration after static validation, with every default materialized. */
