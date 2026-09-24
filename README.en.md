@@ -1,6 +1,6 @@
 # dsh-ui-tweaks
 
-> **Dependency**: currently targets **DSH v0.1.6-alpha.2**.
+> **Dependency**: currently targets **DSH v0.1.7-rc.1**.
 
 A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH) web plugin that live-tunes the conversation UI from the Settings panel.
 
@@ -39,17 +39,20 @@ A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH)
   - "Only when hidden" defaults on (no nagging while you watch the page); the first snapshot only arms the baseline (a page reload never fires a burst); events fire on transitions with a 2s per-session+kind cooldown (reconnect flicker absorbed); subagent child rows are skipped (the parent carries the turn). A **Test** button in Settings previews permission and channels in one click.
 - **Precise cache hit (toggleable, off by default)** — DSH's stats line shows the cache-hit share as a bare integer ("Cache hit 96%"). When enabled, the figure is rewritten to two decimals ("Cache hit 96.35%") and computed from the raw token buckets — cache reads ÷ billed input (uncached input + cache reads + cache writes) — the same source as the stock number, just unrounded; a full hit shows 100.00%, and with no billed input the group is absent anyway. The toggle lives in the Layout settings group; turning it off restores the stock figure.
 
-All changes apply **live** — no reload needed. The same values can be hand-edited in the settings document:
+All changes apply **live** — no reload needed. The same values can be hand-edited in the profile's `cordis.patch.yml` (the document the Settings page writes; `settings.yaml` was retired in DSH 0.1.7):
 
 ```yaml
-ui-tweaks:
-  timelineStyle: web            # defaults to native (DSH's built-in turn rail); web is the classic web timeline
-  themeStyle: minimal           # defaults to default (DSH's stock look); minimal tints markdown inline code Anthropic red (#c15f3c light / #d97757 dark), neon-lime is the neon-poster skin
-  gitBarEnabled: true     # defaults to false (off); set true to enable GitBar
-  archiveManagerEnabled: true   # defaults to false (off); set true to show the Archive page
-  initCommandEnabled: true      # defaults to false (off); set true to register the /init slash command
-  preciseCacheHitEnabled: true  # defaults to false (off); set true to enable the two-decimal cache-hit figure
-  notificationsEnabled: true    # defaults to false (off); set true to enable task alerts (event filters & channels are per-item toggles in Settings)
+# $DSH_HOME/profiles/<profile>/cordis.patch.yml
+- id: ui-tweaks
+  name: dsh-ui-tweaks
+  config:
+    timelineStyle: web            # defaults to native (DSH's built-in turn rail); web is the classic web timeline
+    themeStyle: minimal           # defaults to default (DSH's stock look); minimal tints markdown inline code Anthropic red (#c15f3c light / #d97757 dark), neon-lime is the neon-poster skin
+    gitBarEnabled: true           # defaults to false (off); set true to enable GitBar
+    archiveManagerEnabled: true   # defaults to false (off); set true to show the Archive page
+    initCommandEnabled: true      # defaults to false (off); set true to register the /init slash command
+    preciseCacheHitEnabled: true  # defaults to false (off); set true to enable the two-decimal cache-hit figure
+    notificationsEnabled: true    # defaults to false (off); set true to enable task alerts (event filters & channels are per-item toggles in Settings)
 ```
 
 Settings entry: **Settings → UI Tweaks**.
@@ -104,8 +107,11 @@ npx -y @deepseek-ai/dsh plugin --profile web add .        # bundle install from 
 
 ## How it works
 
-- **Server** (`src/index.ts`) registers the `ui-tweaks` settings namespace and
-  mounts a same-origin route (`/_dsh/ui-tweaks/settings`) — the Web settings
+- **Server** (`src/index.ts`) exports the `Config` settings schema — since DSH
+  0.1.7 the Settings form is derived from a plugin's exported `Config`
+  (the old `settings.register()` is gone) and `configure({ auto: false })`
+  suppresses the auto-generated page in favor of the client's own sections —
+  and mounts a same-origin route (`/_dsh/ui-tweaks/settings`) — the Web settings
   RPC only exposes a fixed allowlist of namespaces since rc.6, so a custom route
   is how a plugin owns a configuration page.
 - **Browser** (`src/client/index.tsx`) reads/writes that route, renders the

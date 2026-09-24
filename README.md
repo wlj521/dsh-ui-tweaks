@@ -1,6 +1,6 @@
 # dsh-ui-tweaks
 
-> **依赖版本**：当前依赖 **DSH v0.1.6-alpha.2**。
+> **依赖版本**：当前依赖 **DSH v0.1.7-rc.1**。
 
 [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/)（DSH）Web UI 插件：在设置面板中实时调整对话界面——代码字号、**主题皮肤**（简约 / 荧光海报）、**时间线切换**（原生回合导航轨 / 经典网页时间线）、**GitBar**（会话头部的分支胶囊 + 右侧边栏里的代码差异标签页），可开关的**归档管理**（设置中的「归档」页面：查看、恢复或彻底删除已归档会话），可开关的**任务提醒**（会话完成或需要交互时，通过标签页标题闪烁 / 系统通知 / 提示音把你唤回来），以及**缓存命中率两位小数**（把输入框下方统计条的缓存命中百分比改写为精确值）。
 
@@ -42,17 +42,20 @@
   - 「仅页面不可见时」默认开启（正盯着页面时不打扰）；首帧快照只武装不触发（刷新页面不刷屏）；只在跳变沿触发 + 同会话同类事件 2 秒冷却（防重连抖动）；子代理子会话不计（父会话承载整轮）。设置里有「测试」按钮，一键预览权限申请与通道效果。
 - **缓存命中率两位小数（可开关，默认关闭）**：DSH 原生统计条里的缓存命中只显示整数百分比（如「缓存命中 96%」）。开启后改写为两位小数（如「缓存命中 96.35%」），且**直接用原始 token 数计算**——缓存读取 ÷ 计费输入（未缓存输入 + 缓存读取 + 缓存写入），与原生数字同源、但不再取整；完全命中显示 100.00%，无计费输入时该组本就不显示。开关位于设置的「布局」区，关闭即恢复原样。
 
-所有修改**即时生效**，无需刷新。同一份配置也可以直接在设置文档里手改：
+所有修改**即时生效**，无需刷新。同一份配置也可以直接手改——DSH 0.1.7 起 `settings.yaml` 已退役，配置写在 profile 的 `cordis.patch.yml`（设置页保存时写入的就是这份文件）：
 
 ```yaml
-ui-tweaks:
-  timelineStyle: web            # 默认 native（DSH 自带回合导航轨），web 为经典网页时间线
-  themeStyle: minimal           # 默认 default（DSH 原生外观），minimal 只把行内代码染成 Anthropic 红（浅色 #c15f3c / 深色 #d97757），neon-lime 为荧光海报皮肤
-  gitBarEnabled: true     # 默认 false（关闭），设为 true 开启 GitBar
-  archiveManagerEnabled: true   # 默认 false（关闭），设为 true 开启「归档」页面
-  initCommandEnabled: true      # 默认 false（关闭），设为 true 开启 /init 斜杠命令
-  preciseCacheHitEnabled: true  # 默认 false（关闭），设为 true 开启缓存命中率两位小数
-  notificationsEnabled: true    # 默认 false（关闭），设为 true 开启任务提醒（事件过滤与三个通道在设置里逐项开关）
+# $DSH_HOME/profiles/<profile>/cordis.patch.yml
+- id: ui-tweaks
+  name: dsh-ui-tweaks
+  config:
+    timelineStyle: web            # 默认 native（DSH 自带回合导航轨），web 为经典网页时间线
+    themeStyle: minimal           # 默认 default（DSH 原生外观），minimal 只把行内代码染成 Anthropic 红（浅色 #c15f3c / 深色 #d97757），neon-lime 为荧光海报皮肤
+    gitBarEnabled: true           # 默认 false（关闭），设为 true 开启 GitBar
+    archiveManagerEnabled: true   # 默认 false（关闭），设为 true 开启「归档」页面
+    initCommandEnabled: true      # 默认 false（关闭），设为 true 开启 /init 斜杠命令
+    preciseCacheHitEnabled: true  # 默认 false（关闭），设为 true 开启缓存命中率两位小数
+    notificationsEnabled: true    # 默认 false（关闭），设为 true 开启任务提醒（事件过滤与三个通道在设置里逐项开关）
 ```
 
 设置入口：**设置 → 界面调整**。
@@ -104,7 +107,7 @@ npx -y @deepseek-ai/dsh plugin --profile web add .        # 从本目录作为 b
 
 ## 工作原理
 
-- **服务端**（`src/index.ts`）：注册 `ui-tweaks` 设置命名空间，并挂载同源路由 `/_dsh/ui-tweaks/settings`——自 rc.6 起，Web 设置 RPC 只暴露固定白名单命名空间，因此自定义路由是插件拥有配置页的方式。
+- **服务端**（`src/index.ts`）：导出 `Config` 设置 schema——0.1.7 起设置表单由宿主从插件导出的 `Config` 自动派生（旧的 `settings.register()` 已移除），插件再以 `configure({ auto: false })` 抑制自动生成页、由客户端各分区接管展示；并挂载同源路由 `/_dsh/ui-tweaks/settings`——自 rc.6 起，Web 设置 RPC 只暴露固定白名单命名空间，因此自定义路由是插件拥有配置页的方式。
 - **Git 后端**（`src/git.ts` + `src/git-web.ts`）：通过 `ctx.get('sessions')`（可选服务）解析会话 header 的 `cwd` 作为“当前项目”，用 `child_process.execFile('git', …)`（无 shell、cwd 固定、超时 + 中止传播）执行只读/写操作；同源路由 `/_dsh/ui-tweaks/git/*` 提供 status / branches / diff（hunk 或完整文件，含绝对行号）/ graph（结构化提交行，含父哈希，供前端排布分支 lane）/ commit / push / pull（仅快进）/ checkout / create / branch-delete / remote-delete。
 - **浏览器端**（`src/client/index.tsx`）：读写该路由、渲染设置页，并通过运行时 `<style>` 元素实时应用样式，覆盖稳定的 DSH 锚点（`body` 上的 markdown 代码字体 token 与主题变量、`[data-slot="conversation.chat.node"]` 内的代码块 / 表头）。
 - **GitBar**（`src/client/gitbar.tsx`）：分支胶囊挂在 `conversation.session.header.actions`（会话标题旁），代码差异则注册为右侧边栏原生标签页（page 类型：`ctx.sidebarRightTabs` 注册类型与指南入口，`sidebar.right.pane.tab` 按类型 id 注册内容，代码差异另注册标题席位在页签上补未提交改动的小黄点，随 `gitBarEnabled` 开关按需挂载）。视图是全高 flex 列：文件列表 / diff / 提交区三段高度分配采用「只给被拖的那一段显式高度、diff 段 `flex:1` 吃掉余量」的方式，配合 45% 上限，拖动永远不会撑破视图。提交保留在代码差异页底部的提交区。在外部应用中打开项目是 DSH 自带的 open-in-app 按钮，本插件的 `/open` 路由与 `openFolder` 后端已随之移除。提交图谱对话框的 lane 布局与 SVG 渲染拆在 `src/client/graphlayout.ts`（纯函数模块：父哈希 → 每行 lane / 边段，经典 first-parent 路由——第一父提交沿用原 lane 让线性历史始终一条线，合并与 fork 画贝塞尔弧线；`parents` 字段可选，兼容宿主里尚未重载的旧服务端）。
