@@ -1187,11 +1187,25 @@ function installBaseStyles(): () => void {
   return () => { style.remove() }
 }
 
+/** Route failure that keeps the HTTP status so callers can react to a 409. */
+class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code: string | undefined,
+  ) {
+    super(message)
+    this.name = 'ApiRequestError'
+  }
+}
+
 /**
  * Settings requests retry briefly on 502/503: writing the profile patch
  * hot-reloads the `web` node and restarts this plugin for a moment (it
  * injects `web`), so a toggle click can land inside that window. The retry
- * rides it out instead of surfacing "settings unavailable".
+ * rides it out instead of surfacing "settings unavailable". Every other
+ * refusal — 409 included — fails fast: replaying it unchanged can only fail
+ * again, and the write path owns the conflict recovery.
  */
 async function apiRequest<T>(init?: RequestInit): Promise<T> {
   let lastError: unknown
@@ -1201,13 +1215,19 @@ async function apiRequest<T>(init?: RequestInit): Promise<T> {
       const body = await response.json() as ApiSuccess<T> | ApiFailure
       if (response.ok && body.ok) return body.value
       const failure = body as ApiFailure
-      const retryable = response.status === 502 || response.status === 503
-      lastError = new Error(failure.error?.message ?? `UI Tweaks request failed with HTTP ${response.status}`)
-      if (!retryable) throw lastError
+      const error = new ApiRequestError(
+        failure.error?.message ?? `UI Tweaks request failed with HTTP ${response.status}`,
+        response.status,
+        failure.error?.code,
+      )
+      if (error.status !== 502 && error.status !== 503) throw error
+      lastError = error
     } catch (error) {
+      if (error instanceof ApiRequestError) throw error
+      // Transport-level failures (network, non-JSON body) are worth a retry.
       lastError = error
     }
-    await new Promise((resolve) => setTimeout(resolve, attempt * 250))
+    if (attempt < 6) await new Promise((resolve) => setTimeout(resolve, attempt * 250))
   }
   throw lastError ?? new Error('UI Tweaks request failed')
 }
@@ -1221,11 +1241,22 @@ interface SettingsState {
   error?: string
 }
 
-/** Small external store shared by the Settings route and the CSS engine. */
+/**
+ * Small external store shared by the Settings route and the CSS engine.
+ *
+ * Round trips run strictly one at a time. Toggle clicks outrun the patch write
+ * they trigger, and two overlapping writes would carry the same
+ * `expectedRevision`; the server refuses the later one with a 409 and the page
+ * would stay pinned to a stale revision — every further click conflicting —
+ * until a reload. A 409 still happens when the revision moves underneath the
+ * page (the search toggle restarts this plugin, another tab writes, or the
+ * patch is edited by hand), so a refused write refreshes the snapshot and
+ * replays once against the new revision instead of locking the form.
+ */
 export class SettingsClient {
   private state: SettingsState = { status: 'loading', writable: false, value: undefined, revision: undefined }
   private listeners = new Set<() => void>()
-  private generation = 0
+  private operations: Promise<unknown> = Promise.resolve()
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener)
@@ -1239,32 +1270,7 @@ export class SettingsClient {
     for (const listener of this.listeners) listener()
   }
 
-  async load(): Promise<void> {
-    const generation = ++this.generation
-    if (this.state.status === 'loading') this.publish({ ...this.state, status: 'loading' })
-    try {
-      const snapshot = await apiRequest<UITweaksSnapshot>()
-      if (generation !== this.generation) return
-      this.publish({
-        status: 'ready',
-        writable: snapshot.writable,
-        value: snapshot.value,
-        revision: snapshot.revision,
-      })
-    } catch (error) {
-      if (generation !== this.generation) return
-      this.publish({ ...this.state, status: 'error', error: error instanceof Error ? error.message : String(error) })
-    }
-  }
-
-  private async post(payload: unknown): Promise<void> {
-    const generation = ++this.generation
-    const snapshot = await apiRequest<UITweaksSnapshot>({
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    if (generation !== this.generation) return
+  private accept(snapshot: UITweaksSnapshot): void {
     this.publish({
       status: 'ready',
       writable: snapshot.writable,
@@ -1273,12 +1279,58 @@ export class SettingsClient {
     })
   }
 
+  /** Serialize one round trip behind every earlier one. */
+  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const next = this.operations.then(operation, operation)
+    this.operations = next.then(() => undefined, () => undefined)
+    return next
+  }
+
+  private fetchSnapshot(): Promise<UITweaksSnapshot> {
+    return apiRequest<UITweaksSnapshot>()
+  }
+
+  async load(): Promise<void> {
+    await this.enqueue(async () => {
+      if (this.state.status === 'loading') this.publish({ ...this.state, status: 'loading' })
+      try {
+        this.accept(await this.fetchSnapshot())
+      } catch (error) {
+        this.publish({ ...this.state, status: 'error', error: error instanceof Error ? error.message : String(error) })
+      }
+    })
+  }
+
+  /**
+   * Queue one field write. Must run inside {@link enqueue}: the conflict path
+   * refreshes and replays while no other client write can interleave.
+   */
+  private async write(build: (expectedRevision: number) => unknown): Promise<void> {
+    const send = (expectedRevision: number): Promise<UITweaksSnapshot> => apiRequest<UITweaksSnapshot>({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(build(expectedRevision)),
+    })
+    let snapshot: UITweaksSnapshot
+    try {
+      snapshot = await send(this.state.revision ?? 0)
+    } catch (error) {
+      if (!(error instanceof ApiRequestError) || error.status !== 409) throw error
+      // Another writer moved the revision: adopt the server snapshot, then
+      // replay the click against it.
+      const fresh = await this.fetchSnapshot()
+      this.accept(fresh)
+      snapshot = await send(fresh.revision)
+    }
+    this.accept(snapshot)
+  }
+
   async set(field: string, value: unknown): Promise<void> {
-    await this.post({ action: 'set', field, value, expectedRevision: this.state.revision ?? 0 })
+    await this.enqueue(() => this.write(revision => ({ action: 'set', field, value, expectedRevision: revision })))
   }
 
   async unset(field: string): Promise<void> {
-    await this.post({ action: 'unset', field, expectedRevision: this.state.revision ?? 0 })
+    await this.enqueue(() => this.write(revision => ({ action: 'unset', field, expectedRevision: revision })))
   }
 }
 
