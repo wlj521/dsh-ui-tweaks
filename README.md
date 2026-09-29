@@ -1,6 +1,6 @@
 # dsh-ui-tweaks
 
-> **依赖版本**：当前依赖 **DSH v0.2.0-rc.1**。
+> **依赖版本**：当前依赖 **DSH v0.2.0-rc.2**。
 
 [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/)（DSH）Web UI 插件：在设置面板中实时调整对话界面——代码字号、**主题皮肤**（简约 / 荧光海报）、**时间线切换**（原生回合导航轨 / 经典网页时间线）、**GitBar**（会话头部的分支胶囊 + 右侧边栏里的代码差异标签页），可开关的**归档管理**（设置中的「归档」页面：查看、恢复或彻底删除已归档会话），可开关的**任务提醒**（会话完成或需要交互时，通过标签页标题闪烁 / 系统通知 / 提示音把你唤回来），以及**缓存命中率两位小数**（把输入框下方统计条的缓存命中百分比改写为精确值）。
 
@@ -64,10 +64,10 @@
 
 ```bash
 # 方式一：从 npm 安装（推荐，预构建产物，一条命令装好）
-npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks
+npx -y @deepseek-ai/dsh plugin --profile desktop add dsh-ui-tweaks
 
 # 方式二：从 GitHub 仓库安装（源码，安装时由 prepare 自动构建）
-npx -y @deepseek-ai/dsh plugin --profile web add github:wlj521/dsh-ui-tweaks
+npx -y @deepseek-ai/dsh plugin --profile desktop add github:wlj521/dsh-ui-tweaks
 ```
 
 > **方式二需要放行构建脚本**：`lib/` 不在仓库里（构建产物），靠 `prepare` 在安装时生成；而 pnpm ≥ 10.26 出于供应链安全**默认不允许 git 依赖执行 `prepare`**。先在 profile 的 `pnpm-workspace.yaml` 里放行，否则装完没有 `lib/`，插件加载即失败：
@@ -82,11 +82,11 @@ npx -y @deepseek-ai/dsh plugin --profile web add github:wlj521/dsh-ui-tweaks
 `add` 后面的包说明会**原样转发给 pnpm**，因此可以指定版本——npm 包用 `@版本号`，GitHub 源码用 `#tag`：
 
 ```bash
-npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks@0.12.0                    # 锁定 npm 版本
-npx -y @deepseek-ai/dsh plugin --profile web add github:wlj521/dsh-ui-tweaks#v0.12.0     # 锁定 git tag
+npx -y @deepseek-ai/dsh plugin --profile desktop add dsh-ui-tweaks@0.19.0                    # 锁定 npm 版本
+npx -y @deepseek-ai/dsh plugin --profile desktop add github:wlj521/dsh-ui-tweaks#v0.19.0     # 锁定 git tag
 ```
 
-安装完成后**重启一次 `dsh web`**（bundle 插件在进程启动时扫描）。
+安装完成后**重启一次 DSH 桌面端**（bundle 插件在进程启动时扫描）。
 
 > 若 pnpm 报符号链接/hoist 相关错误，可在 profile 的 `pnpm-workspace.yaml` 中设置 `nodeLinker: hoisted`。
 
@@ -101,8 +101,8 @@ pnpm typecheck
 本地加载（覆盖层）或作为 bundle 安装：
 
 ```bash
-npx -y @deepseek-ai/dsh web --patch ./cordis.patch.yml   # 开发覆盖层
-npx -y @deepseek-ai/dsh plugin --profile web add .        # 从本目录作为 bundle 安装
+npx -y @deepseek-ai/dsh plugin --profile desktop add .    # 从本目录作为 bundle 安装
+# 开发覆盖层：直接编辑桌面端 profile 的 cordis.patch.yml（$DSH_HOME/profiles/desktop/cordis.patch.yml），DSH 会热重载
 ```
 
 ## 工作原理

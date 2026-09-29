@@ -1,6 +1,6 @@
 # dsh-ui-tweaks
 
-> **Dependency**: currently targets **DSH v0.2.0-rc.1**.
+> **Dependency**: currently targets **DSH v0.2.0-rc.2**.
 
 A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH) web plugin that live-tunes the conversation UI from the Settings panel.
 
@@ -61,10 +61,10 @@ Settings entry: **Settings → UI Tweaks**.
 
 ```bash
 # from npm (recommended, prebuilt)
-npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks
+npx -y @deepseek-ai/dsh plugin --profile desktop add dsh-ui-tweaks
 
 # from GitHub (source; built on install by `prepare`)
-npx -y @deepseek-ai/dsh plugin --profile web add github:wlj521/dsh-ui-tweaks
+npx -y @deepseek-ai/dsh plugin --profile desktop add github:wlj521/dsh-ui-tweaks
 ```
 
 > **The GitHub path builds locally**: `lib/` is a build artifact and is not tracked; it is produced by `prepare` at install time. Since pnpm 10.26, `prepare` of git-hosted dependencies is **blocked by default** (supply-chain hardening), so allow it in the profile's `pnpm-workspace.yaml` first — otherwise the install ships no `lib/` and the plugin fails to load:
@@ -80,12 +80,12 @@ The package spec after `add` is forwarded to pnpm verbatim, so versions can be
 pinned — `@version` for the npm package, `#tag` for the GitHub source:
 
 ```bash
-npx -y @deepseek-ai/dsh plugin --profile web add dsh-ui-tweaks@0.12.0                    # pin the npm version
-npx -y @deepseek-ai/dsh plugin --profile web add github:wlj521/dsh-ui-tweaks#v0.12.0     # pin a git tag
+npx -y @deepseek-ai/dsh plugin --profile desktop add dsh-ui-tweaks@0.19.0                    # pin the npm version
+npx -y @deepseek-ai/dsh plugin --profile desktop add github:wlj521/dsh-ui-tweaks#v0.19.0     # pin a git tag
 ```
 
-Restart DSH web once after installing (bundle plugins
-are scanned at process start).
+Restart the DSH desktop app once after installing (bundle
+plugins are scanned at process start).
 
 > If pnpm reports symlink/hoist errors, set `nodeLinker: hoisted` in the
 > profile's `pnpm-workspace.yaml`.
@@ -101,8 +101,8 @@ pnpm typecheck
 Load against a running DSH with an overlay, or install as a bundle:
 
 ```bash
-npx -y @deepseek-ai/dsh web --patch ./cordis.patch.yml   # dev overlay
-npx -y @deepseek-ai/dsh plugin --profile web add .        # bundle install from this checkout
+npx -y @deepseek-ai/dsh plugin --profile desktop add .    # bundle install from this checkout
+# dev overlay: edit the desktop profile's cordis.patch.yml ($DSH_HOME/profiles/desktop/cordis.patch.yml) directly — DSH hot-reloads it
 ```
 
 ## How it works
