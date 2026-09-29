@@ -80,8 +80,8 @@ The package spec after `add` is forwarded to pnpm verbatim, so versions can be
 pinned — `@version` for the npm package, `#tag` for the GitHub source:
 
 ```bash
-npx -y @deepseek-ai/dsh plugin --profile desktop add dsh-ui-tweaks@0.19.0                    # pin the npm version
-npx -y @deepseek-ai/dsh plugin --profile desktop add github:wlj521/dsh-ui-tweaks#v0.19.0     # pin a git tag
+npx -y @deepseek-ai/dsh plugin --profile desktop add dsh-ui-tweaks@0.19.1                    # pin the npm version
+npx -y @deepseek-ai/dsh plugin --profile desktop add github:wlj521/dsh-ui-tweaks#v0.19.1     # pin a git tag
 ```
 
 Restart the DSH desktop app once after installing (bundle
