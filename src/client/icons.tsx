@@ -22,13 +22,17 @@ export interface GuideIconProps {
   className?: string | undefined
 }
 
-/** Document with changed lines, for the diff tab. */
+/**
+ * Document with equally sized added / removed marks, for the diff tab. The
+ * outline keeps the stock `currentColor` ink; the slimmer marks carry the
+ * success / error accents so the glyph reads as a diff at a glance.
+ */
 export function DiffIcon({ size = 16, className }: GuideIconProps) {
   return (
     <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M9.5 1.5H4A1.5 1.5 0 0 0 2.5 3v10A1.5 1.5 0 0 0 4 14.5h8A1.5 1.5 0 0 0 13.5 13V5.5l-4-4Z" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M9.5 1.5V5.5h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M5.75 10h4.5M5.75 7.5h2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="2.5" y="1.5" width="11" height="13" rx="1.9" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+      <path d="M5.9 6.8h4.2M8 4.7v4.2" style={{ stroke: 'var(--dsw-alias-state-success-primary)' }} strokeWidth="1" strokeLinecap="round" />
+      <path d="M5.9 11.3h4.2" style={{ stroke: 'var(--dsw-alias-state-error-primary)' }} strokeWidth="1" strokeLinecap="round" />
     </svg>
   )
 }
