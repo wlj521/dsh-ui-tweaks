@@ -28,6 +28,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SettingsClient } from './index.tsx'
 import { GRAPH_LANE_W, GRAPH_ROW_H, layoutCommitGraph } from './graphlayout.ts'
 import type { GraphRow } from './graphlayout.ts'
+import { SelectMenu } from './select-menu.tsx'
 
 /** Route prefix matching the host half (src/git-web.ts). */
 const GIT_ROUTE = '/_dsh/ui-tweaks/git'
@@ -402,16 +403,11 @@ export const GITBAR_CSS = `
 }
 .gbar-act:hover{background:var(--dsw-alias-interactive-bg-hover-solid)}
 .gbar-act svg{width:14px;height:14px;opacity:.9;flex:none}
-/* base-branch selector (new-branch dialog) */
+/* base-branch selector (new-branch dialog): the pill stretches across the row
+ * (its right edge lines up with the full-width name input above) and its
+ * popup pins to the same width. */
 .gbar-baserow{display:flex;align-items:center;gap:7px;padding:0}
 .gbar-baselabel{font-size:12px;color:var(--dsw-alias-label-secondary);flex:none}
-.gbar-base{
-  flex:1;min-width:0;height:32px;padding:0 10px;
-  border:1px solid var(--dsw-alias-border-l2);border-radius:9px;
-  background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);
-  font:inherit;font-size:12.5px;outline:none;cursor:pointer;
-}
-.gbar-base:focus{border-color:var(--dsw-alias-state-business-primary)}
 .gbar-modal input{
   width:100%;height:38px;padding:0 13px;
   border:1px solid var(--dsw-alias-border-l2);border-radius:10px;
@@ -1476,18 +1472,18 @@ export function BranchChipEntry({ sessionId, sessionsService, controller, t }: B
               autoFocus
             />
             <div className="gbar-baserow">
-              <label className="gbar-baselabel" htmlFor="gbar-base-dlg">{t('branchFrom')}</label>
-              <select
-                id="gbar-base-dlg"
-                className="gbar-base"
+              <span className="gbar-baselabel">{t('branchFrom')}</span>
+              <SelectMenu
+                fill
+                ariaLabel={t('branchFrom')}
                 value={baseBranch}
-                onChange={event => { setBaseBranch(event.target.value) }}
-                aria-label={t('branchFrom')}
-              >
-                <option value="">{t('branchFromHead')}</option>
-                {branches?.local.map(name => <option key={name} value={name}>{name}</option>)}
-                {branches?.remote.map(name => <option key={name} value={name}>{name}</option>)}
-              </select>
+                entries={[
+                  { value: '', label: t('branchFromHead') },
+                  ...(branches?.local ?? []).map(name => ({ value: name, label: name })),
+                  ...(branches?.remote ?? []).map(name => ({ value: name, label: name })),
+                ]}
+                onChange={value => { setBaseBranch(value) }}
+              />
             </div>
             <div className="gbar-pushrow">
               <button

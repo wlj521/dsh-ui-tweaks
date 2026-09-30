@@ -9,9 +9,9 @@ A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH)
 | | |
 |---|---|
 | ![Settings panel](assets/settings.png) | ![Branch panel](assets/git.png) |
-| **Settings panel**: code font size / theme skins (minimal · neon poster) / two-decimal cache hit / web search / timeline / GitBar toggles, with dedicated **Archive**, **MCP** and **Search** pages in the left nav | **Branch panel**: pops down from the branch chip in the session header — local / remote branch lists, click to switch; pull button (fast-forward only) in the header, new-branch field at the bottom, plus a **commit graph** dialog (colored SVG fork/merge lanes) and **Tag** management |
+| **Settings panel**: code font size / theme skins (minimal · neon poster) / two-decimal cache hit / web search / timeline / GitBar toggles, with dedicated **Archive manager**, **MCP manager** and **Web search** pages in the left nav | **Branch panel**: pops down from the branch chip in the session header — local / remote branch lists, click to switch; pull button (fast-forward only) in the header, new-branch field at the bottom, plus a **commit graph** dialog (colored SVG fork/merge lanes) and **Tag** management |
 | ![Diff panel](assets/gitdiff.png) | ![Archive manager](assets/archive.png) |
-| **Code diff**: the code-diff tab in the right sidebar — file list (per-file checkboxes for partial commits) + per-file diff (changed hunks only by default, "Full file" toggle at the top right), with a commit area at the bottom for the message, an optional Tag, and Commit / Commit & push | **Archive manager**: an Archive page in the Settings dialog listing archived sessions (title / workspace / relative time) with per-row Restore / Delete and batch Restore all / Delete all |
+| **Code diff**: the code-diff tab in the right sidebar — file list (per-file checkboxes for partial commits) + per-file diff (changed hunks only by default, "Full file" toggle at the top right), with a commit area at the bottom for the message, an optional Tag, and Commit / Commit & push | **Archive manager**: an Archive manager page in the Settings dialog listing archived sessions (title / workspace / relative time) with per-row Restore / Delete and batch Restore all / Delete all |
 | ![MCP manager](assets/mcp.png) | |
 | **MCP manager**: an MCP page in the Settings dialog listing configured MCP servers with live status and tool counts, plus full management (Add / Edit / Enable / Disable / Delete / Restart) | |
 
@@ -26,11 +26,11 @@ A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH)
   - **Branch chip** — beside the session title; shows the current branch and opens a downward branch panel (local / remote lists, `git switch` on click, new-branch field). A **pull** button sits beside the current branch in the panel header (`git pull --ff-only` — fast-forward only: a diverged branch aborts with git's own error instead of silently merging; hidden when the branch has no upstream), so what gets pulled is always the branch in the header. The panel's **Graph** entry opens the **commit graph** dialog: the latest 150 commits (`git log --date-order --all`) are laid out into lanes and rendered as a colored SVG fork/merge graph — dots are commits, curves are forks/merges, each branch line keeps its own color and merge arcs adopt the color of the lane they join; rows highlight on hover, refresh in the header.
   - **Code diff** — changed-file list + per-file diff (changed hunks only by default, "Full file" toggle at the top right). The file-list / diff / commit sections split with draggable horizontal dividers (double-click resets; the message box stretches, Shift+Enter for new lines). The **commit band stays at the foot** (Commit / Commit & push, message required). Without a git repo the page shows a note instead of hiding.
   - Opening the project in external apps is DSH's own open-in-app header button, so this plugin no longer ships one; every git op runs server-side through `execFile('git', …)` (no shell, timeouts).
-- **Archive manager (toggleable, off by default)** — an **Archive** page in the Settings dialog listing archived sessions (title / workspace / relative time) with per-row **Restore** and **Delete** actions plus batch **Restore all** / **Delete all** buttons.
+- **Archive manager (toggleable, off by default)** — an **Archive manager** page in the Settings dialog listing archived sessions (title / workspace / relative time) with per-row **Restore** and **Delete** actions plus batch **Restore all** / **Delete all** buttons.
   - **Restore** removes a session from the archive set (its log and workspace slot are kept, so the conversation returns to the normal sidebar list).
-  - **Delete** PERMANENTLY deletes the session — the server removes its JSONL log from disk, detaches it from workspace accounting and the archive set, and clears its projection cache (irreversible). Only genuinely **running** sessions are refused; opened-but-idle sessions are also removed from the in-memory store, so the row disappears live.
+  - **Delete** PERMANENTLY deletes the session — the server removes its JSONL log from disk, detaches it from workspace accounting and the archive set, and clears its projection cache (irreversible). Only genuinely **running** sessions are refused; opened-but-idle sessions are also removed from the in-memory store, so the row disappears live. The same action is available as **Delete session** in a sidebar row's "..." menu (click twice to confirm; the armed state reverts after 3s, and a running session gets the reason printed right in the menu).
   - The list refreshes live via the `host/archived-sessions-changed` event and a session-list re-pull, with no page reload.
-- **MCP manager (toggleable, off by default)** — an **MCP** page in the Settings dialog listing every configured MCP server (`@deepseek-ai/dsh-mcp-client` loader entries) with its live status, command/url, env vars and registered tools, plus full management: **Add / Edit** (a structured form — instance id, name, stdio or HTTP type, timeout ms, command, args, env — OR raw YAML, both validated), **Enable / Disable / Delete**, and **Restart** (runtime-only). Changes persist to the profile's `cordis.patch.yml` and DSH's built-in patch watcher hot-reloads just that server.
+- **MCP manager (toggleable, off by default)** — an **MCP manager** page in the Settings dialog listing every configured MCP server (`@deepseek-ai/dsh-mcp-client` loader entries) with its live status, command/url, env vars and registered tools, plus full management: **Add / Edit** (a structured form — instance id, name, stdio or HTTP type, timeout ms, command, args, env — OR raw YAML, both validated), **Enable / Disable / Delete**, and **Restart** (runtime-only). Changes persist to the profile's `cordis.patch.yml` and DSH's built-in patch watcher hot-reloads just that server.
 - **`/init` slash command (toggleable, off by default)** — type `/init` in the composer (the slash menu shows "Analyze this project and generate an AGENTS.md"), pick a prompt language from the popup (**Chinese / English**), and a complete AGENTS.md bootstrap prompt is submitted into the current session: the agent explores the project on its own (README, manifests, build scripts, key directories), then writes or improves a root `AGENTS.md` addressed to future AI coding agents (overview, common commands, conventions, directory guide, gotchas; existing files are improved in place). Pure client-side contribution; enable it in the UI Tweaks settings section.
 - **Task alerts (toggleable, off by default)** — call you back while the tab sits in the background. Watches **all sessions** (background included) for two event kinds: **finish** (the `running` flag drops, or the host's green `completed` reminder rises; a host projection of the logged `turn/end` reason tells **completed / interrupted / failed** apart, and failure alerts carry a truncated error summary) and **interaction** (the session starts waiting for your approval / plan review / answer — the same `pendingInteraction` source as the sidebar amber dot). Three independent channels:
   - **Tab title flash** — blinks an unread counter `(2) 🔔 …` into the tab title until you come back, then restores it;
@@ -49,7 +49,7 @@ All changes apply **live** — no reload needed. The same values can be hand-edi
     timelineStyle: web            # defaults to native (DSH's built-in turn rail); web is the classic web timeline
     themeStyle: minimal           # defaults to default (DSH's stock look); minimal tints markdown inline code Anthropic red (#c15f3c light / #d97757 dark), neon-lime is the neon-poster skin
     gitBarEnabled: true           # defaults to false (off); set true to enable GitBar
-    archiveManagerEnabled: true   # defaults to false (off); set true to show the Archive page
+    archiveManagerEnabled: true   # defaults to false (off); set true to show the Archive manager page
     initCommandEnabled: true      # defaults to false (off); set true to register the /init slash command
     preciseCacheHitEnabled: true  # defaults to false (off); set true to enable the two-decimal cache-hit figure
     notificationsEnabled: true    # defaults to false (off); set true to enable task alerts (event filters & channels are per-item toggles in Settings)
@@ -158,6 +158,29 @@ npx -y @deepseek-ai/dsh plugin --profile desktop add .    # bundle install from 
   off or switching sessions restores the original texts. Registration follows
   the /init command's on-demand choreography: mounted only while
   `preciseCacheHitEnabled` is on.
+- **Delete session row** (`src/client/session-menu.tsx`) registers one entry in
+  the host's `sidebar.workspaces.session.menu.item` list — the "..." menu of a
+  sidebar session row, whose shipped pin / rename / fork / archive rows are
+  ordinary entries of the same list — at `order: 500`, so it lands right after
+  them. DSH has no session-delete API at any layer, so the row calls this
+  plugin's own same-origin archive route; two clicks delete (the armed state
+  reverts after 3s), a running session is refused by the server and the menu
+  stays open with the reason printed under the row. It rides the same
+  `archiveManagerEnabled` toggle as the Archive page, and the row re-implements
+  ui-primitives' `MenuItemButton` markup and styling because that package is
+  outside this plugin's `dsh.client.inject` whitelist.
+- **Settings nav glyphs** (`src/client/nav-icons.ts`): the host paints one
+  hardcoded glyph per settings-section **id** and the `settings.section`
+  registration carries only `id / order / label` — no icon seat — so this
+  plugin's four pages would all show the generic gear. A MutationObserver walks
+  the settings dialog's nav rows, claims the ones whose label is this plugin's
+  own (localized) copy, tags them with `data-dut-nav-icon`, and an injected
+  stylesheet hides the stock gear and masks in the matching glyph (UI Tweaks =
+  sliders, Archive manager = archive box, MCP manager = plug, Web search =
+  globe; the sliders / archive / globe paths are `ui-primitives`' own
+  artwork). Label matching keeps it self-healing: locale switches and host
+  re-renders re-claim the rows, rows this plugin no longer renders lose the tag,
+  and every row it does not own is left exactly as shipped.
 
 ## License
 

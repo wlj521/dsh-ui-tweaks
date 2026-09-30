@@ -66,16 +66,41 @@ async function archiveRequest<T>(init?: RequestInit): Promise<T> {
   return body.value
 }
 
+/** Post one Archive mutation; the single request shape every caller shares. */
+function archiveMutation<T>(body: unknown): Promise<T> {
+  return archiveRequest<T>({
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+/**
+ * Permanently delete one session through the Archive route. Shared by this
+ * panel and the sidebar session row menu (`./session-menu.tsx`), so both entry
+ * points hit one request shape and one server path.
+ * @param sessionId - session to delete; a running one is refused with `session-live`.
+ * @returns a promise settling when the server finished the delete.
+ */
+export async function deleteSessionForever(sessionId: string): Promise<void> {
+  await archiveMutation<ArchiveSnapshot>({ action: 'delete', sessionId })
+}
+
+/** Server error code of a failed Archive request, when the server reported one. */
+export function archiveErrorCode(error: unknown): string | undefined {
+  const code = (error as { code?: unknown } | null)?.code
+  return typeof code === 'string' ? code : undefined
+}
+
 /** Map a thrown archive error to user-facing copy. */
 function errorMessage(error: unknown, t: Translate): string {
-  const code = (error as { code?: string } | null)?.code
-  if (code === 'session-live') return t('archiveLiveError')
+  if (archiveErrorCode(error) === 'session-live') return t('archiveLiveError')
   return error instanceof Error ? error.message : String(error)
 }
 
 /** Re-pull the host session list after a permanent delete (the outward
  * ISessions face omits refresh; the concrete runtime provides it). */
-function refreshSessions(sessionsService: ISessions): void {
+export function refreshSessions(sessionsService: ISessions): void {
   void (sessionsService as unknown as { refresh(): Promise<void> }).refresh()
 }
 
@@ -181,20 +206,16 @@ export function ArchiveSection({ controller, t, sessionsService, useSessions, us
     })
   }, [workspaces.archivedSessionIds, sessions.byId])
 
-  const run = (key: string, body: unknown, after?: () => void): void => {
+  const run = (key: string, task: () => Promise<unknown>, after?: () => void): void => {
     setBusy(key)
     setError(null)
-    void archiveRequest<ArchiveSnapshot>({
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    }).then(() => { after?.() }).catch((reason: unknown) => {
+    void task().then(() => { after?.() }).catch((reason: unknown) => {
       setError(errorMessage(reason, t))
     }).finally(() => { setBusy(current => (current === key ? null : current)) })
   }
 
   const restore = (id: string): void => {
-    run(`restore:${id}`, { action: 'restore', sessionId: id })
+    run(`restore:${id}`, () => archiveMutation({ action: 'restore', sessionId: id }))
   }
 
   const remove = (id: string): void => {
@@ -203,11 +224,11 @@ export function ArchiveSection({ controller, t, sessionsService, useSessions, us
       return
     }
     setConfirmId(null)
-    run(`delete:${id}`, { action: 'delete', sessionId: id }, () => { refreshSessions(sessionsService) })
+    run(`delete:${id}`, () => deleteSessionForever(id), () => { refreshSessions(sessionsService) })
   }
 
   const restoreAll = (): void => {
-    run('restore-all', { action: 'restore-all' })
+    run('restore-all', () => archiveMutation({ action: 'restore-all' }))
   }
 
   const removeAll = (): void => {
@@ -216,7 +237,7 @@ export function ArchiveSection({ controller, t, sessionsService, useSessions, us
       return
     }
     setConfirmAll(false)
-    run('delete-all', { action: 'delete-all' }, () => { refreshSessions(sessionsService) })
+    run('delete-all', () => archiveMutation({ action: 'delete-all' }), () => { refreshSessions(sessionsService) })
   }
 
   if (!enabled) {

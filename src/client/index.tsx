@@ -41,12 +41,15 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { BranchChipEntry, DiffPanel, DiffTabTitle, GitWarmup, installGitBarStyles, installHeroChip } from './gitbar.tsx'
 import { DiffIcon } from './icons.tsx'
 import { ArchiveSection, installArchiveStyles } from './archive.tsx'
+import { SessionDeleteMenuItem, installSessionMenuStyles, SESSION_DELETE_MENU_ID, SESSION_DELETE_MENU_ORDER } from './session-menu.tsx'
 import { McpSection, installMcpStyles } from './mcp.tsx'
 import { SearchSection } from './search.tsx'
 import { TimelineRail, installTimelineStyles } from './timeline.tsx'
 import { PreciseCacheHitEntry } from './cachehit.tsx'
 import { installEffortTag } from './effort.tsx'
 import { installTaskNotifier, previewAlerts, requestNotifyPermission } from './notifier.ts'
+import { installSettingsNavIcons } from './nav-icons.ts'
+import { isDesktopShell } from './shell.ts'
 
 const NS = 'ui-tweaks'
 const SETTINGS_ROUTE = '/_dsh/ui-tweaks/settings'
@@ -176,7 +179,7 @@ const en = {
   searchOff: 'Off',
   searchEnabled: 'Web search',
   searchEnabledHint: 'Takes over the built-in web_search tool with this plugin\u2019s multi-engine provider, and adds a "搜索" settings page for the engine picker and per-platform API keys. Off restores the stock backend.',
-  searchNav: 'Search',
+  searchNav: 'Web search',
   searchTitle: 'Web search',
   searchIntro: 'Pick the preferred engine for the built-in web_search tool; any engine that fails falls through to the next one automatically.',
   sectionKeys: 'API keys',
@@ -218,13 +221,14 @@ const en = {
   mcpManagerHint: 'An MCP settings page listing servers with status and tools; edit and restart them.',
   mcpManagerOn: 'On',
   mcpManagerOff: 'Off',
-  mcpNav: 'MCP',
+  mcpNav: 'MCP manager',
   mcpTitle: 'MCP servers',
   mcpEmpty: 'No MCP servers configured.',
   mcpStatusActive: 'Running',
   mcpStatusFailed: 'Failed',
   mcpStatusLoading: 'Loading',
   mcpStatusStopped: 'Stopped',
+  mcpStatusStopping: 'Stopping',
   mcpStatusDisabled: 'Disabled',
   mcpTools: 'tools',
   mcpEnv: 'Env',
@@ -287,6 +291,7 @@ const en = {
   notifyTitleFlashHint: 'Blink an unread counter into the tab title until you come back.',
   notifySystemNotification: 'System notifications',
   notifySystemNotificationHint: 'Desktop-level notifications; click one to jump straight to that session. Permission is requested when enabled.',
+  notifySystemNotificationHintDesktop: 'Desktop-level notifications; click one to jump straight to that session. Inside the desktop app they arrive as native OS notifications — no browser permission prompt appears.',
   notifySound: 'Chime',
   notifySoundHint: 'A soft two-note motif — rising when work finishes, falling when it needs you.',
   notifyTest: 'Test',
@@ -301,7 +306,7 @@ const en = {
   bodyPlan: '📋 {title} has a plan awaiting your review.',
   bodyQuestion: '❓ {title} asked you a question.',
   mcpServerDetail: 'Configured in the profile cordis.patch.yml as @deepseek-ai/dsh-mcp-client instances; add / edit / disable / delete write to that file and apply live.',
-  archiveNav: 'Archive',
+  archiveNav: 'Archive manager',
   archiveTitle: 'Archived sessions',
   archiveEmpty: 'No archived sessions.',
   archiveRestore: 'Restore',
@@ -315,6 +320,11 @@ const en = {
   archiveDisabledHint: 'Archive management is off. Turn it on in 界面调整 (UI Tweaks) to restore or permanently delete archived sessions here.',
   archiveEnable: 'Enable archive management',
   archiveRestored: 'Restored.',
+  menuDeleteSession: 'Delete session',
+  menuDeleteConfirm: 'Delete session?',
+  menuDeleting: 'Deleting…',
+  menuDeleteRunning: 'This session is running — cannot delete.',
+  menuDeleteFailed: 'Delete failed.',
   railLabel: 'Chat timeline',
   roleUser: 'User',
   noText: '(no text)',
@@ -410,7 +420,7 @@ const zh: Record<LocaleKey, string> = {
   searchOff: '关',
   searchEnabled: '网络搜索',
   searchEnabledHint: '用本插件的多引擎 provider 接管内置 web_search 工具，并新增「搜索」设置页：选择引擎、按平台填写 API key。关闭后恢复官方搜索后端。',
-  searchNav: '搜索',
+  searchNav: '网络搜索',
   searchTitle: '网络搜索',
   searchIntro: '为内置 web_search 工具选择首选引擎；任一引擎失败会自动回退到下一个。',
   sectionKeys: 'API 密钥',
@@ -459,6 +469,7 @@ const zh: Record<LocaleKey, string> = {
   mcpStatusFailed: '错误',
   mcpStatusLoading: '加载中',
   mcpStatusStopped: '未运行',
+  mcpStatusStopping: '停止中',
   mcpStatusDisabled: '已停用',
   mcpTools: '个工具',
   mcpEnv: '环境变量',
@@ -521,6 +532,7 @@ const zh: Record<LocaleKey, string> = {
   notifyTitleFlashHint: '在浏览器标签页标题中闪烁未读计数，直到你回到页面。',
   notifySystemNotification: '系统通知',
   notifySystemNotificationHint: '桌面级通知；点击通知可直达对应会话。开启时会向浏览器申请通知权限。',
+  notifySystemNotificationHintDesktop: '桌面级通知；点击通知可直达对应会话。桌面端下直接以系统原生通知呈现，不会弹出浏览器授权请求。',
   notifySound: '提示音',
   notifySoundHint: '轻柔的双音提示——上行表示完成，下行表示需要你处理。',
   notifyTest: '测试',
@@ -535,7 +547,7 @@ const zh: Record<LocaleKey, string> = {
   bodyPlan: '📋 「{title}」有计划待确认。',
   bodyQuestion: '❓ 「{title}」向你提问了。',
   mcpServerDetail: 'MCP 服务器配置在 profile 的 cordis.patch.yml（@deepseek-ai/dsh-mcp-client 实例）；添加 / 编辑 / 停用 / 删除会写入该文件，改动实时生效。',
-  archiveNav: '归档',
+  archiveNav: '归档管理',
   archiveTitle: '已归档会话',
   archiveEmpty: '暂无归档会话。',
   archiveRestore: '恢复',
@@ -549,6 +561,11 @@ const zh: Record<LocaleKey, string> = {
   archiveDisabledHint: '归档管理尚未开启。在「界面调整」中开启“归档管理”后，可在此查看、恢复或彻底删除已归档会话。',
   archiveEnable: '开启归档管理',
   archiveRestored: '已恢复。',
+  menuDeleteSession: '删除会话',
+  menuDeleteConfirm: '确认删除？',
+  menuDeleting: '删除中…',
+  menuDeleteRunning: '会话运行中，无法删除。',
+  menuDeleteFailed: '删除失败。',
   railLabel: '对话时间线',
   roleUser: '用户',
   noText: '（无文本内容）',
@@ -1184,10 +1201,6 @@ const BASE_CSS = `
 .dut-seg button.dut-seg-active{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);color:var(--dsw-alias-state-business-primary);font-weight:600;box-shadow:none}
 .dut-seg button.dut-seg-active:hover:not(:disabled){color:var(--dsw-alias-state-business-primary)}
 .dut-seg button:disabled{opacity:.45;cursor:default}
-.dut-select{height:28px;padding:0 8px;border:1px solid var(--dsw-alias-border-l1);border-radius:9px;background:var(--dsw-alias-bg-layer-2);color:inherit;font:inherit;font-size:12.5px;cursor:pointer;color-scheme:light dark}
-.dut-select:hover:not(:disabled){border-color:var(--dsw-alias-label-dimmed)}
-.dut-select:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}
-.dut-select:disabled{opacity:.45;cursor:default}
 .dut-text-input{height:28px;width:110px;padding:0 10px;border:1px solid var(--dsw-alias-border-l1);border-radius:9px;background:var(--dsw-alias-bg-layer-2);color:inherit;font:inherit;font-size:12.5px}
 .dut-text-input:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}
 .dut-text-input:disabled{opacity:.45}
@@ -1492,7 +1505,7 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     void controller.set('themeStyle', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
-  /** Master switch; enabling also asks for notification permission inside this click gesture. */
+  /** Master switch; enabling also asks for notification permission inside this click gesture (a no-op in the desktop shell, which auto-grants it). */
   const setNotifications = (value: boolean): void => {
     if (value) requestNotifyPermission()
     void controller.set('notificationsEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
@@ -1746,7 +1759,7 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
         </div>
         <div className={'dut-field' + (!resolved.notificationsEnabled ? ' dut-sub-off' : '')}>
           <div className="dut-field-top">
-            <span className="dut-label">{t('notifySystemNotification')}<Hint text={t('notifySystemNotificationHint')} /></span>
+            <span className="dut-label">{t('notifySystemNotification')}<Hint text={t(isDesktopShell() ? 'notifySystemNotificationHintDesktop' : 'notifySystemNotificationHint')} /></span>
             <div className="dut-controls">
               <div className="dut-seg">
                 <button type="button" className={resolved.notifySystemNotification ? 'dut-seg-active' : ''} disabled={!writable || !resolved.notificationsEnabled} onClick={() => { setNotifyField('notifySystemNotification', true) }}>{t('notifyOn')}</button>
@@ -1878,6 +1891,15 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(installMcpStyles, 'dsh-ui-tweaks: mcp styles')
   ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'dsh-ui-tweaks: locale')
   const t = ctx.locale.bind(NS)
+  // The settings shell paints one hardcoded glyph per section id, so this
+  // plugin's four sections would all show the generic gear; the patch swaps in
+  // per-row glyphs, matching each nav row by the label registered here.
+  ctx.effect(() => installSettingsNavIcons(() => ({
+    'ui-tweaks': t('nav'),
+    archive: t('archiveNav'),
+    mcp: t('mcpNav'),
+    search: t('searchNav'),
+  })), 'dsh-ui-tweaks: settings nav icons')
 
   const controller = new SettingsClient()
 
@@ -1999,6 +2021,47 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: () => ({ controller, t, sessionsService: ctx.sessions }),
   }, ArchiveSection))
+
+  // Session row "..." menu: a "删除会话" row that permanently deletes the
+  // session with a two-click confirm, registered into the host's
+  // `sidebar.workspaces.session.menu.item` list so it sits right after the
+  // shipped pin / rename / fork / archive rows. It is the same delete the
+  // Archive section performs (the host has no session-delete API), and it
+  // rides the SAME `archiveManagerEnabled` switch, so the two entry points
+  // come and go together.
+  ctx.effect(() => {
+    let disposeEntry: (() => void) | undefined
+    let disposeStyles: (() => void) | undefined
+    const sync = (): void => {
+      const enabled = controller.getSnapshot().value?.archiveManagerEnabled === true
+      if (enabled && disposeEntry === undefined) {
+        disposeStyles = installSessionMenuStyles()
+        // The slot is declared by ui-workspace; on a host without it the
+        // callback simply never runs, and everything else keeps working.
+        disposeEntry = ctx.slots.inject('sidebar.workspaces.session.menu.item', () => ctx.slots.register({
+          name: 'sidebar.workspaces.session.menu.item',
+          id: SESSION_DELETE_MENU_ID,
+          order: SESSION_DELETE_MENU_ORDER,
+          locale: NS,
+          inject: () => ({ controller, sessionsService: ctx.sessions }),
+        }, SessionDeleteMenuItem))
+      } else if (!enabled && disposeEntry !== undefined) {
+        disposeEntry()
+        disposeEntry = undefined
+        disposeStyles?.()
+        disposeStyles = undefined
+      }
+    }
+    sync()
+    const unsubscribe = controller.subscribe(sync)
+    return () => {
+      unsubscribe()
+      disposeEntry?.()
+      disposeEntry = undefined
+      disposeStyles?.()
+      disposeStyles = undefined
+    }
+  }, 'dsh-ui-tweaks: session delete row')
 
   // MCP manager: a Settings section ("MCP 管理") that lists the configured MCP
   // servers with their status and tools, and restarts them. Registered only

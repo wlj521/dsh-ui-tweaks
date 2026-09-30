@@ -191,7 +191,9 @@ function fill(template: string, title: string, error: string | undefined): strin
 /**
  * Ask the browser for desktop-notification permission. Must run inside a user
  * gesture (the settings toggle's click) to avoid a denied or ignored prompt;
- * repeated calls are cheap no-ops once decided.
+ * repeated calls are cheap no-ops once decided. Inside the DSH desktop shell
+ * the app's session auto-grants non-media permissions, so this resolves
+ * 'granted' without any visible prompt — harmless there, needed in a browser.
  */
 export function requestNotifyPermission(): void {
   try {

@@ -4,13 +4,19 @@
  * Renders the "MCP 管理" settings section (usable when the mcpManagerEnabled
  * toggle in 界面调整 is on — otherwise it shows an invite card). The section
  * lists every configured MCP server with its status (active / failed / loading
- * / stopped / disabled), command / url, env names, registered tools, and
- * offers per-server actions: **重启** (runtime reload), **启用/停用**,
- * **编辑**, and **删除** (two-click confirm). An **添加服务器** button opens
- * the editor, which supports BOTH a structured **表单** and a raw **YAML**
- * mode (the config is validated on the server before the profile's
- * `cordis.patch.yml` is rewritten; DSH's patch watcher then hot-reloads the
- * loader so the server starts/stops live).
+ * / stopped / stopping / disabled), command / url, env names, registered
+ * tools, and offers per-server actions: **启用/停用**, **编辑**, and **删除**
+ * (two-click confirm). An **添加服务器** button opens the editor, which
+ * supports BOTH a structured **表单** and a raw **YAML** mode (the config is
+ * validated on the server before the profile's `cordis.patch.yml` is
+ * rewritten; DSH's patch watcher then hot-reloads the loader so the server
+ * starts/stops live).
+ *
+ * Every mutation rewrites the profile patch, which kicks off an asynchronous
+ * chain (patch watcher → loader reload → MCP process spawn/teardown). The UI
+ * treats that as first-class: the clicked row enters a pending state until a
+ * poll observes a terminal status, and `mcpRequest` rides out the patch-reload
+ * restart window instead of alarming the user mid-toggle.
  * @module dsh-ui-tweaks/client/mcp
  */
 
@@ -24,7 +30,7 @@ const MCP_ROUTE = '/_dsh/ui-tweaks/mcp'
 /** Locale keys the MCP manager reads off the `ui-tweaks` dictionary. */
 type McpLabelKey =
   | 'mcpTitle' | 'mcpEmpty' | 'mcpStatusActive' | 'mcpStatusFailed' | 'mcpStatusLoading'
-  | 'mcpStatusStopped' | 'mcpStatusDisabled' | 'mcpTools' | 'mcpEnv' | 'mcpUnavailable'
+  | 'mcpStatusStopped' | 'mcpStatusStopping' | 'mcpStatusDisabled' | 'mcpTools' | 'mcpEnv' | 'mcpUnavailable'
   | 'mcpDisabledHint' | 'mcpEnable' | 'mcpServerDetail' | 'mcpAdd' | 'mcpAddTitle' | 'mcpEditTitle'
   | 'mcpEdit' | 'mcpDelete' | 'mcpEnabledAction' | 'mcpDisabledAction' | 'mcpSaved' | 'mcpRemoved'
   | 'mcpFormTab' | 'mcpYamlTab' | 'mcpYamlHint' | 'mcpYamlPlaceholder' | 'mcpFieldId'
@@ -52,7 +58,7 @@ interface McpServerView {
   /** The server's config rendered as YAML (prefills the YAML editor). */
   yaml: string
   disabled: boolean
-  status: 'disabled' | 'stopped' | 'active' | 'failed' | 'loading'
+  status: 'disabled' | 'stopped' | 'active' | 'failed' | 'loading' | 'stopping'
   toolCount: number
   tools: string[]
 }
@@ -61,24 +67,52 @@ interface McpSnapshot {
   servers: McpServerView[]
 }
 
+/** Retryable-capable request failure: carries the HTTP status for the retry policy. */
+class McpRequestError extends Error {
+  constructor(message: string, readonly status: number, readonly code: string | undefined) {
+    super(message)
+    this.name = 'McpRequestError'
+  }
+}
+
+/**
+ * Fetch one MCP route round trip, riding out the patch-reload window.
+ *
+ * Every MCP mutation (set-enabled / save / remove) rewrites the profile's
+ * `cordis.patch.yml`, and the patch watcher hot-reloads the `web` node — the
+ * same restart window the Settings route rides out with 502/503 retries
+ * (`apiRequest` in index.tsx). Without the retry here, a toggle landing inside
+ * that window surfaced the scary "restart DSH to load the plugin server code"
+ * alert even though the patch write had already succeeded. Non-502/503 refusals
+ * fail fast: replaying them unchanged can only fail again.
+ */
 async function mcpRequest<T>(init?: RequestInit): Promise<T> {
-  const response = await fetch(MCP_ROUTE, { credentials: 'same-origin', ...init })
-  let body: ApiSuccess<T> | ApiFailure | undefined
-  try {
-    body = await response.json() as ApiSuccess<T> | ApiFailure
-  } catch {
-    body = undefined
+  let lastError: unknown
+  for (let attempt = 1; attempt <= 6; attempt += 1) {
+    try {
+      const response = await fetch(MCP_ROUTE, { credentials: 'same-origin', ...init })
+      let body: ApiSuccess<T> | ApiFailure | undefined
+      try {
+        body = await response.json() as ApiSuccess<T> | ApiFailure
+      } catch {
+        body = undefined
+      }
+      if (response.ok && body !== undefined && body.ok) return body.value
+      const failure = body as ApiFailure | undefined
+      const message = body === undefined
+        ? `MCP route unavailable (HTTP ${response.status}; restart DSH to load the plugin server code)`
+        : failure?.error?.message ?? `UI Tweaks MCP request failed with HTTP ${response.status}`
+      const error = new McpRequestError(message, response.status, failure?.error?.code)
+      if (response.status !== 502 && response.status !== 503) throw error
+      lastError = error
+    } catch (error) {
+      if (error instanceof McpRequestError) throw error
+      // Transport-level failures (network, non-JSON body) are worth a retry.
+      lastError = error
+    }
+    if (attempt < 6) await new Promise((resolve) => { setTimeout(resolve, attempt * 250) })
   }
-  if (!response.ok || body === undefined || !body.ok) {
-    const failure = body as ApiFailure | undefined
-    const message = body === undefined
-      ? `MCP route unavailable (HTTP ${response.status}; restart DSH to load the plugin server code)`
-      : failure?.error?.message ?? `UI Tweaks MCP request failed with HTTP ${response.status}`
-    const error = new Error(message) as Error & { code: string | undefined }
-    error.code = failure?.error?.code
-    throw error
-  }
-  return body.value
+  throw lastError ?? new Error('UI Tweaks MCP request failed')
 }
 
 /** Split a textarea into one trimmed entry per non-empty line. */
@@ -184,6 +218,7 @@ function statusLabel(status: McpServerView['status'], t: Translate): string {
     case 'failed': return t('mcpStatusFailed')
     case 'loading': return t('mcpStatusLoading')
     case 'stopped': return t('mcpStatusStopped')
+    case 'stopping': return t('mcpStatusStopping')
     case 'disabled': return t('mcpStatusDisabled')
   }
 }
@@ -212,7 +247,25 @@ export function McpSection({ controller, t }: McpSectionProps) {
   const [notice, setNotice] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [editing, setEditing] = useState<McpServerView | 'new' | null>(null)
+  /** Rows with an in-flight enable / disable / remove, held from the click
+   * until the poll observes a terminal status. The patch write, the loader
+   * reload and the MCP spawn all happen asynchronously (seconds), so without
+   * this marker the row looks untouched right after a click. */
+  const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(() => new Set())
   const generation = useMemo(() => ({ current: 0 }), [])
+  /** Per-row poll tokens: a new action on one row supersedes its own older
+   * poll instead of both polling for the full attempt budget. */
+  const pollSeq = useMemo(() => new Map<string, number>(), [])
+
+  const setPending = (id: string, on: boolean): void => {
+    setPendingIds(current => {
+      if (current.has(id) === on) return current
+      const next = new Set(current)
+      if (on) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
 
   const load = (): void => {
     const gen = ++generation.current
@@ -233,7 +286,24 @@ export function McpSection({ controller, t }: McpSectionProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled])
 
-  const run = (key: string, body: unknown, after?: () => void): void => {
+  // A hand-edited profile patch (or another client's change) reaches the list
+  // on the next focus / tab return instead of going stale until remount.
+  // Skipped while a row is mid-transition — that row's own poll is refreshing.
+  useEffect(() => {
+    if (!enabled) return
+    const refresh = (): void => {
+      if (document.visibilityState === 'visible' && pendingIds.size === 0) load()
+    }
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, pendingIds])
+
+  const run = (key: string, body: unknown, after?: () => void, onError?: () => void): void => {
     setBusy(key)
     setError(null)
     setNotice(null)
@@ -242,26 +312,39 @@ export function McpSection({ controller, t }: McpSectionProps) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }).then(() => { after?.() }).catch((reason: unknown) => {
+      onError?.()
       setError(reason instanceof Error ? reason.message : String(reason))
     }).finally(() => { setBusy(current => (current === key ? null : current)) })
   }
 
-  /** Re-fetch the list every `interval` ms until `stop` returns true (or attempts run out).
-   * The DSH patch watcher applies changes asynchronously and an MCP server takes
-   * time to spawn/connect, so a single delayed reload can miss the transition. */
-  const pollAfter = (stop: (servers: McpServerView[]) => boolean, attempts = 12, interval = 1000): void => {
+  /** Re-fetch the list until `stop` reports a settled state (or attempts run
+   * out). The DSH patch watcher applies changes asynchronously and an MCP
+   * server takes time to spawn/connect, so a single delayed reload can miss the
+   * transition. A non-null `id` marks the row's in-flight transition: its token
+   * supersedes any older poll for the same row, the delay backs off 500ms→2s,
+   * and the pending marker clears when the poll settles (either way). */
+  const pollAfter = (id: string | null, stop: (servers: McpServerView[]) => boolean, attempts = 12, interval = 500): void => {
+    const token = (pollSeq.get(id ?? '*') ?? 0) + 1
+    pollSeq.set(id ?? '*', token)
+    const superseded = (): boolean => (pollSeq.get(id ?? '*') ?? 0) !== token
+    const settle = (): void => { if (id !== null) setPending(id, false) }
     let left = attempts
+    let delay = interval
     const tick = (): void => {
       const gen = ++generation.current
       void mcpRequest<McpSnapshot>().then((snapshot) => {
-        if (gen !== generation.current) return
+        if (gen !== generation.current || superseded()) return
         setServers(snapshot.servers)
         left -= 1
-        if (left <= 0 || stop(snapshot.servers)) return
-        window.setTimeout(tick, interval)
+        if (left <= 0 || stop(snapshot.servers)) { settle(); return }
+        delay = Math.min(delay * 2, 2000)
+        window.setTimeout(tick, delay)
       }).catch(() => {
+        if (superseded()) return
         left -= 1
-        if (left > 0) window.setTimeout(tick, interval)
+        if (left <= 0) { settle(); return }
+        delay = Math.min(delay * 2, 2000)
+        window.setTimeout(tick, delay)
       })
     }
     tick()
@@ -274,25 +357,28 @@ export function McpSection({ controller, t }: McpSectionProps) {
       return
     }
     setConfirmId(null)
+    setPending(id, true)
     run(`remove:${id}`, { action: 'remove', id }, () => {
       setNotice(t('mcpRemoved'))
-      pollAfter(servers => !servers.some(server => server.id === id), 10)
-    })
+      pollAfter(id, servers => !servers.some(server => server.id === id), 10)
+    }, () => { setPending(id, false) })
   }
 
   const setEnabled = (id: string, enabled: boolean): void => {
+    if (pendingIds.has(id)) return
+    setPending(id, true)
     run(`set-enabled:${id}`, { action: 'set-enabled', id, enabled }, () => {
       // Keep refreshing until the target reaches a TERMINAL status. The
       // `disabled` flag flips within ~1s, but the MCP spawn + connect takes
       // longer — stopping at the flag would freeze the row mid-transition.
-      pollAfter(servers => {
+      pollAfter(id, servers => {
         const target = servers.find(server => server.id === id)
         if (target === undefined) return true
         return enabled
           ? target.status === 'active' || target.status === 'failed'
-          : target.status === 'disabled'
-      }, 45, 1000)
-    })
+          : target.status === 'disabled' || target.status === 'stopped'
+      }, 45)
+    }, () => { setPending(id, false) })
   }
 
   if (!enabled) {
@@ -331,6 +417,7 @@ export function McpSection({ controller, t }: McpSectionProps) {
           ) : list.map(server => {
             const command = server.url !== undefined ? server.url : [server.command, ...server.args].filter(Boolean).join(' ')
             const open = expanded === server.id
+            const pending = pendingIds.has(server.id)
             return (
               <div className="dut-mcp-row" key={server.id}>
                 <div className="dut-mcp-row-main">
@@ -338,12 +425,12 @@ export function McpSection({ controller, t }: McpSectionProps) {
                   <span className={'dut-mcp-badge' + statusClass(server.status)}>{statusLabel(server.status, t)}</span>
                   <span className="dut-mcp-sub">· {server.toolCount} {t('mcpTools')}</span>
                   <span className="dut-mcp-spacer" />
-                  <button type="button" className="dut-mcp-btn" disabled={busy !== null} onClick={() => { setEnabled(server.id, server.disabled) }}>{server.disabled ? t('mcpEnabledAction') : t('mcpDisabledAction')}</button>
-                  <button type="button" className="dut-mcp-btn" disabled={busy !== null} onClick={() => { setEditing(server) }}>{t('mcpEdit')}</button>
+                  <button type="button" className="dut-mcp-btn" disabled={busy !== null || pending} onClick={() => { setEnabled(server.id, server.disabled) }}>{pending ? '…' : server.disabled ? t('mcpEnabledAction') : t('mcpDisabledAction')}</button>
+                  <button type="button" className="dut-mcp-btn" disabled={busy !== null || pending} onClick={() => { setEditing(server) }}>{t('mcpEdit')}</button>
                   <button
                     type="button"
                     className={'dut-mcp-btn dut-mcp-del' + (confirmId === server.id ? ' dut-mcp-confirm' : '')}
-                    disabled={busy !== null}
+                    disabled={busy !== null || pending}
                     onClick={() => { remove(server.id) }}
                   >
                     {confirmId === server.id ? t('mcpDelete') + '?' : t('mcpDelete')}
@@ -373,7 +460,7 @@ export function McpSection({ controller, t }: McpSectionProps) {
           initial={editing === 'new' ? null : editing}
           t={t}
           onClose={() => { setEditing(null) }}
-          onSaved={() => { setEditing(null); setNotice(t('mcpSaved')); pollAfter(() => false, 10) }}
+          onSaved={() => { setEditing(null); setNotice(t('mcpSaved')); pollAfter(null, () => false, 10) }}
         />
       ) : null}
     </div>

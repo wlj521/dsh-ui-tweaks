@@ -12,6 +12,7 @@
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import type { SettingsClient } from './index.tsx'
+import { SelectMenu, type SelectMenuEntry } from './select-menu.tsx'
 
 /** Route matching the host half (src/search-web.ts). */
 const SEARCH_ROUTE = '/_dsh/ui-tweaks/search'
@@ -71,8 +72,6 @@ export const SEARCH_CSS = `
 .dut-search-spacer{flex:1}
 .dut-search-input{box-sizing:border-box;height:30px;width:280px;max-width:100%;padding:0 10px;border-radius:9px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px}
 .dut-search-input:focus{outline:none;border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 55%,transparent)}
-.dut-search-select{height:28px;padding:0 8px;border:1px solid var(--dsw-alias-border-l1);border-radius:9px;background:var(--dsw-alias-bg-layer-2);color:inherit;font:inherit;font-size:12.5px;cursor:pointer;color-scheme:light dark}
-.dut-search-select:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}
 .dut-search-btn{display:inline-flex;align-items:center;height:26px;padding:0 12px;border-radius:999px;border:1px solid var(--dsw-alias-border-l1);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11.5px;cursor:pointer;transition:background .15s ease,color .15s ease}
 .dut-search-btn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .dut-search-btn:disabled{opacity:.5;cursor:default}
@@ -100,6 +99,16 @@ const KEY_LABELS: Record<EngineKey, { env: string; tier: 'free' | 'optional' | '
   deepseek: { env: 'DEEPSEEK_API_KEY', tier: 'required' },
 }
 
+/** Bing market codes; locale-independent, so they live at module level. */
+const BING_MARKET_ENTRIES: readonly SelectMenuEntry[] = [
+  { value: 'zh-CN', label: '中国大陆 (zh-CN)' },
+  { value: 'zh-HK', label: '中国香港 (zh-HK)' },
+  { value: 'zh-TW', label: '中国台湾 (zh-TW)' },
+  { value: 'ja-JP', label: '日本 (ja-JP)' },
+  { value: 'en-US', label: '美国 (en-US)' },
+  { value: 'en-GB', label: '英国 (en-GB)' },
+]
+
 export interface SearchSectionProps {
   controller: SettingsClient
   t: Translate
@@ -110,6 +119,9 @@ export function SearchSection({ controller, t }: SearchSectionProps) {
   const resolved = settingsState.value ?? {}
   const writable = settingsState.writable
   const engine = typeof resolved.searchEngine === 'string' ? resolved.searchEngine : 'bing'
+  /** The Bing market only feeds the Bing backend (src/search.ts passes it as
+   * `mkt`), so its row stays hidden under every other engine. */
+  const bingOnly = engine === 'bing'
   const [snapshot, setSnapshot] = useState<SearchKeysSnapshot | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [drafts, setDrafts] = useState<Partial<Record<EngineKey, string>>>({})
@@ -209,40 +221,39 @@ export function SearchSection({ controller, t }: SearchSectionProps) {
           <div className="dut-search-row">
             <div className="dut-search-row-main">
               <span className="dut-search-name">{t('searchEngine')}</span>
-              <select
-                className="dut-search-select"
+              <SelectMenu
+                ariaLabel={t('searchEngine')}
                 value={engine}
+                entries={[
+                  { value: 'bing', label: t('searchEngineBing') },
+                  { value: 'ddg', label: t('searchEngineDdg') },
+                  { value: 'exa', label: t('searchEngineExa') },
+                  { value: 'tavily', label: t('searchEngineTavily') },
+                  { value: 'keenable', label: t('searchEngineKeenable') },
+                  { value: 'perplexity', label: t('searchEnginePerplexity') },
+                  { value: 'deepseek', label: t('searchEngineDeepseek') },
+                ]}
                 disabled={!writable}
-                onChange={event => { setField('searchEngine', event.target.value) }}
-              >
-                <option value="bing">{t('searchEngineBing')}</option>
-                <option value="ddg">{t('searchEngineDdg')}</option>
-                <option value="exa">{t('searchEngineExa')}</option>
-                <option value="tavily">{t('searchEngineTavily')}</option>
-                <option value="keenable">{t('searchEngineKeenable')}</option>
-                <option value="perplexity">{t('searchEnginePerplexity')}</option>
-                <option value="deepseek">{t('searchEngineDeepseek')}</option>
-              </select>
+                onChange={value => { setField('searchEngine', value) }}
+              />
             </div>
           </div>
-          <div className="dut-search-row">
-            <div className="dut-search-row-main">
-              <span className="dut-search-name">{t('bingMarket')}</span>
-              <select
-                className="dut-search-select"
-                value={typeof resolved.bingMarket === 'string' ? resolved.bingMarket : 'zh-CN'}
-                disabled={!writable}
-                onChange={event => { setField('bingMarket', event.target.value) }}
-              >
-                <option value="zh-CN">中国大陆 (zh-CN)</option>
-                <option value="zh-HK">中国香港 (zh-HK)</option>
-                <option value="zh-TW">中国台湾 (zh-TW)</option>
-                <option value="ja-JP">日本 (ja-JP)</option>
-                <option value="en-US">美国 (en-US)</option>
-                <option value="en-GB">英国 (en-GB)</option>
-              </select>
+          {/* The market only feeds the Bing backend (src/search.ts passes it as
+           * `mkt`), so the whole row appears only while Bing is selected. */}
+          {bingOnly ? (
+            <div className="dut-search-row">
+              <div className="dut-search-row-main">
+                <span className="dut-search-name">{t('bingMarket')}</span>
+                <SelectMenu
+                  ariaLabel={t('bingMarket')}
+                  value={typeof resolved.bingMarket === 'string' ? resolved.bingMarket : 'zh-CN'}
+                  entries={BING_MARKET_ENTRIES}
+                  disabled={!writable}
+                  onChange={value => { setField('bingMarket', value) }}
+                />
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
       </div>
 

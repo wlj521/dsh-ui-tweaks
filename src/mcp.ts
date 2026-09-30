@@ -6,9 +6,9 @@
  * this same-origin route:
  *
  * - **list** — every `@deepseek-ai/dsh-mcp-client` loader entry with its live
- *   fiber status (active / failed / loading / stopped / disabled), its config
- *   (serverName, transport, command / url, env), a YAML rendering of the
- *   config (for the YAML editor), and the tools it registered
+ *   fiber status (active / failed / loading / stopped / stopping / disabled),
+ *   its config (serverName, transport, command / url, env), a YAML rendering
+ *   of the config (for the YAML editor), and the tools it registered
  *   (`mcp__<serverName>__*`) counted from the tool registry.
  * - **save / remove / set-enabled** — ADD, EDIT, DELETE, and ENABLE/DISABLE a
  *   server durably by editing the profile's own `cordis.patch.yml` (the same
@@ -40,7 +40,7 @@ export const MCP_ROUTE = '/_dsh/ui-tweaks/mcp'
 const MCP_MODULE = '@deepseek-ai/dsh-mcp-client'
 
 /** Lifecycle status of one MCP server instance. */
-export type McpStatus = 'disabled' | 'stopped' | 'active' | 'failed' | 'loading'
+export type McpStatus = 'disabled' | 'stopped' | 'active' | 'failed' | 'loading' | 'stopping'
 
 /** Public view of one configured MCP server. */
 export interface McpServerView {
@@ -108,6 +108,10 @@ function statusOf(disabled: boolean, fiber: LoaderEntryLike['fiber']): McpStatus
   // Cordis FiberState: 0 pending, 1 loading, 2 active, 3 failed, 4 disposed, 5 unloading.
   if (fiber.state === 2) return 'active'
   if (fiber.state === 3) return 'failed'
+  // Disposed / unloading is the SHUTDOWN side of the lifecycle. Folding it into
+  // `loading` (the old fallback) made a stopping server announce "启动中" —
+  // the exact opposite of what the row was doing.
+  if (fiber.state === 4 || fiber.state === 5) return 'stopping'
   return 'loading'
 }
 
