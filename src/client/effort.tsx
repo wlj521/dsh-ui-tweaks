@@ -1,11 +1,13 @@
 /**
  * dsh-ui-tweaks — thinking-effort tint for the composer model seat (browser half).
  *
- * Tags every rendered thinking-effort label with its intensity band, so the
- * poster skin can paint it in a solid band color (Low green, Medium amber,
- * High blue, Max Codex-violet), and wash the hovered option row with a
- * left-to-right gradient in the same hue. Three surfaces are covered — the
- * `model · effort` trigger in `conversation.input.model`, the Effort cell
+ * Tags every rendered thinking-effort label with its intensity band, so a skin
+ * can paint it in a solid band color (Low green, Medium amber, High blue, Max
+ * Codex-violet) and wash the hovered option row with a left-to-right gradient
+ * in the same hue. The colors themselves live in EFFORT_TINT_CSS (index.tsx),
+ * emitted by both skins that render the bands; this module only tags. Three
+ * surfaces are covered — the `model · effort` trigger in
+ * `conversation.input.model`, the Effort cell
  * value in its dropdown menu root, and every option row in the menu's
  * effort pane (label span plus row button, the button carrying the band for
  * the background wash). Off / provider-Default / unrecognized names stay
@@ -26,8 +28,9 @@
  *   change, session switch, menu open); writes are idempotent — an attribute
  *   is only touched when it actually changes — so the loop settles after one
  *   pass. Removed nodes take their tags with them; cleanup clears the rest.
- * - Mounted only while the neon-poster theme is active (see the effect in
- *   index.tsx): other themes have no rules for the tag and stay stock.
+ * - Mounted while a skin that renders the bands is active — 'neon-lime' and
+ *   'minimal' both emit EFFORT_TINT_CSS (see the effect in index.tsx); every
+ *   other theme has no rules for the tag and stays stock.
  * @module dsh-ui-tweaks/client/effort
  */
 

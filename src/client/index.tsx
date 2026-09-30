@@ -712,6 +712,91 @@ function buildCodeFontCss(codeFontSize: number): string {
  * 'default' emits nothing and stays stock. Future skins add one union member
  * plus one block.
  */
+/**
+ * Thinking-effort tint, shared by both skins. Tags the three surfaces the
+ * effort watcher (`./effort.tsx`) marks: the composer's `model · effort`
+ * trigger label, the Effort cell value in the model dropdown's root pane, and
+ * every effort-option label in its effort pane — the option's row button
+ * carries the same band so the hover wash needs no `:has`. Each level paints
+ * in its own hue (Low green, Medium amber, High blue, Max violet), the trigger
+ * label additionally rides a translucent pill, and option rows wipe in a
+ * left-to-right gradient of the same hue on hover.
+ *
+ * Off / provider-Default / unrecognized names carry no band at all and keep
+ * the stock caption — a level we cannot place gets no colour rather than a
+ * wrong one; extend BAND_WORDS when an adapter ships new names.
+ *
+ * Every rule keys off the `data-dut-effort` attribute the watcher sets, so
+ * none of them touch a hashed CSS-modules class. Light and dark values are
+ * separate, hung off the host's `body[data-ds-dark-theme]` marker; the
+ * `:not(#dsh-ui-tweaks-theme-scope)` sentinel lifts specificity above the
+ * host's sheets without `!important`, exactly as the poster skin does — the id
+ * never exists in the DOM.
+ *
+ * Inlined into the poster skin at its original position, and emitted
+ * standalone for 'minimal', which adopts the same band colours alongside its
+ * inline-code tint. 'default' emits nothing and stays stock.
+ */
+const EFFORT_TINT_CSS = `
+[data-slot="conversation.input.model"] span[data-dut-effort],
+div[role="menu"] span[data-dut-effort]{font-weight:600}
+[data-slot="conversation.input.model"] span[data-dut-effort="low"],
+div[role="menu"] span[data-dut-effort="low"]{color:#15803d}
+[data-slot="conversation.input.model"] span[data-dut-effort="medium"],
+div[role="menu"] span[data-dut-effort="medium"]{color:#b45309}
+[data-slot="conversation.input.model"] span[data-dut-effort="high"],
+div[role="menu"] span[data-dut-effort="high"]{color:#1d4ed8}
+[data-slot="conversation.input.model"] span[data-dut-effort="max"],
+div[role="menu"] span[data-dut-effort="max"]{color:#7c3aed}
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="low"],
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] span[data-dut-effort="low"]{color:#4ade80}
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="medium"],
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] span[data-dut-effort="medium"]{color:#fbbf24}
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="high"],
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] span[data-dut-effort="high"]{color:#60a5fa}
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="max"],
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] span[data-dut-effort="max"]{color:#a78bfa}
+/* Trigger chip: the input-box effort label additionally rides a translucent
+   pill in its band hue (menu labels stay plain text). Padding/radius work
+   as-is — the trigger is flex, so its spans are already blockified. */
+[data-slot="conversation.input.model"] span[data-dut-effort]{
+  padding:1px 7px;
+  border-radius:999px;
+}
+[data-slot="conversation.input.model"] span[data-dut-effort="low"]{background:rgba(21,128,61,.12)}
+[data-slot="conversation.input.model"] span[data-dut-effort="medium"]{background:rgba(180,83,9,.12)}
+[data-slot="conversation.input.model"] span[data-dut-effort="high"]{background:rgba(29,78,216,.10)}
+[data-slot="conversation.input.model"] span[data-dut-effort="max"]{background:rgba(124,58,237,.12)}
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="low"]{background:rgba(74,222,128,.18)}
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="medium"]{background:rgba(251,191,36,.18)}
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="high"]{background:rgba(96,165,250,.18)}
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="max"]{background:rgba(167,139,250,.20)}
+/* Effort option rows: on hover the row background wipes in from the left in
+   the band hue (translucent wash into transparency), replacing the stock row
+   hover fill. The host paints that fill with a 'background' shorthand whose
+   priority outranks a plain declaration; because a shorthand resets size /
+   image / repeat to their initials, it silently killed this wash — so the
+   hover rule restates all three with !important rather than relying on
+   specificity. background-size animates reliably (no background-clip text
+   involved); honoring prefers-reduced-motion. */
+div[role="menu"] button[data-dut-effort]{
+  background-repeat:no-repeat;
+  background-size:0% 100%;
+  transition:background-size .6s ease;
+}
+div[role="menu"] button[data-dut-effort="low"]:hover{background-image:linear-gradient(90deg,rgba(21,128,61,.16),rgba(21,128,61,0)) !important;background-size:100% 100% !important;background-repeat:no-repeat !important}
+div[role="menu"] button[data-dut-effort="medium"]:hover{background-image:linear-gradient(90deg,rgba(180,83,9,.16),rgba(180,83,9,0)) !important;background-size:100% 100% !important;background-repeat:no-repeat !important}
+div[role="menu"] button[data-dut-effort="high"]:hover{background-image:linear-gradient(90deg,rgba(29,78,216,.14),rgba(29,78,216,0)) !important;background-size:100% 100% !important;background-repeat:no-repeat !important}
+div[role="menu"] button[data-dut-effort="max"]:hover{background-image:linear-gradient(90deg,rgba(124,58,237,.16),rgba(124,58,237,0)) !important;background-size:100% 100% !important;background-repeat:no-repeat !important}
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] button[data-dut-effort="low"]:hover{background-image:linear-gradient(90deg,rgba(74,222,128,.18),rgba(74,222,128,0)) !important;background-size:100% 100% !important;background-repeat:no-repeat !important}
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] button[data-dut-effort="medium"]:hover{background-image:linear-gradient(90deg,rgba(251,191,36,.18),rgba(251,191,36,0)) !important;background-size:100% 100% !important;background-repeat:no-repeat !important}
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] button[data-dut-effort="high"]:hover{background-image:linear-gradient(90deg,rgba(96,165,250,.20),rgba(96,165,250,0)) !important;background-size:100% 100% !important;background-repeat:no-repeat !important}
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] button[data-dut-effort="max"]:hover{background-image:linear-gradient(90deg,rgba(167,139,250,.20),rgba(167,139,250,0)) !important;background-size:100% 100% !important;background-repeat:no-repeat !important}
+@media (prefers-reduced-motion:reduce){
+  div[role="menu"] button[data-dut-effort]{transition:none}
+}
+`
+
 const NEON_LIME_CSS = `
 /* The host injects its theme sheets at runtime, so their <style> order against
    this one is not guaranteed; the id in :not() lifts the skin above the host's
@@ -943,68 +1028,10 @@ div[data-composer-card]{
    (scoped to the composer's svg so the class-substring match stays safe) */
 div[data-composer-card] svg [class*="track"]{stroke:var(--dut-scroll-1)}
 div[data-composer-card] svg [class*="fill"]{stroke:var(--dut-accent)}
-/* composer model seat and its dropdown menu: thinking-effort labels in solid
-   band colors (Low green, Medium amber, High blue, Max Codex-violet).
-   The effort watcher tags the label spans data-dut-effort — the trigger
-   effort span, the menu root Effort cell value, and every effort-option
-   label — while option row buttons carry the same band for the hover wash;
-   Off/Default stay untagged in the stock caption. One plain span selector
-   covers all three label surfaces — the attribute only exists where the
-   watcher set it, so no hashed module class is touched. */
-[data-slot="conversation.input.model"] span[data-dut-effort],
-div[role="menu"] span[data-dut-effort]{font-weight:600}
-[data-slot="conversation.input.model"] span[data-dut-effort="low"],
-div[role="menu"] span[data-dut-effort="low"]{color:#15803d}
-[data-slot="conversation.input.model"] span[data-dut-effort="medium"],
-div[role="menu"] span[data-dut-effort="medium"]{color:#b45309}
-[data-slot="conversation.input.model"] span[data-dut-effort="high"],
-div[role="menu"] span[data-dut-effort="high"]{color:#1d4ed8}
-[data-slot="conversation.input.model"] span[data-dut-effort="max"],
-div[role="menu"] span[data-dut-effort="max"]{color:#7c3aed}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="low"],
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] span[data-dut-effort="low"]{color:#4ade80}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="medium"],
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] span[data-dut-effort="medium"]{color:#fbbf24}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="high"],
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] span[data-dut-effort="high"]{color:#60a5fa}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="max"],
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] span[data-dut-effort="max"]{color:#a78bfa}
-/* Trigger chip: the input-box effort label additionally rides a translucent
-   pill in its band hue (menu labels stay plain text). Padding/radius work
-   as-is — the trigger is flex, so its spans are already blockified. */
-[data-slot="conversation.input.model"] span[data-dut-effort]{
-  padding:1px 7px;
-  border-radius:999px;
-}
-[data-slot="conversation.input.model"] span[data-dut-effort="low"]{background:rgba(21,128,61,.12)}
-[data-slot="conversation.input.model"] span[data-dut-effort="medium"]{background:rgba(180,83,9,.12)}
-[data-slot="conversation.input.model"] span[data-dut-effort="high"]{background:rgba(29,78,216,.10)}
-[data-slot="conversation.input.model"] span[data-dut-effort="max"]{background:rgba(124,58,237,.12)}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="low"]{background:rgba(74,222,128,.18)}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="medium"]{background:rgba(251,191,36,.18)}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="high"]{background:rgba(96,165,250,.18)}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="max"]{background:rgba(167,139,250,.20)}
-/* Effort option rows: on hover the row background wipes in from the left in
-   the band hue (translucent wash into transparency), overriding the stock
-   row hover fill — same specificity contest the skin always wins by naming
-   the attribute. background-size animates reliably (no background-clip text
-   involved); honoring prefers-reduced-motion. */
-div[role="menu"] button[data-dut-effort]{
-  background-repeat:no-repeat;
-  background-size:0% 100%;
-  transition:background-size .6s ease;
-}
-div[role="menu"] button[data-dut-effort="low"]:hover{background-image:linear-gradient(90deg,rgba(21,128,61,.16),rgba(21,128,61,0));background-size:100% 100%}
-div[role="menu"] button[data-dut-effort="medium"]:hover{background-image:linear-gradient(90deg,rgba(180,83,9,.16),rgba(180,83,9,0));background-size:100% 100%}
-div[role="menu"] button[data-dut-effort="high"]:hover{background-image:linear-gradient(90deg,rgba(29,78,216,.14),rgba(29,78,216,0));background-size:100% 100%}
-div[role="menu"] button[data-dut-effort="max"]:hover{background-image:linear-gradient(90deg,rgba(124,58,237,.16),rgba(124,58,237,0));background-size:100% 100%}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] button[data-dut-effort="low"]:hover{background-image:linear-gradient(90deg,rgba(74,222,128,.18),rgba(74,222,128,0));background-size:100% 100%}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] button[data-dut-effort="medium"]:hover{background-image:linear-gradient(90deg,rgba(251,191,36,.18),rgba(251,191,36,0));background-size:100% 100%}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] button[data-dut-effort="high"]:hover{background-image:linear-gradient(90deg,rgba(96,165,250,.20),rgba(96,165,250,0));background-size:100% 100%}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] button[data-dut-effort="max"]:hover{background-image:linear-gradient(90deg,rgba(167,139,250,.20),rgba(167,139,250,0));background-size:100% 100%}
-@media (prefers-reduced-motion:reduce){
-  div[role="menu"] button[data-dut-effort]{transition:none}
-}
+/* Thinking-effort band colours are shared with the minimal skin, so they live
+   in EFFORT_TINT_CSS above and are spliced in here at their original position
+   — the poster's emitted sheet is unchanged. */
+${EFFORT_TINT_CSS}
 /* sidebar new-session button: lime sticker. Matched by its CSS-module class,
    NOT the aria-label — the brand row button shares the same "新建会话"
    label (it doubles as the new-session shortcut) and must stay plain. */
@@ -1036,9 +1063,11 @@ body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] button[class*="newSessi
 `
 
 /**
- * Minimal skin: keep DSH's stock look entirely and change exactly one thing —
- * markdown inline code is tinted with the Anthropic red instead of inheriting
- * the body ink. The hexes mirror the poster skin's own `--dut-accent` pair
+ * Minimal skin: keep DSH's stock look and change exactly two things — markdown
+ * inline code is tinted with the Anthropic red instead of inheriting the body
+ * ink, and the composer's thinking-effort labels take the shared band colours
+ * (EFFORT_TINT_CSS, emitted alongside this sheet). The hexes mirror the poster
+ * skin's own `--dut-accent` pair
  * (deep #c15f3c on light paper, #d97757 on its dark twin), so both skins share
  * one accent; the deeper light-mode value also keeps small code legible on
  * white (4.2:1 against paper, where a bright teal sat at 2.2:1).
@@ -1089,7 +1118,11 @@ function buildRuntimeCss(value: ResolvedTweaks): string {
     rules.push(NEON_LIME_CSS)
   }
   if (value.themeStyle === 'minimal') {
+    // The minimal skin takes the shared effort tint as well: picking it
+    // recolours markdown inline code *and* the composer's thinking-effort
+    // labels, so the level is readable at a glance without a second setting.
     rules.push(MINIMAL_CSS)
+    rules.push(EFFORT_TINT_CSS)
   }
   return rules.join('\n')
 }
@@ -2084,16 +2117,18 @@ export function apply(ctx: ClientContext): void {
 
   // Thinking-effort tint: tags thinking-effort labels — the composer
   // trigger, the menu root Effort cell and the menu effort options — so the
-  // poster skin can paint solid band colors plus a hover background wash.
-  // Mounted only while the neon-poster theme is active — other themes keep
-  // the stock caption, and leaving the theme removes every tag.
+  // skins can paint solid band colors plus a hover background wash. Mounted
+  // while either skin that renders band colours is active ('neon-lime' and
+  // 'minimal' both emit EFFORT_TINT_CSS); every other theme keeps the stock
+  // caption, and leaving those themes removes every tag.
   ctx.effect(() => {
     let disposeTag: (() => void) | undefined
     const sync = (): void => {
-      const poster = controller.getSnapshot().value?.themeStyle === 'neon-lime'
-      if (poster && disposeTag === undefined) {
+      const theme = controller.getSnapshot().value?.themeStyle
+      const tinted = theme === 'neon-lime' || theme === 'minimal'
+      if (tinted && disposeTag === undefined) {
         disposeTag = installEffortTag()
-      } else if (!poster && disposeTag !== undefined) {
+      } else if (!tinted && disposeTag !== undefined) {
         disposeTag()
         disposeTag = undefined
       }
