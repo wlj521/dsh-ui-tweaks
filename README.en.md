@@ -2,7 +2,7 @@
 
 > **Dependency**: currently targets **DSH v0.2.0-rc.2**.
 
-A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH) web plugin that live-tunes the conversation UI from the Settings panel.
+A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH) plugin that live-tunes the conversation UI from the Settings panel.
 
 ## Preview
 
@@ -80,9 +80,32 @@ The package spec after `add` is forwarded to pnpm verbatim, so versions can be
 pinned — `@version` for the npm package, `#tag` for the GitHub source:
 
 ```bash
-npx -y @deepseek-ai/dsh plugin --profile desktop add dsh-ui-tweaks@0.19.1                    # pin the npm version
-npx -y @deepseek-ai/dsh plugin --profile desktop add github:wlj521/dsh-ui-tweaks#v0.19.1     # pin a git tag
+npx -y @deepseek-ai/dsh plugin --profile desktop add dsh-ui-tweaks@0.19.2                    # pin the npm version
+npx -y @deepseek-ai/dsh plugin --profile desktop add github:wlj521/dsh-ui-tweaks#v0.19.2     # pin a git tag
 ```
+
+### Path three: a local directory (picked in the desktop app, no CLI)
+
+```bash
+git clone https://github.com/wlj521/dsh-ui-tweaks.git
+cd dsh-ui-tweaks
+pnpm install          # `prepare` builds lib/ for you
+```
+
+Then open **Plugins → Add plugin** in the desktop app and enter the directory's
+**absolute path** (for example `D:\dsh-project\dsh-ui-tweaks`).
+
+> **Run `pnpm install` first — it is required**: a local-directory install becomes a
+> `link:` symlink, and pnpm neither runs `prepare` for it nor installs its own
+> dependencies. The directory must therefore already hold the built `lib/` (what
+> `main` points at) and `node_modules/` (the runtime dependency, `yaml`). Without
+> them the install reports success and nothing errors, yet DSH logs
+> `ui-tweaks (dsh-ui-tweaks): failed to import` at startup and the plugin never
+> loads.
+>
+> The path must be **absolute** — a relative one is rejected (the Host's working
+> directory means nothing to the person typing into a browser). CLI equivalent:
+> `npx -y @deepseek-ai/dsh plugin --profile desktop add <absolute path>`.
 
 Restart the DSH desktop app once after installing (bundle
 plugins are scanned at process start).

@@ -2,7 +2,7 @@
 
 > **依赖版本**：当前依赖 **DSH v0.2.0-rc.2**。
 
-[DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/)（DSH）Web UI 插件：在设置面板中实时调整对话界面——代码字号、**主题皮肤**（简约 / 荧光海报）、**时间线切换**（原生回合导航轨 / 经典网页时间线）、**GitBar**（会话头部的分支胶囊 + 右侧边栏里的代码差异标签页），可开关的**归档管理**（设置中的「归档」页面：查看、恢复或彻底删除已归档会话），可开关的**任务提醒**（会话完成或需要交互时，通过标签页标题闪烁 / 系统通知 / 提示音把你唤回来），以及**缓存命中率两位小数**（把输入框下方统计条的缓存命中百分比改写为精确值）。
+[DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/)（DSH）插件：在设置面板中实时调整对话界面——代码字号、**主题皮肤**（简约 / 荧光海报）、**时间线切换**（原生回合导航轨 / 经典网页时间线）、**GitBar**（会话头部的分支胶囊 + 右侧边栏里的代码差异标签页），可开关的**归档管理**（设置中的「归档」页面：查看、恢复或彻底删除已归档会话），可开关的**任务提醒**（会话完成或需要交互时，通过标签页标题闪烁 / 系统通知 / 提示音把你唤回来），以及**缓存命中率两位小数**（把输入框下方统计条的缓存命中百分比改写为精确值）。
 
 ## 预览
 
@@ -82,9 +82,23 @@ npx -y @deepseek-ai/dsh plugin --profile desktop add github:wlj521/dsh-ui-tweaks
 `add` 后面的包说明会**原样转发给 pnpm**，因此可以指定版本——npm 包用 `@版本号`，GitHub 源码用 `#tag`：
 
 ```bash
-npx -y @deepseek-ai/dsh plugin --profile desktop add dsh-ui-tweaks@0.19.1                    # 锁定 npm 版本
-npx -y @deepseek-ai/dsh plugin --profile desktop add github:wlj521/dsh-ui-tweaks#v0.19.1     # 锁定 git tag
+npx -y @deepseek-ai/dsh plugin --profile desktop add dsh-ui-tweaks@0.19.2                    # 锁定 npm 版本
+npx -y @deepseek-ai/dsh plugin --profile desktop add github:wlj521/dsh-ui-tweaks#v0.19.2     # 锁定 git tag
 ```
+
+### 方式三：本地目录（在桌面端点选，无需命令行）
+
+```bash
+git clone https://github.com/wlj521/dsh-ui-tweaks.git
+cd dsh-ui-tweaks
+pnpm install          # prepare 会自动构建出 lib/
+```
+
+然后在桌面端打开 **插件 → 添加插件**，填入该目录的**绝对路径**（例如 `D:\dsh-project\dsh-ui-tweaks`）。
+
+> **先跑 `pnpm install` 是必需的**：本地目录安装走 `link:` 软链，pnpm **不会**为它执行 `prepare`，也不会安装它自己的依赖。所以目录里必须已经存在构建产物 `lib/`（`main` 指向的文件）和 `node_modules/`（运行时依赖 `yaml`）。缺了的话安装会「成功」、命令也不报错，但启动时 DSH 会报 `ui-tweaks (dsh-ui-tweaks): failed to import`，插件不生效。
+>
+> 路径必须是**绝对路径**——相对路径会被拒绝（宿主的当前工作目录对浏览器里输入的人没有意义）。命令行等价做法：`npx -y @deepseek-ai/dsh plugin --profile desktop add <绝对路径>`。
 
 安装完成后**重启一次 DSH 桌面端**（bundle 插件在进程启动时扫描）。
 
