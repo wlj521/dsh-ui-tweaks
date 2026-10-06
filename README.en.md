@@ -1,5 +1,7 @@
 # dsh-ui-tweaks
 
+**English** | [中文](https://github.com/wlj521/dsh-ui-tweaks/blob/main/README.md)
+
 > **Dependency**: currently targets **DSH v0.2.0-rc.2**.
 
 A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH) plugin that live-tunes the conversation UI from the Settings panel.
@@ -80,8 +82,8 @@ The package spec after `add` is forwarded to pnpm verbatim, so versions can be
 pinned — `@version` for the npm package, `#tag` for the GitHub source:
 
 ```bash
-npx -y @deepseek-ai/dsh plugin --profile desktop add dsh-ui-tweaks@0.19.2                    # pin the npm version
-npx -y @deepseek-ai/dsh plugin --profile desktop add github:wlj521/dsh-ui-tweaks#v0.19.2     # pin a git tag
+npx -y @deepseek-ai/dsh plugin --profile desktop add dsh-ui-tweaks@0.20.1                    # pin the npm version
+npx -y @deepseek-ai/dsh plugin --profile desktop add github:wlj521/dsh-ui-tweaks#v0.20.1     # pin a git tag
 ```
 
 ### Path three: a local directory (picked in the desktop app, no CLI)

@@ -1,5 +1,7 @@
 # dsh-ui-tweaks
 
+[English](https://github.com/wlj521/dsh-ui-tweaks/blob/main/README.en.md) | **中文**
+
 > **依赖版本**：当前依赖 **DSH v0.2.0-rc.2**。
 
 [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/)（DSH）插件：在设置面板中实时调整对话界面——代码字号、**主题皮肤**（简约 / 荧光海报 / 规格书）、**时间线切换**（原生回合导航轨 / 经典网页时间线）、**GitBar**（会话头部的分支胶囊 + 右侧边栏里的代码差异标签页），可开关的**归档管理**（设置中的「归档管理」页面：查看、恢复或彻底删除已归档会话），可开关的**任务提醒**（会话完成或需要交互时，通过标签页标题闪烁 / 系统通知 / 提示音把你唤回来），以及**缓存命中率两位小数**（把输入框下方统计条的缓存命中百分比改写为精确值）。
@@ -82,8 +84,8 @@ npx -y @deepseek-ai/dsh plugin --profile desktop add github:wlj521/dsh-ui-tweaks
 `add` 后面的包说明会**原样转发给 pnpm**，因此可以指定版本——npm 包用 `@版本号`，GitHub 源码用 `#tag`：
 
 ```bash
-npx -y @deepseek-ai/dsh plugin --profile desktop add dsh-ui-tweaks@0.19.2                    # 锁定 npm 版本
-npx -y @deepseek-ai/dsh plugin --profile desktop add github:wlj521/dsh-ui-tweaks#v0.19.2     # 锁定 git tag
+npx -y @deepseek-ai/dsh plugin --profile desktop add dsh-ui-tweaks@0.20.1                    # 锁定 npm 版本
+npx -y @deepseek-ai/dsh plugin --profile desktop add github:wlj521/dsh-ui-tweaks#v0.20.1     # 锁定 git tag
 ```
 
 ### 方式三：本地目录（在桌面端点选，无需命令行）
