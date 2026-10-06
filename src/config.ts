@@ -38,10 +38,11 @@ export interface UITweaksConfig {
   /**
    * Conversation theme: `'default'` keeps DSH's stock look (no overrides);
    * `'minimal'` keeps the stock look too and only tints markdown inline code;
-   * `'neon-lime'` applies the full poster skin. Every skin is applied live
-   * through the runtime stylesheet. Defaults to `'default'`.
+   * `'neon-lime'` applies the full poster skin; `'spec-sheet'` applies the
+   * Swiss spec-sheet skin. Every skin is applied live through the runtime
+   * stylesheet. Defaults to `'default'`.
    */
-  themeStyle?: 'default' | 'minimal' | 'neon-lime'
+  themeStyle?: ThemeStyle
   /**
    * Master switch for the web-search feature: when on, a dedicated "搜索"
    * Settings page appears (engine picker + per-engine API keys, stored in
@@ -141,7 +142,16 @@ export type BingMarket = (typeof BING_MARKET_OPTIONS)[number]
 export const DEFAULT_TIMELINE_STYLE: 'native' | 'web' = 'native'
 
 /** The theme defaults to DSH's stock look — no overrides emitted. */
-export const DEFAULT_THEME_STYLE: 'default' | 'minimal' | 'neon-lime' = 'default'
+export const DEFAULT_THEME_STYLE: ThemeStyle = 'default'
+
+/**
+ * Conversation skin ids. `default` (stock look) and `minimal` (stock look with
+ * markdown inline code tinted) came first; `neon-lime` is the poster skin and
+ * `spec-sheet` the Swiss spec-sheet skin. Every id is a persisted value, so a
+ * new skin adds a member — never rename an existing one (`neon-lime` kept its
+ * id even when its accent moved, for exactly this reason).
+ */
+export type ThemeStyle = 'default' | 'minimal' | 'neon-lime' | 'spec-sheet'
 
 /** GitBar defaults to off; users turn it on in Settings. */
 export const DEFAULT_GITBAR_ENABLED = false
@@ -181,7 +191,7 @@ export const Config = z.object({
   codeFontScale: z.number().min(MIN_CODE_FONT_SCALE).max(MAX_CODE_FONT_SCALE).default(DEFAULT_CODE_FONT_SCALE).volatile(),
   codeFontSize: z.number().min(MIN_CODE_FONT_SIZE).max(MAX_CODE_FONT_SIZE).volatile(),
   timelineStyle: z.union(['native', 'web'] as const).default(DEFAULT_TIMELINE_STYLE).volatile(),
-  themeStyle: z.union(['default', 'minimal', 'neon-lime'] as const).default(DEFAULT_THEME_STYLE).volatile(),
+  themeStyle: z.union(['default', 'minimal', 'neon-lime', 'spec-sheet'] as const).default(DEFAULT_THEME_STYLE).volatile(),
   searchEnabled: z.boolean().default(DEFAULT_SEARCH_ENABLED).volatile(),
   searchEngine: z.union(['bing', 'ddg', 'exa', 'tavily', 'keenable', 'perplexity', 'deepseek'] as const).default(DEFAULT_SEARCH_ENGINE).volatile(),
   bingMarket: z.union(BING_MARKET_OPTIONS).default(DEFAULT_BING_MARKET).volatile(),
@@ -208,7 +218,7 @@ export interface ResolvedUITweaksConfig {
   /** Which conversation timeline is shown: DSH's native rail or the plugin web rail. */
   timelineStyle: 'native' | 'web'
   /** Conversation theme: stock look, the minimal inline-code tint, or a skin. */
-  themeStyle: 'default' | 'minimal' | 'neon-lime'
+  themeStyle: ThemeStyle
   /** Whether the web-search feature (Settings page + provider takeover) is on. */
   searchEnabled: boolean
   /** Preferred web-search engine id. */
