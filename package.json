@@ -1,6 +1,6 @@
 {
   "name": "dsh-ui-tweaks",
-  "version": "0.20.1",
+  "version": "0.20.2",
   "description": "DeepSeek Harness(DSH) 插件：在设置面板中实时调整对话界面——代码字号、主题皮肤、时间线切换、GitBar 分支胶囊、归档 / MCP 管理、任务提醒、网络搜索与 /init 命令。",
   "keywords": [
     "dsh",
