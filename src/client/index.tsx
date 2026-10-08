@@ -1116,6 +1116,23 @@ body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] button[class*="newSessi
  * toasts and menus keep their own metrics; overriding every radius in the app
  * is how skin CSS starts breaking the host's layout instead of styling it.
  *
+ * Dialogs stay stock: the host palette is not re-pointed on `body` itself but on
+ * every top-level surface *except* the subtree that carries the settings dialog
+ * (`:has([data-shortcut-modal="settings"])`). The host mounts that dialog as a
+ * body-level portal, so with the mapping on `body` its surface took the skin's
+ * paper gray (`--dsw-alias-bg-layer-2` -> `--dut-paper-2`, #f7f7f6 against the
+ * stock white) and its selected row took the Klein-blue accent — a skin meant for
+ * the conversation reading as a dimmed settings panel. Custom properties are
+ * inherited, but a value set on a closer ancestor wins, so the host's stock
+ * `body{--dsw-*}` simply flows back into the excluded subtree. Body's own paint
+ * is unthemed too and never shows: the app frame covers the viewport.
+ *
+ * The plugin's own settings pages live inside that excluded dialog, so their page
+ * roots are named again in the same mapping: their controls keep the skin's accent
+ * and hairlines (an ink "默认" reset button next to the host's blue would be the
+ * one control on the page reading as a different theme). Host rows around them
+ * stay stock.
+ *
  * The internal style id `spec-sheet` is a fresh persisted value — it adds a
  * member to the union instead of renaming one, exactly as the note on
  * NEON_LIME_CSS describes.
@@ -1169,6 +1186,23 @@ body:not(#dsh-ui-tweaks-theme-scope){
   --dut-success-2:var(--dsw-static-green-400);
   --dut-success-3:var(--dsw-static-green-100);
   --dut-warn-3:var(--dsw-static-amber-100);
+}
+
+/* Host palette mapping: the DSW aliases every host surface reads, re-pointed at
+   the design variables above. Applied to body's top-level surfaces rather than
+   to body itself so the settings dialog — a body-level portal — keeps the host's
+   own palette (see the module note above); the app frame, host menus and the
+   plugin's own portals are all body children and keep the skin. The plugin's four
+   settings pages are listed again because they render *inside* that dialog: their
+   page roots are the plugin's own DOM (.dut-settings = this panel, .dut-arc =
+   archive, .dut-mcp = MCP, .dut-search = web search), so naming them keeps the
+   plugin's controls on the skin's accent while the host's rows around them stay
+   stock. The dark scheme only re-points the design variables, so this mapping
+   needs no dark twin. :has() (Chrome 105 / Safari 15.4) is older than the
+   color-mix() this plugin's base sheet already needs, so it never narrows
+   browser support. */
+body:not(#dsh-ui-tweaks-theme-scope) > :not(:has([data-shortcut-modal="settings"])),
+body:not(#dsh-ui-tweaks-theme-scope) :is(.dut-settings,.dut-arc,.dut-mcp,.dut-search){
   /* Re-point the two static DeepSeek steps the poster skin also has to: the
      running-turn shimmer (500+200) and the ongoing state dot (450). */
   --dsw-static-deepseek-200:var(--dut-accent-pale);
@@ -1474,6 +1508,16 @@ button[class*="newSession"]:hover{
   font-weight:600;
 }
 .dut-btn{border-radius:0 !important}
+/* The reset button ("默认") reads as an ink slug once its value is the stock
+   one, exactly like the segmented control's selected chip: this panel has one
+   ink "engaged" state, and leaving this one on the host's blue made it the only
+   coloured control in an otherwise ink-and-paper page. */
+.dut-btn.dut-btn-active,
+.dut-btn.dut-btn-active:hover{
+  background:var(--dut-text-1) !important;
+  color:var(--dut-btn-fg) !important;
+  border-color:var(--dut-text-1) !important;
+}
 .dut-stepper{border-radius:0 !important}
 .dut-text-input{border-radius:0 !important}
 /* The selected theme chip in this panel's segmented control reads as an ink

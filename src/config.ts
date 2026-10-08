@@ -39,8 +39,9 @@ export interface UITweaksConfig {
    * Conversation theme: `'default'` keeps DSH's stock look (no overrides);
    * `'minimal'` keeps the stock look too and only tints markdown inline code;
    * `'neon-lime'` applies the full poster skin; `'spec-sheet'` applies the
-   * Swiss spec-sheet skin. Every skin is applied live through the runtime
-   * stylesheet. Defaults to `'default'`.
+   * Swiss spec-sheet skin (the host's own settings dialog keeps DSH's stock
+   * palette, while the plugin's settings pages stay on the skin). Every skin is
+   * applied live through the runtime stylesheet. Defaults to `'default'`.
    */
   themeStyle?: ThemeStyle
   /**
