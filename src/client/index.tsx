@@ -1570,12 +1570,22 @@ function buildRuntimeCss(value: ResolvedTweaks): string {
     rules.push(`div[data-slot="conversation.chat.node"] div[class*="_markdown_"] :not(pre)>code{font-size:${em}em !important}`)
   }
   // Hide the DSH built-in turn-navigation rail while the timeline switch is
-  // on 'web'. The rail is a `<nav>` whose inline style carries the frame's
-  // `--turn-natural-height` custom property — unique to TurnNavigator (not a
-  // hashed CSS-modules class, not locale-dependent), so the attribute
-  // selector survives rebuilds as long as the custom property does.
+  // on 'web'. DSH 0.2.0-rc.2 dropped the `--turn-natural-height` inline
+  // variable the rail's `<nav>` used to carry (its geometry moved to the
+  // ancestor's `--dsh-conversation-viewport-height` and the module's
+  // `--turn-rail-band`), so the attribute selector alone stopped matching
+  // and both rails showed at once. The rail is now anchored structurally on
+  // its CSS-modules shape, which survives hash rebuilds: the frame `<nav>`
+  // owns a fade scroller (`nav > div.{hash}_scroller`) wrapping the marks
+  // container (`div.{hash}_marks`). Either structural clause alone still
+  // matches if the host renames the other, and the legacy inline-variable
+  // selector is kept for hosts that still carry it. `_marks` (plural) is
+  // deliberate — the singular `_mark` would also match the markdown
+  // renderer's `_markdown_*` classes. Other host `<nav>`s (session crumbs,
+  // settings sections, sidebar panels) hold plain text or buttons only, so
+  // none of the clauses can reach them.
   if (value.timelineStyle === 'web') {
-    rules.push('nav[style*="--turn-natural-height"]{display:none !important}')
+    rules.push('nav[style*="--turn-natural-height"],nav:has(> [class*="_scroller"]),nav:has([class*="_marks"]){display:none !important}')
   }
   if (value.themeStyle === 'neon-lime') {
     rules.push(NEON_LIME_CSS)
