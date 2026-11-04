@@ -1,7 +1,11 @@
 /**
- * dsh-ui-tweaks configuration: code font size (px), markdown table style, and
- * feature toggles. Every field defaults at the schema boundary, so a
- * hand-edited settings document and the Settings panel stay consistent.
+ * dsh-ui-tweaks configuration: theme, timeline and feature toggles. Every
+ * field defaults at the schema boundary, so a hand-edited settings document
+ * and the Settings panel stay consistent.
+ *
+ * Code font size used to live here as `codeFontSize` / `codeFontScale`; DSH
+ * now ships that control itself (ui-theme's `codeFontSize`, 10–16px), so the
+ * plugin no longer owns it and emits no code-font tokens.
  * @module dsh-ui-tweaks/config
  */
 
@@ -12,22 +16,6 @@ export const UI_TWEAKS_SETTINGS_NAMESPACE = 'ui-tweaks'
 
 /** Raw user-facing configuration (partial inputs receive schema defaults). */
 export interface UITweaksConfig {
-  /**
-   * Code font size as a percentage of the stock message font size (14px).
-   * 81 is the legacy default and maps to the stock code block; 100 makes code
-   * match the body.
-   *
-   * @deprecated Legacy percent input, kept for migration; prefer
-   * `codeFontSize`. Ignored once `codeFontSize` is set.
-   */
-  codeFontScale?: number
-  /**
-   * Absolute code font size in px (8–32). 11 matches the stock DSH code block
-   * at a 14px body. Drives the code block directly; inline code and the small
-   * code font follow proportionally. When unset, falls back to the legacy
-   * `codeFontScale` percentage, then to the stock default.
-   */
-  codeFontSize?: number
   /**
    * Which conversation timeline to show: `'native'` keeps DSH's built-in
    * turn-navigation rail (the stock behavior); `'web'` shows the plugin's
@@ -118,20 +106,6 @@ export interface UITweaksConfig {
   notifySound?: boolean
 }
 
-/** 81% = the legacy default, which resolves to the stock code block. Legacy input. */
-export const MIN_CODE_FONT_SCALE = 50
-export const MAX_CODE_FONT_SCALE = 150
-export const DEFAULT_CODE_FONT_SCALE = 81
-
-/**
- * Absolute code font size (px): 11 is the stock DSH code block at a 14px body.
- * Verified against `dsh-client-ui-theme`'s `--dsw-font-markdown-code-block`
- * (11px/19px) in DSH 0.1.6-alpha.2.
- */
-export const MIN_CODE_FONT_SIZE = 8
-export const MAX_CODE_FONT_SIZE = 32
-export const DEFAULT_CODE_FONT_SIZE = 11
-
 /** Web search defaults to off; users turn it on in Settings. */
 export const DEFAULT_SEARCH_ENABLED = false
 
@@ -203,8 +177,6 @@ export const DEFAULT_NOTIFY_SOUND = false
  * volatile fields appear in the form (and stay editable without a remount).
  */
 export const Config = z.object({
-  codeFontScale: z.number().min(MIN_CODE_FONT_SCALE).max(MAX_CODE_FONT_SCALE).default(DEFAULT_CODE_FONT_SCALE).volatile(),
-  codeFontSize: z.number().min(MIN_CODE_FONT_SIZE).max(MAX_CODE_FONT_SIZE).volatile(),
   timelineStyle: z.union(['native', 'web'] as const).default(DEFAULT_TIMELINE_STYLE).volatile(),
   themeStyle: z.union(['default', 'particles'] as const).default(DEFAULT_THEME_STYLE).volatile(),
   particleColor: z.union(PARTICLE_COLOR_OPTIONS).default(DEFAULT_PARTICLE_COLOR).volatile(),
@@ -227,10 +199,6 @@ export const Config = z.object({
 
 /** Configuration after static validation, with every default materialized. */
 export interface ResolvedUITweaksConfig {
-  /** Code font size as a percentage of the stock message font size (legacy input). */
-  codeFontScale: number
-  /** Effective absolute code font size in px (codeFontSize, else legacy %, else stock). */
-  codeFontSize: number
   /** Which conversation timeline is shown: DSH's native rail or the plugin web rail. */
   timelineStyle: 'native' | 'web'
   /** Conversation theme: stock look or the Soft glow skin. */
@@ -271,12 +239,6 @@ export interface ResolvedUITweaksConfig {
 
 /** Resolve a partial config into a fully defaulted value. */
 export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConfig {
-  const codeFontScale = config.codeFontScale ?? DEFAULT_CODE_FONT_SCALE
-  // Effective code size: the absolute px input wins; otherwise derive px from
-  // the legacy percentage at the stock 14px body; otherwise stock.
-  const codeFontSize = typeof config.codeFontSize === 'number'
-    ? Math.min(MAX_CODE_FONT_SIZE, Math.max(MIN_CODE_FONT_SIZE, config.codeFontSize))
-    : Math.max(8, Math.round(DEFAULT_CODE_FONT_SIZE * (codeFontScale / DEFAULT_CODE_FONT_SCALE)))
   const timelineStyle = config.timelineStyle ?? DEFAULT_TIMELINE_STYLE
   const themeStyle = config.themeStyle ?? DEFAULT_THEME_STYLE
   const particleColor = config.particleColor ?? DEFAULT_PARTICLE_COLOR
@@ -295,6 +257,6 @@ export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConf
   const notifyTitleFlash = config.notifyTitleFlash ?? DEFAULT_NOTIFY_TITLE_FLASH
   const notifySystemNotification = config.notifySystemNotification ?? DEFAULT_NOTIFY_SYSTEM_NOTIFICATION
   const notifySound = config.notifySound ?? DEFAULT_NOTIFY_SOUND
-  const resolved: ResolvedUITweaksConfig = { codeFontScale, codeFontSize, timelineStyle, themeStyle, particleColor, searchEnabled, searchEngine, bingMarket, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled, preciseCacheHitEnabled, notificationsEnabled, notifyOnlyWhenHidden, notifyOnComplete, notifyOnInteraction, notifyTitleFlash, notifySystemNotification, notifySound }
+  const resolved: ResolvedUITweaksConfig = { timelineStyle, themeStyle, particleColor, searchEnabled, searchEngine, bingMarket, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled, preciseCacheHitEnabled, notificationsEnabled, notifyOnlyWhenHidden, notifyOnComplete, notifyOnInteraction, notifyTitleFlash, notifySystemNotification, notifySound }
   return resolved
 }

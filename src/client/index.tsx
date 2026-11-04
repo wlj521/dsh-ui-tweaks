@@ -2,9 +2,13 @@
  * dsh-ui-tweaks — browser half.
  *
  * Reads and writes the `ui-tweaks` settings namespace through the same-origin
- * route served by the server half, applies the chosen code font size / table
- * style live via a runtime `<style>` element, and renders the Settings
- * panel section that edits them.
+ * route served by the server half, applies the chosen theme / timeline live
+ * via a runtime `<style>` element, and renders the Settings panel section that
+ * edits them.
+ *
+ * Code font size is deliberately absent: DSH ships that control itself in the
+ * Appearance settings (ui-theme's `codeFontSize`), so this plugin neither
+ * exposes it nor emits code-font tokens — otherwise the two would fight.
  */
 
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
@@ -53,36 +57,6 @@ import { isDesktopShell } from './shell.ts'
 const NS = 'ui-tweaks'
 const SETTINGS_ROUTE = '/_dsh/ui-tweaks/settings'
 
-/** Legacy: code font as a percentage of the stock 14px body (81% resolves to the stock 11px code block). */
-const DEFAULT_CODE_FONT_SCALE = 81
-/**
- * Absolute code font size (px): 11 is the stock DSH code block at a 14px body.
- * Keep in sync with src/config.ts.
- */
-const DEFAULT_CODE_FONT_SIZE = 11
-const MIN_CODE_FONT_SIZE = 8
-const MAX_CODE_FONT_SIZE = 32
-
-/**
- * Stock DSH code-type metrics the scaled tokens preserve, read off
- * `dsh-client-ui-theme`'s `body{}` rule in DSH 0.1.6-alpha.2: inline code is
- * 12px against an 11px block, the small block variant keeps the block's own
- * size, and the two line-heights are 19px and 16px.
- */
-const CODE_INLINE_RATIO = 12 / 11
-const CODE_SMALL_RATIO = 1
-/** Stock line-heights (px) for the code tokens; only the glyph size should move. */
-const CODE_LINE_HEIGHT = 19
-const CODE_SMALL_LINE_HEIGHT = 16
-/**
- * Sentinel id that never exists in the DOM. The host declares the same tokens
- * on a plain `body{}` rule, so a plain `body{}` here would be a specificity
- * tie decided purely by `<style>` order — and the host re-appends its sheet
- * whenever its plugin re-activates. `:not(#id)` lifts this rule to (0,1,1) so
- * it wins regardless of order, the same guard PARTICLES_CSS uses.
- */
-const CODE_FONT_SCOPE_ID = 'dsh-ui-tweaks-code-font-scope'
-
 /**
  * Conversation skin ids mirrored from `src/config.ts`'s `ThemeStyle` — the two
  * type unions have to be spelled out here because the client bundle cannot
@@ -129,10 +103,6 @@ const PARTICLE_LABEL: Record<ParticleColorValue, LocaleKey> = {
 }
 
 interface TweaksValue {
-  /** Code font size as a percentage of the stock 14px body (81 = stock). Legacy input. */
-  codeFontScale?: number
-  /** Absolute code font size in px; wins over the legacy percentage. */
-  codeFontSize?: number
   /** Which timeline to show: 'native' (DSH built-in rail) or 'web' (plugin classic rail). Keep in sync with src/config.ts. */
   timelineStyle?: 'native' | 'web'
   /** Conversation theme: 'default' keeps the stock look, 'particles' applies the Particle skin. Keep in sync with src/config.ts. */
@@ -172,8 +142,6 @@ interface TweaksValue {
 }
 
 interface ResolvedTweaks {
-  /** Effective absolute code font size in px (codeFontSize, else legacy %, else stock). */
-  codeFontSize: number
   timelineStyle: 'native' | 'web'
   themeStyle: ThemeStyleValue
   particleColor: ParticleColorValue
@@ -206,12 +174,9 @@ interface ApiFailure { ok: false; error: { code: string; message: string } }
 const en = {
   nav: 'UI Tweaks',
   settingsTitle: 'UI Tweaks',
-  settingsIntro: 'Tune the conversation UI — code size, tables and layout, plus optional features: git bar, archive & MCP managers and the /init command. Changes apply live.',
-  sectionText: 'Text',
+  settingsIntro: 'Tune the conversation UI — theme, timeline and layout, plus optional features: git bar, archive & MCP managers and the /init command. Changes apply live. Code font size lives in DSH\u2019s own Appearance settings.',
   sectionLayout: 'Layout',
   sectionFeatures: 'Features',
-  codeFontSize: 'Code font size',
-  codeFontSizeHint: `Absolute code size in px (${MIN_CODE_FONT_SIZE}–${MAX_CODE_FONT_SIZE}); ${DEFAULT_CODE_FONT_SIZE}px is DSH's default at a 14px body. Applies to code blocks; inline code follows proportionally.`,
   timeline: 'Timeline',
   timelineHint: 'Native: DSH\u2019s built-in turn rail at the right edge (stock). Web (classic): the v0.11 right-side navigation rail — hover to preview, click to jump; auto-hidden in short conversations.',
   timelineNative: 'Native',
@@ -402,9 +367,6 @@ const en = {
   railLabel: 'Chat timeline',
   roleUser: 'User',
   noText: '(no text)',
-  defaultAction: 'Default',
-  reset: 'Reset',
-  resetDone: 'Reset to default.',
   applied: 'Applied',
   unavailable: 'Settings unavailable.',
   loading: 'Loading…',
@@ -474,12 +436,9 @@ type LocaleKey = keyof typeof en
 const zh: Record<LocaleKey, string> = {
   nav: '界面调整',
   settingsTitle: '界面调整',
-  settingsIntro: '调整对话界面——代码字号、表格与布局，以及时间线、Git 状态栏、归档 / MCP 管理、/init 命令等功能开关，修改即时生效。',
-  sectionText: '文本',
+  settingsIntro: '调整对话界面——主题、时间线与布局，以及 Git 状态栏、归档 / MCP 管理、/init 命令等功能开关，修改即时生效。代码字号请到 DSH 自带的「外观」设置里调整。',
   sectionLayout: '布局',
   sectionFeatures: '功能',
-  codeFontSize: '代码字号',
-  codeFontSizeHint: `代码绝对字号，取值 ${MIN_CODE_FONT_SIZE}–${MAX_CODE_FONT_SIZE}px；${DEFAULT_CODE_FONT_SIZE}px 为 DSH 默认（正文 14 时）。作用于代码块，行内代码按比例跟随。`,
   timeline: '时间线',
   timelineHint: '原生：DSH 自带的回合导航轨（消息右侧小圆点，默认）。网页（经典）：找回 v0.11 的右侧导航轨——悬停预览、点击跳转；会话较短时自动隐藏。',
   timelineNative: '原生',
@@ -670,9 +629,6 @@ const zh: Record<LocaleKey, string> = {
   railLabel: '对话时间线',
   roleUser: '用户',
   noText: '（无文本内容）',
-  defaultAction: '默认',
-  reset: '重置',
-  resetDone: '已重置为默认。',
   applied: '已应用',
   unavailable: '设置暂不可用。',
   loading: '加载中…',
@@ -747,13 +703,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
-  // Effective code size: the absolute px input wins; otherwise derive px from
-  // the legacy percentage at the stock 14px body; otherwise stock.
-  const codeFontSize = typeof value?.codeFontSize === 'number'
-    ? Math.min(MAX_CODE_FONT_SIZE, Math.max(MIN_CODE_FONT_SIZE, value.codeFontSize))
-    : Math.max(8, Math.round(DEFAULT_CODE_FONT_SIZE * ((value?.codeFontScale ?? DEFAULT_CODE_FONT_SCALE) / DEFAULT_CODE_FONT_SCALE)))
   return {
-    codeFontSize,
     timelineStyle: value?.timelineStyle === 'web' ? 'web' : 'native',
     // Only the two known skins are whitelisted: an unknown value falls back to
     // the stock look rather than half-applying a skin.
@@ -775,40 +725,6 @@ function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
     notifySystemNotification: value?.notifySystemNotification ?? true,
     notifySound: value?.notifySound ?? false,
   }
-}
-
-/**
- * Rebuild the code font tokens for the chosen code-block size, keeping the
- * theme faces and the stock vertical rhythm. Returns an empty string at the
- * stock size so the theme's own tokens stay authoritative.
- */
-function buildCodeFontCss(codeFontSize: number): string {
-  if (codeFontSize === DEFAULT_CODE_FONT_SIZE) return ''
-  const cs = getComputedStyle(document.body)
-  const fam = (name: string, fallback: string): string => {
-    const value = cs.getPropertyValue(name).trim()
-    return value.length > 0 ? value : fallback
-  }
-  const code = fam('--dsw-font-markdown-code-font-family', '"SF Mono", Consolas, monospace')
-  const codeBlock = fam('--dsw-font-markdown-code-block-font-family', '"SF Mono", Consolas, monospace')
-
-  const parts: string[] = []
-  // Code sizes hang off the absolute code-block size, with inline code slightly
-  // larger and the small variant the same size, preserving DSH's own hierarchy
-  // (12/11 of the block for inline code, 1/1 for the small block). Line-heights
-  // stay at the stock values, so only the glyph size moves.
-  const token = (shorthand: string, size: number, baseLine: number, family: string): void => {
-    parts.push(`--${shorthand}:${size}px/${baseLine}px ${family}`)
-    parts.push(`--${shorthand}-font-size:${size}px`)
-    parts.push(`--${shorthand}-line-height:${baseLine}px`)
-  }
-  const codePx = (blockRatio: number): number => Math.max(8, Math.round(codeFontSize * blockRatio))
-  token('dsw-font-markdown-code', codePx(CODE_INLINE_RATIO), CODE_LINE_HEIGHT, code)
-  token('dsw-font-markdown-code-block', codePx(1), CODE_LINE_HEIGHT, codeBlock)
-  token('dsw-font-markdown-code-block-small', codePx(CODE_SMALL_RATIO), CODE_SMALL_LINE_HEIGHT, codeBlock)
-  // See CODE_FONT_SCOPE_ID: the sentinel lifts this above the host's plain
-  // `body{}` token rule so the override survives `<style>` reordering.
-  return `body:not(#${CODE_FONT_SCOPE_ID}){${parts.join(';')}}`
 }
 
 /**
@@ -1093,17 +1009,6 @@ function buildParticleColorCss(color: ParticleColorValue): string {
 
 function buildRuntimeCss(value: ResolvedTweaks): string {
   const rules: string[] = []
-  // Code font tokens, emitted only when the code size leaves the stock 11px;
-  // the message body, headings, user messages and composer stay theme stock.
-  const fontCss = buildCodeFontCss(value.codeFontSize)
-  if (fontCss !== '') rules.push(fontCss)
-  // Inline code is pinned by DSH to 0.875em of the surrounding text (it ignores
-  // the code token); scale that em by how far the chosen code size sits from
-  // the stock ratio (an 11px block at the stock 14px body).
-  if (Math.abs(value.codeFontSize - DEFAULT_CODE_FONT_SIZE) > 0.5) {
-    const em = (0.875 * (value.codeFontSize / DEFAULT_CODE_FONT_SIZE)).toFixed(3)
-    rules.push(`div[data-slot="conversation.chat.node"] div[class*="_markdown_"] :not(pre)>code{font-size:${em}em !important}`)
-  }
   // Hide the DSH built-in turn-navigation rail while the timeline switch is
   // on 'web'. DSH 0.2.0-rc.2 dropped the `--turn-natural-height` inline
   // variable the rail's `<nav>` used to carry (its geometry moved to the
@@ -1175,13 +1080,6 @@ const BASE_CSS = `
 .dut-hint:hover,.dut-hint:focus-visible{color:var(--dsw-alias-state-business-primary);border-color:var(--dsw-alias-state-business-primary)}
 .dut-hint-pop{position:fixed;z-index:9999;width:max-content;max-width:300px;padding:8px 10px;border-radius:8px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-size:11.5px;line-height:1.5;box-shadow:0 4px 16px rgba(0,0,0,.14);pointer-events:none}
 .dut-controls{display:flex;align-items:center;gap:8px}
-.dut-stepper{display:inline-flex;align-items:center;border:1px solid var(--dsw-alias-border-l1);border-radius:9px;background:var(--dsw-alias-bg-layer-2);overflow:hidden}
-.dut-stepper button{width:28px;height:28px;border:none;background:transparent;color:inherit;font-size:15px;font-weight:500;line-height:1;cursor:pointer;display:grid;place-items:center;transition:background .15s ease}
-.dut-stepper button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
-.dut-stepper button:disabled{opacity:.35;cursor:default}
-.dut-stepper input{box-sizing:border-box;width:60px;height:28px;border:none;border-left:1px solid var(--dsw-alias-border-l1);border-right:1px solid var(--dsw-alias-border-l1);background:transparent;color:inherit;font:inherit;font-size:13px;text-align:center;-moz-appearance:textfield}
-.dut-stepper input::-webkit-outer-spin-button,.dut-stepper input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
-.dut-stepper input:focus{outline:none}
 .dut-seg{display:inline-flex;padding:3px;gap:3px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}
 .dut-seg button{border:none;border-radius:7px;padding:5px 12px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12.5px;cursor:pointer;transition:background .15s ease,color .15s ease}
 .dut-seg button:hover:not(:disabled){color:var(--dsw-alias-label-primary)}
@@ -1428,31 +1326,14 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
   const resolved = resolveValue(state.value)
   const writable = state.writable
-  const [codeDraft, setCodeDraft] = useState<string>(String(resolved.codeFontSize))
   const [status, setStatus] = useState<LocaleKey | undefined>(undefined)
 
   useEffect(() => { if (state.status === 'loading' && state.value === undefined) void controller.load() }, [controller, state.status, state.value])
-  useEffect(() => { setCodeDraft(String(resolved.codeFontSize)) }, [resolved.codeFontSize])
   useEffect(() => {
     if (status === undefined) return
     const timer = setTimeout(() => { setStatus(undefined) }, 1800)
     return () => { clearTimeout(timer) }
   }, [status])
-
-  const commitCodeSize = (raw: string): void => {
-    setCodeDraft(raw)
-    const parsed = Number(raw)
-    if (!Number.isFinite(parsed)) return
-    const clamped = Math.min(MAX_CODE_FONT_SIZE, Math.max(MIN_CODE_FONT_SIZE, Math.round(parsed)))
-    setCodeDraft(String(clamped))
-    void controller.set('codeFontSize', clamped).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
-  }
-
-  const stepCodeSize = (delta: number): void => {
-    const next = Math.min(MAX_CODE_FONT_SIZE, Math.max(MIN_CODE_FONT_SIZE, resolved.codeFontSize + delta))
-    setCodeDraft(String(next))
-    void controller.set('codeFontSize', next).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
-  }
 
   const setGitBar = (value: boolean): void => {
     void controller.set('gitBarEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
@@ -1537,19 +1418,6 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     )
   }
 
-  /** Code size reset clears BOTH keys: the px input and the legacy percentage. */
-  const resetCodeSize = (): void => {
-    void (async () => {
-      try {
-        await controller.unset('codeFontSize')
-        await controller.unset('codeFontScale')
-        setStatus('resetDone')
-      } catch {
-        setStatus('unavailable')
-      }
-    })()
-  }
-
   if (state.status === 'loading' && state.value === undefined) {
     return <div className="dut-settings"><div className="dut-loading">{t('loading')}</div></div>
   }
@@ -1568,33 +1436,6 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
       </header>
       {!writable ? <div className="dut-alert warning">{t('readOnly')}</div> : null}
       {status === undefined ? null : <div className="dut-status">{t(status)}</div>}
-
-      <section className="dut-panel">
-        <div className="dut-section-label">{t('sectionText')}</div>
-        <div className="dut-field">
-          <div className="dut-field-top">
-            <span className="dut-label">{t('codeFontSize')}<Hint text={t('codeFontSizeHint')} /></span>
-            <div className="dut-controls">
-              <div className="dut-stepper">
-                <button type="button" aria-label="−" disabled={!writable || resolved.codeFontSize <= MIN_CODE_FONT_SIZE} onClick={() => { stepCodeSize(-1) }}>−</button>
-                <input
-                  type="number"
-                  min={MIN_CODE_FONT_SIZE}
-                  max={MAX_CODE_FONT_SIZE}
-                  step={1}
-                  value={codeDraft}
-                  disabled={!writable}
-                  onChange={(event) => { setCodeDraft(event.target.value) }}
-                  onBlur={(event) => { commitCodeSize(event.target.value) }}
-                  onKeyDown={(event) => { if (event.key === 'Enter') commitCodeSize((event.target as HTMLInputElement).value) }}
-                />
-                <button type="button" aria-label="+" disabled={!writable || resolved.codeFontSize >= MAX_CODE_FONT_SIZE} onClick={() => { stepCodeSize(1) }}>+</button>
-              </div>
-              <button type="button" className={'dut-btn' + (resolved.codeFontSize === DEFAULT_CODE_FONT_SIZE ? ' dut-btn-active' : '')} disabled={!writable} onClick={() => { resetCodeSize() }}>{t('defaultAction')}</button>
-            </div>
-          </div>
-        </div>
-      </section>
 
       <section className="dut-panel">
         <div className="dut-section-label">{t('sectionLayout')}</div>
