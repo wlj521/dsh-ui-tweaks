@@ -37,13 +37,19 @@ export interface UITweaksConfig {
   timelineStyle?: 'native' | 'web'
   /**
    * Conversation theme: `'default'` keeps DSH's stock look (no overrides);
-   * `'minimal'` keeps the stock look too and only tints markdown inline code;
-   * `'neon-lime'` applies the full poster skin; `'spec-sheet'` applies the
-   * Swiss spec-sheet skin (the host's own settings dialog keeps DSH's stock
-   * palette, while the plugin's settings pages stay on the skin). Every skin is
-   * applied live through the runtime stylesheet. Defaults to `'default'`.
+   * `'particles'` applies the "Soft glow" skin — a tinted palette plus soft
+   * accent glows radiating from the top and bottom edges toward the middle (no
+   * animation), whose glow colour is chosen by `particleColor`. Skins are
+   * applied live through the runtime stylesheet. Defaults to `'default'`, which
+   * users can always return to.
    */
   themeStyle?: ThemeStyle
+  /**
+   * Glow colour of the "Soft glow" skin's accent halos. One of
+   * `mint | electric | violet | sky | amber | coral | rose | silver`; only
+   * meaningful while `themeStyle` is `'particles'`. Defaults to `'mint'`.
+   */
+  particleColor?: ParticleColor
   /**
    * Master switch for the web-search feature: when on, a dedicated "搜索"
    * Settings page appears (engine picker + per-engine API keys, stored in
@@ -146,13 +152,21 @@ export const DEFAULT_TIMELINE_STYLE: 'native' | 'web' = 'native'
 export const DEFAULT_THEME_STYLE: ThemeStyle = 'default'
 
 /**
- * Conversation skin ids. `default` (stock look) and `minimal` (stock look with
- * markdown inline code tinted) came first; `neon-lime` is the poster skin and
- * `spec-sheet` the Swiss spec-sheet skin. Every id is a persisted value, so a
- * new skin adds a member — never rename an existing one (`neon-lime` kept its
- * id even when its accent moved, for exactly this reason).
+ * Conversation skin ids. `default` keeps DSH's stock look and can always be
+ * restored; `particles` is the "Soft glow" skin (tinted palette + soft top/bottom
+ * glow). Every id is a persisted value, so a new skin adds a member rather than
+ * renaming one.
  */
-export type ThemeStyle = 'default' | 'minimal' | 'neon-lime' | 'spec-sheet'
+export type ThemeStyle = 'default' | 'particles'
+
+/** Glow colours offered by the Soft glow skin. */
+export type ParticleColor = 'mint' | 'electric' | 'violet' | 'sky' | 'amber' | 'coral' | 'rose' | 'silver'
+
+/** Ordered particle-colour options (also the Settings picker order). */
+export const PARTICLE_COLOR_OPTIONS = ['mint', 'electric', 'violet', 'sky', 'amber', 'coral', 'rose', 'silver'] as const
+
+/** The Soft glow skin defaults to a neutral, clean mint glow. */
+export const DEFAULT_PARTICLE_COLOR: ParticleColor = 'mint'
 
 /** GitBar defaults to off; users turn it on in Settings. */
 export const DEFAULT_GITBAR_ENABLED = false
@@ -192,7 +206,8 @@ export const Config = z.object({
   codeFontScale: z.number().min(MIN_CODE_FONT_SCALE).max(MAX_CODE_FONT_SCALE).default(DEFAULT_CODE_FONT_SCALE).volatile(),
   codeFontSize: z.number().min(MIN_CODE_FONT_SIZE).max(MAX_CODE_FONT_SIZE).volatile(),
   timelineStyle: z.union(['native', 'web'] as const).default(DEFAULT_TIMELINE_STYLE).volatile(),
-  themeStyle: z.union(['default', 'minimal', 'neon-lime', 'spec-sheet'] as const).default(DEFAULT_THEME_STYLE).volatile(),
+  themeStyle: z.union(['default', 'particles'] as const).default(DEFAULT_THEME_STYLE).volatile(),
+  particleColor: z.union(PARTICLE_COLOR_OPTIONS).default(DEFAULT_PARTICLE_COLOR).volatile(),
   searchEnabled: z.boolean().default(DEFAULT_SEARCH_ENABLED).volatile(),
   searchEngine: z.union(['bing', 'ddg', 'exa', 'tavily', 'keenable', 'perplexity', 'deepseek'] as const).default(DEFAULT_SEARCH_ENGINE).volatile(),
   bingMarket: z.union(BING_MARKET_OPTIONS).default(DEFAULT_BING_MARKET).volatile(),
@@ -218,8 +233,10 @@ export interface ResolvedUITweaksConfig {
   codeFontSize: number
   /** Which conversation timeline is shown: DSH's native rail or the plugin web rail. */
   timelineStyle: 'native' | 'web'
-  /** Conversation theme: stock look, the minimal inline-code tint, or a skin. */
+  /** Conversation theme: stock look or the Soft glow skin. */
   themeStyle: ThemeStyle
+  /** Glow colour of the Soft glow skin's accent halos. */
+  particleColor: ParticleColor
   /** Whether the web-search feature (Settings page + provider takeover) is on. */
   searchEnabled: boolean
   /** Preferred web-search engine id. */
@@ -262,6 +279,7 @@ export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConf
     : Math.max(8, Math.round(DEFAULT_CODE_FONT_SIZE * (codeFontScale / DEFAULT_CODE_FONT_SCALE)))
   const timelineStyle = config.timelineStyle ?? DEFAULT_TIMELINE_STYLE
   const themeStyle = config.themeStyle ?? DEFAULT_THEME_STYLE
+  const particleColor = config.particleColor ?? DEFAULT_PARTICLE_COLOR
   const searchEnabled = config.searchEnabled ?? DEFAULT_SEARCH_ENABLED
   const searchEngine = config.searchEngine ?? DEFAULT_SEARCH_ENGINE
   const bingMarket = config.bingMarket ?? DEFAULT_BING_MARKET
@@ -277,6 +295,6 @@ export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConf
   const notifyTitleFlash = config.notifyTitleFlash ?? DEFAULT_NOTIFY_TITLE_FLASH
   const notifySystemNotification = config.notifySystemNotification ?? DEFAULT_NOTIFY_SYSTEM_NOTIFICATION
   const notifySound = config.notifySound ?? DEFAULT_NOTIFY_SOUND
-  const resolved: ResolvedUITweaksConfig = { codeFontScale, codeFontSize, timelineStyle, themeStyle, searchEnabled, searchEngine, bingMarket, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled, preciseCacheHitEnabled, notificationsEnabled, notifyOnlyWhenHidden, notifyOnComplete, notifyOnInteraction, notifyTitleFlash, notifySystemNotification, notifySound }
+  const resolved: ResolvedUITweaksConfig = { codeFontScale, codeFontSize, timelineStyle, themeStyle, particleColor, searchEnabled, searchEngine, bingMarket, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled, preciseCacheHitEnabled, notificationsEnabled, notifyOnlyWhenHidden, notifyOnComplete, notifyOnInteraction, notifyTitleFlash, notifySystemNotification, notifySound }
   return resolved
 }

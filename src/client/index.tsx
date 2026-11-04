@@ -46,7 +46,6 @@ import { McpSection, installMcpStyles } from './mcp.tsx'
 import { SearchSection } from './search.tsx'
 import { TimelineRail, installTimelineStyles } from './timeline.tsx'
 import { PreciseCacheHitEntry } from './cachehit.tsx'
-import { installEffortTag } from './effort.tsx'
 import { installTaskNotifier, previewAlerts, requestNotifyPermission } from './notifier.ts'
 import { installSettingsNavIcons } from './nav-icons.ts'
 import { isDesktopShell } from './shell.ts'
@@ -80,7 +79,7 @@ const CODE_SMALL_LINE_HEIGHT = 16
  * on a plain `body{}` rule, so a plain `body{}` here would be a specificity
  * tie decided purely by `<style>` order — and the host re-appends its sheet
  * whenever its plugin re-activates. `:not(#id)` lifts this rule to (0,1,1) so
- * it wins regardless of order, the same guard NEON_LIME_CSS uses.
+ * it wins regardless of order, the same guard PARTICLES_CSS uses.
  */
 const CODE_FONT_SCOPE_ID = 'dsh-ui-tweaks-code-font-scope'
 
@@ -89,7 +88,45 @@ const CODE_FONT_SCOPE_ID = 'dsh-ui-tweaks-code-font-scope'
  * type unions have to be spelled out here because the client bundle cannot
  * import the server module's types.
  */
-type ThemeStyleValue = 'default' | 'minimal' | 'neon-lime' | 'spec-sheet'
+type ThemeStyleValue = 'default' | 'particles'
+
+/** Particle glow colours mirrored from `src/config.ts`'s `ParticleColor`. */
+type ParticleColorValue = 'mint' | 'electric' | 'violet' | 'sky' | 'amber' | 'coral' | 'rose' | 'silver'
+
+/** Default glow colour of the Soft glow skin. Keep in sync with src/config.ts. */
+const DEFAULT_PARTICLE_COLOR: ParticleColorValue = 'mint'
+
+/** Picker order. Keep in sync with src/config.ts's PARTICLE_COLOR_OPTIONS. */
+const PARTICLE_COLORS: readonly ParticleColorValue[] = ['mint', 'electric', 'violet', 'sky', 'amber', 'coral', 'rose', 'silver']
+
+/** Narrow an unknown persisted value to a known particle colour. */
+function isParticleColor(x: unknown): x is ParticleColorValue {
+  return typeof x === 'string' && (PARTICLE_COLORS as readonly string[]).includes(x)
+}
+
+/** Representative swatch hex per colour (the vivid value, legible on a light panel). */
+const PARTICLE_SWATCH: Record<ParticleColorValue, string> = {
+  mint: '#2dd4bf',
+  electric: '#5b9dff',
+  violet: '#a97bff',
+  sky: '#38bdf8',
+  amber: '#e0a458',
+  coral: '#f0835a',
+  rose: '#e08a9b',
+  silver: '#c7d2e0',
+}
+
+/** Localized label key per colour. */
+const PARTICLE_LABEL: Record<ParticleColorValue, LocaleKey> = {
+  mint: 'colorMint',
+  electric: 'colorElectric',
+  violet: 'colorViolet',
+  sky: 'colorSky',
+  amber: 'colorAmber',
+  coral: 'colorCoral',
+  rose: 'colorRose',
+  silver: 'colorSilver',
+}
 
 interface TweaksValue {
   /** Code font size as a percentage of the stock 14px body (81 = stock). Legacy input. */
@@ -98,8 +135,10 @@ interface TweaksValue {
   codeFontSize?: number
   /** Which timeline to show: 'native' (DSH built-in rail) or 'web' (plugin classic rail). Keep in sync with src/config.ts. */
   timelineStyle?: 'native' | 'web'
-  /** Conversation theme: 'default' keeps the stock look, 'minimal' only tints markdown inline code; other values apply that skin (neon-lime poster, spec-sheet). Keep in sync with src/config.ts. */
+  /** Conversation theme: 'default' keeps the stock look, 'particles' applies the Particle skin. Keep in sync with src/config.ts. */
   themeStyle?: ThemeStyleValue
+  /** Glow colour of the Soft glow skin. Keep in sync with src/config.ts. */
+  particleColor?: ParticleColorValue
   /** Preferred web-search engine (bing | ddg | exa | tavily | keenable | perplexity | deepseek). */
   searchEngine?: string
   /** Bing market code (e.g. zh-CN). */
@@ -137,6 +176,7 @@ interface ResolvedTweaks {
   codeFontSize: number
   timelineStyle: 'native' | 'web'
   themeStyle: ThemeStyleValue
+  particleColor: ParticleColorValue
   searchEngine: string
   bingMarket: string
   gitBarEnabled: boolean
@@ -177,12 +217,19 @@ const en = {
   timelineNative: 'Native',
   timelineWeb: 'Web (classic)',
   theme: 'Theme',
-  themeHint: 'Conversation skin. Default keeps DSH\u2019s stock look; Minimal leaves the stock look alone and only tints markdown inline code with the Anthropic red (#c15f3c in light, #d97757 in dark); Neon poster is a two-scheme skin — paper-white with ink-black hairlines in light mode, near-black with light hairlines in dark mode, lime highlights and an Anthropic-red action accent; Spec sheet is a Swiss spec-sheet skin — square corners, hairline frames, one red-orange accent, uppercase tracked captions and a spec table. Both apply live.',
+  themeHint: 'Conversation skin. Default keeps DSH\u2019s stock look and can always be restored. Soft glow is a static skin: a tinted palette with soft accent glows radiating from the top and bottom edges toward the middle, selectable among mint, electric blue, violet, sky, amber, coral, rose or silver. No animation, so it costs nothing at runtime. Applied live.',
   themeDefault: 'Default',
-  themeMinimal: 'Minimal',
-  themeNeonLime: 'Neon poster',
-  themeSpecSheet: 'Spec sheet',
-  themeSpecSheetHint: 'Swiss spec-sheet skin: paper-white with 1px ink hairlines and square corners in light mode, near-black with light hairlines in dark mode, one International-Klein-Blue accent for links and actions, uppercase tight-tracked captions, and a hairline spec table. Applied live.',
+  themeParticles: 'Soft glow',
+  particleColor: 'Glow colour',
+  particleColorHint: 'Glow colour of the accent halos and highlights. Only applies to the Soft glow skin.',
+  colorMint: 'Mint',
+  colorElectric: 'Electric blue',
+  colorViolet: 'Violet',
+  colorSky: 'Sky',
+  colorAmber: 'Amber',
+  colorCoral: 'Coral',
+  colorRose: 'Rose',
+  colorSilver: 'Silver',
   sectionSearch: 'Web search',
   searchOn: 'On',
   searchOff: 'Off',
@@ -438,12 +485,19 @@ const zh: Record<LocaleKey, string> = {
   timelineNative: '原生',
   timelineWeb: '网页（经典）',
   theme: '主题',
-  themeHint: '对话皮肤。默认保持 DSH 原生外观；简约同样保持原生外观，只把 Markdown 行内代码染成 Anthropic 红（浅色 #c15f3c / 深色 #d97757）；荧光海报是海报风双方案——浅色下纸白底黑粗线，深色下近黑底浅粗线，都配荧光黄高亮 + Anthropic 红点缀；规格书是瑞士规格书风——直角、1px 细线框、单一红橙强调色、大写加字距小标签、细线规格表，切换即时生效。',
+  themeHint: '对话皮肤。默认保持 DSH 原生外观，随时可恢复。柔光是一种静态皮肤：一套主题色 + 从顶部、底部向中间辐射的柔和光晕，发光色可选（薄荷青、电光蓝、紫罗兰、天空青、琥珀、珊瑚橙、玫瑰、月光银）。无动画，运行时几乎零开销。切换即时生效。',
   themeDefault: '默认',
-  themeMinimal: '简约',
-  themeNeonLime: '荧光海报',
-  themeSpecSheet: '规格书',
-  themeSpecSheetHint: '瑞士规格书风双方案：浅色下纸白底 + 1px 墨线细框 + 直角，深色下近黑底 + 浅色细线，只用一种克莱因蓝强调色（浅色 #002fa7 / 深色 #6e9bff，用于链接 / 按钮 / 选中态），小号大写标签加字距，表格改细线规格表。切换即时生效。',
+  themeParticles: '柔光',
+  particleColor: '光晕颜色',
+  particleColorHint: '光晕与强调色的发光色，仅对「柔光」生效。',
+  colorMint: '薄荷青',
+  colorElectric: '电光蓝',
+  colorViolet: '紫罗兰',
+  colorSky: '天空青',
+  colorAmber: '琥珀',
+  colorCoral: '珊瑚橙',
+  colorRose: '玫瑰',
+  colorSilver: '月光银',
   sectionSearch: '网络搜索',
   searchOn: '开',
   searchOff: '关',
@@ -701,12 +755,10 @@ function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
   return {
     codeFontSize,
     timelineStyle: value?.timelineStyle === 'web' ? 'web' : 'native',
-    // 'spec-sheet' is whitelisted like the other skins: an unknown value falls
-    // back to the stock look rather than half-applying one.
-    themeStyle: value?.themeStyle === 'neon-lime' ? 'neon-lime'
-      : value?.themeStyle === 'spec-sheet' ? 'spec-sheet'
-      : value?.themeStyle === 'minimal' ? 'minimal'
-      : 'default',
+    // Only the two known skins are whitelisted: an unknown value falls back to
+    // the stock look rather than half-applying a skin.
+    themeStyle: value?.themeStyle === 'particles' ? 'particles' : 'default',
+    particleColor: isParticleColor(value?.particleColor) ? value.particleColor : DEFAULT_PARTICLE_COLOR,
     searchEngine: value?.searchEngine ?? 'bing',
     bingMarket: value?.bingMarket ?? 'zh-CN',
     gitBarEnabled: value?.gitBarEnabled ?? false,
@@ -760,304 +812,93 @@ function buildCodeFontCss(codeFontSize: number): string {
 }
 
 /**
- * Fluorescent poster skin (Bilibili tech-video look), in two schemes:
- * the paper-white poster (lime highlights, Anthropic-red action accent) in light
- * mode, and its dark twin in dark mode — near-black paper with the same
- * lime/red stickers. Popovers and menus (model switcher, open-in-app,
- * stat dialogs, context panel) ride the scheme's own paper so they never read
- * as a gray slab against the conversation.
+ * Soft glow skin — a tinted palette plus a static, soft accent glow behind the
+ * conversation (centred under the composer). Neutral surfaces/ink are fixed per
+ * scheme; the single accent (and therefore the glow) is chosen by the
+ * `particleColor` setting and injected by `buildParticleColorCss` below, which
+ * overrides `--dut-accent` on the same sentinel scope. Component rules give
+ * inline code, code blocks, tables, links and list markers the accent
+ * treatment promoted by the preview. Emitted only while the `particles` skin
+ * is active; `default` emits nothing and stays stock.
  *
- * The internal style id stays `neon-lime`: it is the persisted setting value,
- * so renaming it would silently reset every saved profile. Only the labels
- * shown in Settings changed when the accent moved to Anthropic red.
- *
- * Every colour is a `--dut-*` design variable re-pointed per scheme, and the
- * DSW alias tokens map onto those variables in one place, so buttons, links,
- * selections, the sidebar and the plugin's own tinted controls follow
- * automatically in either host scheme. The host's own hairlines keep their
- * shipped subtle values (`--dut-line-*`); the bold ink frame is applied only
- * where this skin says so — code blocks, the composer card, the markdown
- * table header and the settings panels, all with hard offset shadows.
- * 'default' emits nothing and stays stock. Future skins add one union member
- * plus one block.
+ * The `:not(#dsh-ui-tweaks-theme-scope)` sentinel lifts these rules above the
+ * host's own `body{}` token declarations regardless of <style> order (the id
+ * never exists in the DOM). As with the earlier skins, the host's settings
+ * dialog (a body-level portal) is excluded so it keeps DSH's stock palette,
+ * while the plugin's own settings pages are named back in.
  */
-/**
- * Thinking-effort tint, shared by both skins. Tags the three surfaces the
- * effort watcher (`./effort.tsx`) marks: the composer's `model · effort`
- * trigger label, the Effort cell value in the model dropdown's root pane, and
- * every effort-option label in its effort pane — the option's row button
- * carries the same band so the hover wash needs no `:has`. Each level paints
- * in its own hue (Low green, Medium amber, High blue, Max violet), the trigger
- * label additionally rides a translucent pill, and option rows wipe in a
- * left-to-right gradient of the same hue on hover.
- *
- * Off / provider-Default / unrecognized names carry no band at all and keep
- * the stock caption — a level we cannot place gets no colour rather than a
- * wrong one; extend BAND_WORDS when an adapter ships new names.
- *
- * Every rule keys off the `data-dut-effort` attribute the watcher sets, so
- * none of them touch a hashed CSS-modules class. Light and dark values are
- * separate, hung off the host's `body[data-ds-dark-theme]` marker; the
- * `:not(#dsh-ui-tweaks-theme-scope)` sentinel lifts specificity above the
- * host's sheets without `!important`, exactly as the poster skin does — the id
- * never exists in the DOM.
- *
- * Inlined into the poster skin at its original position, and emitted
- * standalone for 'minimal', which adopts the same band colours alongside its
- * inline-code tint. 'default' emits nothing and stays stock.
- */
-const EFFORT_TINT_CSS = `
-[data-slot="conversation.input.model"] span[data-dut-effort],
-div[role="menu"] span[data-dut-effort]{font-weight:600}
-[data-slot="conversation.input.model"] span[data-dut-effort="low"],
-div[role="menu"] span[data-dut-effort="low"]{color:#15803d}
-[data-slot="conversation.input.model"] span[data-dut-effort="medium"],
-div[role="menu"] span[data-dut-effort="medium"]{color:#b45309}
-[data-slot="conversation.input.model"] span[data-dut-effort="high"],
-div[role="menu"] span[data-dut-effort="high"]{color:#1d4ed8}
-[data-slot="conversation.input.model"] span[data-dut-effort="max"],
-div[role="menu"] span[data-dut-effort="max"]{color:#7c3aed}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="low"],
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] span[data-dut-effort="low"]{color:#4ade80}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="medium"],
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] span[data-dut-effort="medium"]{color:#fbbf24}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="high"],
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] span[data-dut-effort="high"]{color:#60a5fa}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="max"],
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] span[data-dut-effort="max"]{color:#a78bfa}
-/* Trigger chip: the input-box effort label additionally rides a translucent
-   pill in its band hue (menu labels stay plain text). Padding/radius work
-   as-is — the trigger is flex, so its spans are already blockified. */
-[data-slot="conversation.input.model"] span[data-dut-effort]{
-  padding:1px 7px;
-  border-radius:999px;
-}
-[data-slot="conversation.input.model"] span[data-dut-effort="low"]{background:rgba(21,128,61,.12)}
-[data-slot="conversation.input.model"] span[data-dut-effort="medium"]{background:rgba(180,83,9,.12)}
-[data-slot="conversation.input.model"] span[data-dut-effort="high"]{background:rgba(29,78,216,.10)}
-[data-slot="conversation.input.model"] span[data-dut-effort="max"]{background:rgba(124,58,237,.12)}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="low"]{background:rgba(74,222,128,.18)}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="medium"]{background:rgba(251,191,36,.18)}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="high"]{background:rgba(96,165,250,.18)}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-slot="conversation.input.model"] span[data-dut-effort="max"]{background:rgba(167,139,250,.20)}
-/* Effort option rows: on hover the row background wipes in from the left in
-   the band hue (translucent wash into transparency), replacing the stock row
-   hover fill. The host paints that fill with a 'background' shorthand whose
-   priority outranks a plain declaration; because a shorthand resets size /
-   image / repeat to their initials, it silently killed this wash — so the
-   hover rule restates all three with !important rather than relying on
-   specificity. background-size animates reliably (no background-clip text
-   involved); honoring prefers-reduced-motion. */
-div[role="menu"] button[data-dut-effort]{
-  background-repeat:no-repeat;
-  background-size:0% 100%;
-  transition:background-size .6s ease;
-}
-div[role="menu"] button[data-dut-effort="low"]:hover{background-image:linear-gradient(90deg,rgba(21,128,61,.16),rgba(21,128,61,0)) !important;background-size:100% 100% !important;background-repeat:no-repeat !important}
-div[role="menu"] button[data-dut-effort="medium"]:hover{background-image:linear-gradient(90deg,rgba(180,83,9,.16),rgba(180,83,9,0)) !important;background-size:100% 100% !important;background-repeat:no-repeat !important}
-div[role="menu"] button[data-dut-effort="high"]:hover{background-image:linear-gradient(90deg,rgba(29,78,216,.14),rgba(29,78,216,0)) !important;background-size:100% 100% !important;background-repeat:no-repeat !important}
-div[role="menu"] button[data-dut-effort="max"]:hover{background-image:linear-gradient(90deg,rgba(124,58,237,.16),rgba(124,58,237,0)) !important;background-size:100% 100% !important;background-repeat:no-repeat !important}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] button[data-dut-effort="low"]:hover{background-image:linear-gradient(90deg,rgba(74,222,128,.18),rgba(74,222,128,0)) !important;background-size:100% 100% !important;background-repeat:no-repeat !important}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] button[data-dut-effort="medium"]:hover{background-image:linear-gradient(90deg,rgba(251,191,36,.18),rgba(251,191,36,0)) !important;background-size:100% 100% !important;background-repeat:no-repeat !important}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] button[data-dut-effort="high"]:hover{background-image:linear-gradient(90deg,rgba(96,165,250,.20),rgba(96,165,250,0)) !important;background-size:100% 100% !important;background-repeat:no-repeat !important}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] div[role="menu"] button[data-dut-effort="max"]:hover{background-image:linear-gradient(90deg,rgba(167,139,250,.20),rgba(167,139,250,0)) !important;background-size:100% 100% !important;background-repeat:no-repeat !important}
-@media (prefers-reduced-motion:reduce){
-  div[role="menu"] button[data-dut-effort]{transition:none}
-}
-`
-
-const NEON_LIME_CSS = `
-/* The host injects its theme sheets at runtime, so their <style> order against
-   this one is not guaranteed; the id in :not() lifts the skin above the host's
-   body[data-ds-dark-theme] palette (same specificity, later wins) without
-   !important. The id never exists in the DOM. */
+const PARTICLES_CSS = `
+/* ---- palette: light ---- */
 body:not(#dsh-ui-tweaks-theme-scope){
   color-scheme:light;
   --dut-paper:#ffffff;
-  --dut-paper-2:#fafbfc;
+  --dut-paper-2:#f5f7fa;
   --dut-paper-3:#ffffff;
   --dut-pop:#ffffff;
-  --dut-ink:#101418;
-  /* the markdown table header keeps an ink strip; its type rides the accent */
-  --dut-th-bg:#101418;
-  --dut-code:#f7f8f9;
-  --dut-text-1:#101418;
-  --dut-text-2:#3d4750;
-  --dut-text-3:#7a8791;
-  --dut-text-4:#9aa4ad;
+  --dut-ink:#10151b;
+  --dut-th-bg:#f5f7fa;
+  --dut-code:#f2f6f8;
+  --dut-text-1:#10151b;
+  --dut-text-2:#3c4650;
+  --dut-text-3:#68737e;
+  --dut-text-4:#8b959f;
   --dut-btn-fg:#ffffff;
-  --dut-lime:#c6ff00;
-  --dut-lime-soft:#dcff4d;
-  --dut-accent:#c15f3c;
-  --dut-accent-soft:rgba(193,95,60,.12);
-  --dut-accent-pale:#eccfc4;
-  --dut-hover:rgba(193,95,60,.07);
-  --dut-active:rgba(193,95,60,.13);
-  /* text selection uses the native blue in both schemes */
+  /* accent is overridden per particle colour; mint is the base/default */
+  --dut-accent:#0e9e90;
+  --dut-accent-soft:color-mix(in srgb, var(--dut-accent) 12%, transparent);
+  --dut-accent-pale:color-mix(in srgb, var(--dut-accent) 22%, var(--dut-paper));
+  --dut-hover:color-mix(in srgb, var(--dut-accent) 7%, transparent);
+  --dut-active:color-mix(in srgb, var(--dut-accent) 13%, transparent);
+  --dut-bubble:color-mix(in srgb, var(--dut-accent) 13%, var(--dut-paper));
+  --dut-dot:color-mix(in srgb, var(--dut-accent) 45%, transparent);
+  --dut-glow:color-mix(in srgb, var(--dut-accent) 14%, transparent);
   --dut-sel-bg:Highlight;
   --dut-sel-fg:HighlightText;
   --dut-faint:rgba(0,0,0,.06);
-  --dut-scroll-1:#e3e6ea;
-  --dut-scroll-2:#c8cdd3;
-  --dut-elev:#101418;
-  /* the user bubble: a pale tint of the Anthropic-red accent, so it stays in
-     the same family as the links, buttons and artifacts */
-  --dut-bubble:#ffe3d9;
-  --dut-shadow:#101418;
-  --dut-drop:rgba(255,255,255,.7);
-  /* Hairlines stay the host's own subtle values: the shipped 0.5px pills and
-     dividers are designed around them, and painting them poster-ink read as
-     "changed too much". The bold ink lives only in this skin's own explicit
-     rules (code blocks, composer card, table header, panels). */
-  --dut-line-1:rgba(0,0,0,.04);
-  --dut-line-2:rgba(0,0,0,.10);
-  --dut-line-3:rgba(0,0,0,.12);
-  --dut-line-4:rgba(0,0,0,.16);
+  --dut-scroll-1:#e3e7ec;
+  --dut-scroll-2:#c8cfd6;
+  --dut-elev:#10151b;
+  --dut-line-1:rgba(16,25,35,.08);
+  --dut-line-2:rgba(16,25,35,.14);
+  --dut-line-3:rgba(16,25,35,.20);
+  --dut-line-4:rgba(16,25,35,.28);
   --dut-error:var(--dsw-static-red-600);
   --dut-error-2:var(--dsw-static-red-400);
   --dut-success:var(--dsw-static-green-500);
   --dut-success-2:var(--dsw-static-green-400);
   --dut-success-3:var(--dsw-static-green-100);
   --dut-warn-3:var(--dsw-static-amber-100);
-  /* Two surfaces read the STATIC DeepSeek scale instead of an alias, so the
-     alias re-points below never reached them: the running-turn "深度求索中…"
-     shimmer (500 + 200 painted into the glyphs) and the ongoing state dot
-     (450). Re-point the static steps here — every alias that also derives from
-     them is already mapped explicitly, so nothing else moves. */
-  --dsw-static-deepseek-200:var(--dut-accent-pale);
-  --dsw-static-deepseek-450:var(--dut-accent);
-  --dsw-static-deepseek-500:var(--dut-accent);
-  --dsw-alias-bg-base:var(--dut-paper);
-  --dsw-alias-bg-layer-1:var(--dut-paper);
-  --dsw-alias-bg-layer-2:var(--dut-paper-2);
-  --dsw-alias-bg-layer-3:var(--dut-paper-3);
-  --dsw-alias-bg-mask-1:rgba(0,0,0,.24);
-  --dsw-alias-bg-mask-2:rgba(0,0,0,.12);
-  --dsw-alias-bg-mask-3:rgba(0,0,0,.48);
-  --dsw-alias-bg-mask-photo:rgba(0,0,0,.88);
-  --dsw-alias-bg-mask-drop:var(--dut-drop);
-  --dsw-alias-bg-module-platform:var(--dut-paper-3);
-  --dsw-alias-bg-multi-select:var(--dut-paper-2);
-  --dsw-alias-bg-overlay:var(--dut-paper-3);
-  --dsw-alias-bg-skeleton:var(--dut-faint);
-  --dsw-alias-border-inverted:rgba(0,0,0,0);
-  --dsw-alias-border-inverted2:rgba(0,0,0,0);
-  --dsw-alias-border-l1:var(--dut-line-1);
-  --dsw-alias-border-l2:var(--dut-line-2);
-  --dsw-alias-border-l2-darkmode-thin:var(--dut-line-2);
-  --dsw-alias-border-l3:var(--dut-line-3);
-  --dsw-alias-border-l4:var(--dut-line-4);
-  --dsw-alias-brand-primary:var(--dut-text-1);
-  --dsw-alias-brand-primary-invert:var(--dut-paper);
-  --dsw-alias-brand-text:var(--dut-text-1);
-  --dsw-alias-brand-primary-new-colorprimary-new-color:var(--dut-accent);
-  --dsw-alias-button-contrast-fill:var(--dut-text-2);
-  --dsw-alias-button-elevated-fill:var(--dut-paper);
-  --dsw-alias-button-floating-fill:var(--dut-paper);
-  --dsw-alias-button-floating-hover:var(--dut-paper-2);
-  --dsw-alias-button-ghost-active-border:var(--dut-ink);
-  --dsw-alias-button-ghost-active-fill:var(--dut-paper-3);
-  --dsw-alias-button-ghost-active-hover:var(--dut-paper-3);
-  --dsw-alias-button-info-fill:var(--dut-accent);
-  --dsw-alias-button-info-hover:var(--dut-accent);
-  --dsw-alias-button-primary-dimmed:var(--dut-paper-2);
-  --dsw-alias-button-primary-fill:var(--dut-text-1);
-  --dsw-alias-button-primary-hover:var(--dut-text-1);
-  --dsw-alias-interactive-bg-active:var(--dut-active);
-  --dsw-alias-interactive-bg-hover:var(--dut-hover);
-  --dsw-alias-interactive-bg-hover-accent:var(--dut-active);
-  --dsw-alias-interactive-bg-hover-danger:rgba(236,19,19,.05);
-  --dsw-alias-interactive-bg-hover-solid:var(--dut-paper-3);
-  --dsw-alias-label-caption:var(--dut-text-4);
-  --dsw-alias-label-dimmed:var(--dut-text-4);
-  --dsw-alias-label-primary:var(--dut-text-1);
-  --dsw-alias-label-primary-bluish:var(--dut-text-1);
-  --dsw-alias-label-primary-dimmed:var(--dut-text-1);
-  --dsw-alias-label-primary-foreground:var(--dut-btn-fg);
-  --dsw-alias-label-primary-inverted:var(--dut-btn-fg);
-  --dsw-alias-label-secondary:var(--dut-text-2);
-  --dsw-alias-label-tertiary:var(--dut-text-3);
-  --dsw-alias-link:var(--dut-accent);
-  --dsw-alias-markdown-citation:var(--dut-paper-2);
-  --dsw-alias-markdown-code-block:var(--dut-code);
-  --dsw-alias-markdown-code-block-banner:var(--dut-paper-3);
-  --dsw-alias-markdown-code-segment-selected:var(--dut-paper);
-  --dsw-alias-markdown-code-segment-unselected:var(--dut-paper-2);
-  --dsw-alias-markdown-placeholder:var(--dut-paper-2);
-  --dsw-alias-markdown-tag:var(--dut-paper-2);
-  --dsw-alias-scrollbar-bg-l1:var(--dut-scroll-1);
-  --dsw-alias-scrollbar-bg-l2:var(--dut-scroll-1);
-  --dsw-alias-scrollbar-hover-l1:var(--dut-scroll-2);
-  --dsw-alias-scrollbar-hover-l2:var(--dut-scroll-2);
-  --dsw-alias-state-business-primary:var(--dut-accent);
-  --dsw-alias-state-business-tertiary:var(--dut-accent-soft);
-  --dsw-alias-state-error-primary:var(--dut-error);
-  --dsw-alias-state-error-secondary:var(--dut-error-2);
-  --dsw-alias-state-success-primary:var(--dut-success);
-  --dsw-alias-state-success-secondary:var(--dut-success-2);
-  --dsw-alias-state-success-tertiary:var(--dut-success-3);
-  --dsw-alias-state-warn-label:var(--dsw-static-amber-600);
-  --dsw-alias-state-warn-primary:var(--dsw-static-amber-500);
-  --dsw-alias-state-warn-secondary:var(--dsw-static-amber-400);
-  --dsw-alias-state-warn-tertiary:var(--dut-warn-3);
-  --dsw-alias-toast-bg:var(--dut-elev);
-  --dsw-alias-tooltip-bg:var(--dut-elev);
-  --dsw-specific-bubble:var(--dut-bubble);
-  --dsw-specific-bubble-highlight:var(--dut-lime-soft);
-  --dsw-specific-input-major:var(--dut-pop);
-  --dsw-specific-login-input:var(--dut-paper-2);
-  --dsw-specific-selector:var(--dut-pop);
-  --dsw-specific-menu:var(--dut-pop);
-  --dsw-specific-sidebar-fill:var(--dut-paper);
-  --dsw-specific-sidebar-nav-item-active:var(--dut-lime-soft);
-  /* NOT themed: despite the name this token feeds only the "推荐" chip in the
-     question composer, and a lime slab behind text read as a highlighter mark
-     rather than a chip — it stays on the host's own background. */
-  --dsw-specific-sidebar-nav-item-hover:var(--dut-paper-2);
-  --dsw-specific-tip:var(--dut-paper-2);
 }
-/* Dark scheme: re-point the design variables only — every alias mapping and
-   element rule follows through var() indirection, so the host's scheme toggle
-   flips the whole skin without a second copy of the rules. */
+/* ---- palette: dark ---- */
 body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme]{
   color-scheme:dark;
-  --dut-paper:#0b0d10;
-  --dut-paper-2:#14181d;
-  --dut-paper-3:#1e252c;
-  --dut-pop:#161c22;
-  /* the poster frame drops to translucent white in dark mode: a solid
-     near-white 2px frame plus its hard offset read as glare (see --dut-shadow) */
-  --dut-ink:rgba(232,236,239,.42);
-  /* a light strip would kill the red type here, so dark mode keeps a dark
-     header strip lifted one step off the paper */
-  --dut-th-bg:#1e252c;
-  --dut-code:#171d24;
-  --dut-text-1:#f2f5f3;
-  --dut-text-2:#b9c3ca;
-  --dut-text-3:#7f8d97;
-  --dut-text-4:#66727c;
-  --dut-btn-fg:#101418;
-  --dut-lime:#c6ff00;
-  --dut-lime-soft:#dcff4d;
-  --dut-accent:#d97757;
-  --dut-accent-soft:rgba(217,119,87,.18);
-  --dut-accent-pale:#eec2b3;
-  --dut-hover:rgba(217,119,87,.16);
-  --dut-active:rgba(217,119,87,.26);
-  /* text selection uses the native blue in both schemes */
+  --dut-paper:#0a0c10;
+  --dut-paper-2:#11151c;
+  --dut-paper-3:#171c24;
+  --dut-pop:#11161d;
+  --dut-ink:#e6ecf5;
+  --dut-th-bg:#171c24;
+  --dut-code:#0e151b;
+  --dut-text-1:#e6ecf5;
+  --dut-text-2:#b7c1cc;
+  --dut-text-3:#87919f;
+  --dut-text-4:#6b7686;
+  --dut-btn-fg:#0a0c10;
+  --dut-accent:#2dd4bf;
+  --dut-accent-soft:color-mix(in srgb, var(--dut-accent) 16%, transparent);
+  --dut-accent-pale:color-mix(in srgb, var(--dut-accent) 26%, var(--dut-paper));
+  --dut-hover:color-mix(in srgb, var(--dut-accent) 14%, transparent);
+  --dut-active:color-mix(in srgb, var(--dut-accent) 22%, transparent);
+  --dut-bubble:color-mix(in srgb, var(--dut-accent) 18%, var(--dut-paper));
+  --dut-dot:color-mix(in srgb, var(--dut-accent) 60%, transparent);
+  --dut-glow:color-mix(in srgb, var(--dut-accent) 18%, transparent);
   --dut-sel-bg:Highlight;
   --dut-sel-fg:HighlightText;
   --dut-faint:rgba(255,255,255,.07);
-  --dut-scroll-1:#2a3138;
-  --dut-scroll-2:#3a444d;
-  --dut-elev:#1f262c;
-  /* dark twin: the same red accent, deepened onto the near-black paper */
-  --dut-bubble:#35201a;
-  /* the hard offset band softens with it, so the sticker silhouette survives
-     while the brightness does not */
-  --dut-shadow:rgba(232,236,239,.16);
-  --dut-drop:rgba(39,39,48,.7);
-  --dut-line-1:rgba(255,255,255,.06);
+  --dut-scroll-1:#232a33;
+  --dut-scroll-2:#333c47;
+  --dut-elev:#161b22;
+  --dut-line-1:rgba(255,255,255,.07);
   --dut-line-2:rgba(255,255,255,.12);
   --dut-line-3:rgba(255,255,255,.16);
   --dut-line-4:rgba(255,255,255,.20);
@@ -1069,178 +910,10 @@ body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme]{
   --dut-warn-3:var(--dsw-static-amber-900);
 }
 ::selection{background:var(--dut-sel-bg);color:var(--dut-sel-fg)}
-/* table header: the ink header strip, with the type in the accent red */
-div[data-slot="conversation.chat.node"] table th{
-  background:var(--dut-th-bg);
-  color:var(--dut-accent);
-}
-div[data-slot="conversation.chat.node"] pre{
-  border:2px solid var(--dut-ink) !important;
-  border-radius:10px !important;
-  box-shadow:5px 5px 0 var(--dut-shadow) !important;
-  background:var(--dut-paper) !important;
-}
-div[data-slot="conversation.chat.node"] :not(pre)>code{
-  color:var(--dut-accent) !important;
-  border:none !important;
-  border-radius:6px !important;
-  padding:1px 6px !important;
-}
-/* composer card: white framed sticker (hard shadow, ink border) */
-div[data-composer-card]{
-  border:2px solid var(--dut-ink) !important;
-  box-shadow:5px 5px 0 var(--dut-shadow) !important;
-  background:var(--dut-paper) !important;
-}
-/* context-occupancy ring: the stock track/fill both read near-ink on this
-   skin; give the track a quiet gray and the used arc the red accent
-   (scoped to the composer's svg so the class-substring match stays safe) */
-div[data-composer-card] svg [class*="track"]{stroke:var(--dut-scroll-1)}
-div[data-composer-card] svg [class*="fill"]{stroke:var(--dut-accent)}
-/* Thinking-effort band colours are shared with the minimal skin, so they live
-   in EFFORT_TINT_CSS above and are spliced in here at their original position
-   — the poster's emitted sheet is unchanged. */
-${EFFORT_TINT_CSS}
-/* sidebar new-session button: lime sticker. Matched by its CSS-module class,
-   NOT the aria-label — the brand row button shares the same "新建会话"
-   label (it doubles as the new-session shortcut) and must stay plain. */
-button[class*="newSession"]{
-  background:var(--dut-lime) !important;
-  color:#101418 !important;
-  border:2px solid var(--dut-ink) !important;
-  border-radius:10px !important;
-  box-shadow:3px 3px 0 var(--dut-shadow) !important;
-}
-button[class*="newSession"]:hover{background:#d4ff33 !important;color:#101418 !important}
-/* dark scheme: invert the sticker to a lime-outlined dark pill — a full lime
-   slab was the loudest thing in the column and the black label read as a
-   mistake next to the dark chrome */
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] button[class*="newSession"],
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] button[class*="newSession"]:hover{
-  background:var(--dut-paper) !important;
-  color:var(--dut-lime) !important;
-  border-color:var(--dut-lime) !important;
-  box-shadow:3px 3px 0 var(--dut-lime) !important;
-}
-/* The poster frame is the host's own 1px border (recolored) plus a 1px inset
-   ring, not a real 2px border: a 2px border stole 2px of content width and
-   wrapped the half-width alert cells ("仅页面不可见时" and its buttons broke
-   onto two lines). An inset ring costs no layout. */
-.dut-panel{border-color:var(--dut-ink) !important;box-shadow:inset 0 0 0 1px var(--dut-ink),5px 5px 0 var(--dut-shadow) !important}
-.dut-seg button.dut-seg-active{background:var(--dut-lime) !important;color:#101418 !important}
-.dut-btn.dut-btn-active{background:var(--dut-lime) !important;color:#101418 !important;border-color:var(--dut-ink) !important}
-`
 
-/**
- * Spec-sheet skin (Swiss / technical-editorial), in two schemes: paper-white
- * with 1px ink hairlines and square corners in light mode, near-black with
- * light hairlines in dark mode — one International-Klein-Blue accent for links, selections
- * and actions, and nothing else colored. Same skeleton as NEON_LIME_CSS (one
- * design-variable block re-pointed per scheme, the DSW alias tokens mapped
- * onto those variables in one place) so buttons, links, the sidebar, popovers
- * and the plugin's own tinted controls follow the host scheme automatically.
- *
- * What separates it from the poster skin is restraint, not colour: no hard
- * offset shadows, no filled highlight slabs, no rounded corners. Type carries
- * the hierarchy instead — headings run tight and heavy, captions run small,
- * uppercase and letter-spaced, and code blocks / tables read as ruled spec
- * tables rather than stickers.
- *
- * Layout safety: only the surfaces that are already boxed by the skin are
- * squared (composer card, code block, settings panels, the plugin's own
- * buttons and the table). Global radius is left alone so the host's dropdowns,
- * toasts and menus keep their own metrics; overriding every radius in the app
- * is how skin CSS starts breaking the host's layout instead of styling it.
- *
- * Dialogs stay stock: the host palette is not re-pointed on `body` itself but on
- * every top-level surface *except* the subtree that carries the settings dialog
- * (`:has([data-shortcut-modal="settings"])`). The host mounts that dialog as a
- * body-level portal, so with the mapping on `body` its surface took the skin's
- * paper gray (`--dsw-alias-bg-layer-2` -> `--dut-paper-2`, #f7f7f6 against the
- * stock white) and its selected row took the Klein-blue accent — a skin meant for
- * the conversation reading as a dimmed settings panel. Custom properties are
- * inherited, but a value set on a closer ancestor wins, so the host's stock
- * `body{--dsw-*}` simply flows back into the excluded subtree. Body's own paint
- * is unthemed too and never shows: the app frame covers the viewport.
- *
- * The plugin's own settings pages live inside that excluded dialog, so their page
- * roots are named again in the same mapping: their controls keep the skin's accent
- * and hairlines (an ink "默认" reset button next to the host's blue would be the
- * one control on the page reading as a different theme). Host rows around them
- * stay stock.
- *
- * The internal style id `spec-sheet` is a fresh persisted value — it adds a
- * member to the union instead of renaming one, exactly as the note on
- * NEON_LIME_CSS describes.
- */
-const SPEC_SHEET_CSS = `
-/* Same sentinel guard as the poster skin: the id never exists in the DOM, and
-   the :not(#id) guard lifts this sheet above the host's own body rule regardless of
-   injection order. */
-body:not(#dsh-ui-tweaks-theme-scope){
-  color-scheme:light;
-  --dut-paper:#ffffff;
-  --dut-paper-2:#f7f7f6;
-  --dut-paper-3:#ffffff;
-  --dut-pop:#ffffff;
-  --dut-ink:#111111;
-  --dut-th-bg:#ffffff;
-  --dut-code:#fafafa;
-  --dut-text-1:#111111;
-  --dut-text-2:#444444;
-  --dut-text-3:#6e6e6e;
-  --dut-text-4:#8f8f8f;
-  --dut-btn-fg:#ffffff;
-  /* the single accent: International Klein Blue — the same printing-ink
-     tradition the Swiss grid comes from, and it stays legible at small sizes
-     on white (10.7:1) */
-  --dut-accent:#002fa7;
-  --dut-accent-soft:rgba(0,47,167,.12);
-  --dut-accent-pale:#cfd8ee;
-  --dut-hover:rgba(0,47,167,.06);
-  --dut-active:rgba(0,47,167,.12);
-  --dut-sel-bg:Highlight;
-  --dut-sel-fg:HighlightText;
-  --dut-faint:rgba(0,0,0,.06);
-  --dut-scroll-1:#e6e6e3;
-  --dut-scroll-2:#c9c9c4;
-  --dut-elev:#111111;
-  --dut-bubble:#e6eaf5;
-  /* no shadow token is used by this skin; kept so the var exists for reuse */
-  --dut-shadow:rgba(0,0,0,0);
-  --dut-drop:rgba(255,255,255,.7);
-  /* Hairlines are the whole point of this skin, so unlike the poster skin they
-     are drawn deliberately: one ink-tinted 1px family instead of the host's
-     barely-there grays. */
-  --dut-line-1:rgba(17,17,17,.12);
-  --dut-line-2:rgba(17,17,17,.22);
-  --dut-line-3:rgba(17,17,17,.34);
-  --dut-line-4:rgba(17,17,17,.5);
-  --dut-error:var(--dsw-static-red-600);
-  --dut-error-2:var(--dsw-static-red-400);
-  --dut-success:var(--dsw-static-green-500);
-  --dut-success-2:var(--dsw-static-green-400);
-  --dut-success-3:var(--dsw-static-green-100);
-  --dut-warn-3:var(--dsw-static-amber-100);
-}
-
-/* Host palette mapping: the DSW aliases every host surface reads, re-pointed at
-   the design variables above. Applied to body's top-level surfaces rather than
-   to body itself so the settings dialog — a body-level portal — keeps the host's
-   own palette (see the module note above); the app frame, host menus and the
-   plugin's own portals are all body children and keep the skin. The plugin's four
-   settings pages are listed again because they render *inside* that dialog: their
-   page roots are the plugin's own DOM (.dut-settings = this panel, .dut-arc =
-   archive, .dut-mcp = MCP, .dut-search = web search), so naming them keeps the
-   plugin's controls on the skin's accent while the host's rows around them stay
-   stock. The dark scheme only re-points the design variables, so this mapping
-   needs no dark twin. :has() (Chrome 105 / Safari 15.4) is older than the
-   color-mix() this plugin's base sheet already needs, so it never narrows
-   browser support. */
+/* ---- host token mapping (settings dialog stays stock) ---- */
 body:not(#dsh-ui-tweaks-theme-scope) > :not(:has([data-shortcut-modal="settings"])),
 body:not(#dsh-ui-tweaks-theme-scope) :is(.dut-settings,.dut-arc,.dut-mcp,.dut-search){
-  /* Re-point the two static DeepSeek steps the poster skin also has to: the
-     running-turn shimmer (500+200) and the ongoing state dot (450). */
   --dsw-static-deepseek-200:var(--dut-accent-pale);
   --dsw-static-deepseek-450:var(--dut-accent);
   --dsw-static-deepseek-500:var(--dut-accent);
@@ -1252,7 +925,7 @@ body:not(#dsh-ui-tweaks-theme-scope) :is(.dut-settings,.dut-arc,.dut-mcp,.dut-se
   --dsw-alias-bg-mask-2:rgba(0,0,0,.12);
   --dsw-alias-bg-mask-3:rgba(0,0,0,.48);
   --dsw-alias-bg-mask-photo:rgba(0,0,0,.88);
-  --dsw-alias-bg-mask-drop:var(--dut-drop);
+  --dsw-alias-bg-mask-drop:rgba(255,255,255,.7);
   --dsw-alias-bg-module-platform:var(--dut-paper-3);
   --dsw-alias-bg-multi-select:var(--dut-paper-2);
   --dsw-alias-bg-overlay:var(--dut-paper-3);
@@ -1264,8 +937,6 @@ body:not(#dsh-ui-tweaks-theme-scope) :is(.dut-settings,.dut-arc,.dut-mcp,.dut-se
   --dsw-alias-border-l2-darkmode-thin:var(--dut-line-2);
   --dsw-alias-border-l3:var(--dut-line-3);
   --dsw-alias-border-l4:var(--dut-line-4);
-  /* Primary actions are filled ink, not accent: one accent colour per skin is
-     the discipline, and the poster skin already spends its red here. */
   --dsw-alias-brand-primary:var(--dut-text-1);
   --dsw-alias-brand-primary-invert:var(--dut-paper);
   --dsw-alias-brand-text:var(--dut-text-1);
@@ -1328,269 +999,97 @@ body:not(#dsh-ui-tweaks-theme-scope) :is(.dut-settings,.dut-arc,.dut-mcp,.dut-se
   --dsw-specific-selector:var(--dut-pop);
   --dsw-specific-menu:var(--dut-pop);
   --dsw-specific-sidebar-fill:var(--dut-paper);
-  --dsw-specific-sidebar-nav-item-active:var(--dut-paper-2);
-  /* Spec sheet keeps the hover step quiet: the accent is reserved for state,
-     never for decoration. */
+  --dsw-specific-sidebar-nav-item-active:var(--dut-accent-soft);
   --dsw-specific-sidebar-nav-item-hover:var(--dut-paper-2);
   --dsw-specific-tip:var(--dut-paper-2);
 }
-/* Dark scheme: re-point the design variables only. */
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme]{
-  color-scheme:dark;
-  --dut-paper:#0d0d0d;
-  --dut-paper-2:#171717;
-  --dut-paper-3:#1f1f1f;
-  --dut-pop:#191919;
-  --dut-ink:rgba(240,240,240,.72);
-  --dut-th-bg:#1f1f1f;
-  --dut-code:#161616;
-  --dut-text-1:#f0f0f0;
-  --dut-text-2:#b8b8b8;
-  --dut-text-3:#8a8a8a;
-  --dut-text-4:#6a6a6a;
-  --dut-btn-fg:#111111;
-  /* the accent lifts for the dark paper: the same hue, readable on black
-     (7.2:1 against the near-black paper) */
-  --dut-accent:#6e9bff;
-  --dut-accent-soft:rgba(110,155,255,.18);
-  --dut-accent-pale:#9db9e8;
-  --dut-hover:rgba(110,155,255,.14);
-  --dut-active:rgba(110,155,255,.22);
-  --dut-sel-bg:Highlight;
-  --dut-sel-fg:HighlightText;
-  --dut-faint:rgba(255,255,255,.07);
-  --dut-scroll-1:#2b2b2b;
-  --dut-scroll-2:#3d3d3d;
-  --dut-elev:#242424;
-  --dut-bubble:#1b2436;
-  --dut-shadow:rgba(0,0,0,0);
-  --dut-drop:rgba(39,39,48,.7);
-  /* Dark hairlines sit at the host's own shipped weights rather than doubling
-     them as the light scheme does: on near-black paper a heavier line reads as
-     a hard edge and anti-aliases into visible stair-stepping. Matching the
-     host's default --dsw-alias-border-l* family also keeps dialogs, menus and
-     dividers looking stock in this skin, which is the point of a skin that
-     only restyles the conversation. */
-  --dut-line-1:rgba(255,255,255,.06);
-  --dut-line-2:rgba(255,255,255,.12);
-  --dut-line-3:rgba(255,255,255,.16);
-  --dut-line-4:rgba(255,255,255,.20);
-  --dut-error:var(--dsw-static-red-400);
-  --dut-error-2:var(--dsw-static-red-400);
-  --dut-success:var(--dsw-static-green-400);
-  --dut-success-2:var(--dsw-static-green-400);
-  --dut-success-3:var(--dsw-static-green-900);
-  --dut-warn-3:var(--dsw-static-amber-900);
-}
-::selection{background:var(--dut-sel-bg);color:var(--dut-sel-fg)}
-/* Spec table: ruled hairlines, no fills. The header strip stays paper-white
-   (unlike the poster skin's ink slab) and takes an uppercase tracked caption
-   plus a heavier rule, the way a technical table sets its column headings. */
-div[data-slot="conversation.chat.node"] table th{
-  background:var(--dut-th-bg);
-  color:var(--dut-text-1);
-  font-size:11px;
-  font-weight:700;
-  letter-spacing:.08em;
-  text-transform:uppercase;
-  border-bottom:1px solid var(--dut-line-3);
-  border-top:1px solid var(--dut-line-1);
-}
-div[data-slot="conversation.chat.node"] table td{
-  border-bottom:1px solid var(--dut-line-1);
-}
-div[data-slot="conversation.chat.node"] table tr:last-child td{border-bottom:none}
-/* Code block: a 1px ruled box with square corners and no shadow — the spec-sheet
-   counterpart of the poster's sticker.
 
-   The host's code block is three stacked layers, each carrying its own corner
-   radius: the outer card (--dsl-code-block-border-radius: 12px on every
-   _block_ variant - terminal / read / diff / search / plain), the sticky
-   language banner on top, and the inner pre at the bottom. Squaring only the
-   pre leaves the outer card rounded, which reads as a rounded sticker cap on
-   a square body — so the radius is driven to zero through the custom property
-   here and on all three layers, and the outer card carries the hairline frame.
-   The --dsl-*-radius custom properties are how the host passes its own
-   radius down; re-pointing them keeps the layers consistent, and the explicit
-   border-radius:0 on the shiki pre (whose !important background the host
-   forces) covers the case that only consumes the property. */
-div[data-slot="conversation.chat.node"] :where([class*="_block_"]){
-  --dsl-terminal-radius:0;
-  --dsl-read-radius:0;
-  --dsl-diff-radius:0;
-  --dsl-search-radius:0;
-  --dsl-code-block-border-radius:0;
-}
-div[data-slot="conversation.chat.node"] [class*="_bannerWrap_"],
-div[data-slot="conversation.chat.node"] [class*="_banner_"]{
-  border-top-left-radius:0 !important;
-  border-top-right-radius:0 !important;
-}
-div[data-slot="conversation.chat.node"] pre{
-  border:1px solid var(--dut-line-2) !important;
-  border-radius:0 !important;
-  border-bottom-left-radius:0 !important;
-  border-bottom-right-radius:0 !important;
-  box-shadow:none !important;
-  background:var(--dut-code) !important;
-}
-/* The outer card takes the frame itself (its own background is the code paper),
-   so the hairline reads as one box around banner + code instead of two nested
-   boxes. Only the outermost _block_ is framed; nested code blocks (a diff
-   inside a read, a terminal inside a search card) keep the inner surface. */
-div[data-slot="conversation.chat.node"] [class*="_block_"]:not([class*="_block_"] [class*="_block_"]){
-  border:1px solid var(--dut-line-2) !important;
-  border-radius:0 !important;
-  background:var(--dut-code) !important;
-  overflow:hidden;
-}
-div[data-slot="conversation.chat.node"] [class*="_block_"]:not([class*="_block_"] [class*="_block_"]) :where(pre){
-  border:none !important;
-  border-radius:0 !important;
-  background:transparent !important;
-}
-/* Inline code: monospace, one accent colour, hairline box — the only place this
-   skin spends the accent on type. */
+/* ---- component accents ---- */
+/* Inline code: accent type on a soft code pill. */
 div[data-slot="conversation.chat.node"] :not(pre)>code{
   color:var(--dut-accent) !important;
+  background:var(--dut-code) !important;
   border:1px solid var(--dut-line-1) !important;
-  border-radius:0 !important;
-  padding:0 5px !important;
+  border-radius:6px !important;
+  padding:1px 6px !important;
 }
-/* Composer card: squared, hairline framed, and carrying a 2px accent rule along
-   its top edge so the input reads as the document's own heading block. */
-div[data-composer-card]{
+/* Code block: rounded hairline box, no heavy shadow. */
+div[data-slot="conversation.chat.node"] pre{
   border:1px solid var(--dut-line-2) !important;
-  border-top:2px solid var(--dut-accent) !important;
-  border-radius:0 !important;
+  border-radius:10px !important;
   box-shadow:none !important;
-  background:var(--dut-paper) !important;
+  background:var(--dut-code) !important;
 }
-/* Same quiet track / accent fill treatment the poster skin uses for the
-   context-occupancy ring; scoped to the composer's svg. */
-div[data-composer-card] svg [class*="track"]{stroke:var(--dut-scroll-1)}
-div[data-composer-card] svg [class*="fill"]{stroke:var(--dut-accent)}
-/* Markdown headings: tight, heavy, letter-spaced — the spec-sheet's loudest
-   gesture is the type, not the colour. */
-div[data-slot="conversation.chat.node"] [class*="_markdown_"] h1,
-div[data-slot="conversation.chat.node"] [class*="_markdown_"] h2,
-div[data-slot="conversation.chat.node"] [class*="_markdown_"] h3{
-  letter-spacing:-.015em;
-  line-height:1.15;
-  margin:28px 0 12px;
+/* Table: accent header type with an accent rule under it. */
+div[data-slot="conversation.chat.node"] table th{
+  background:var(--dut-th-bg);
+  color:var(--dut-accent);
+  border-bottom:1px solid var(--dut-accent);
 }
-div[data-slot="conversation.chat.node"] [class*="_markdown_"] h4{
-  font-size:11px;
-  font-weight:700;
-  letter-spacing:.1em;
-  text-transform:uppercase;
-  color:var(--dut-text-2);
-  margin:20px 0 8px;
-}
-/* Rule before an h1/h2 (the document's own section break). */
-div[data-slot="conversation.chat.node"] [class*="_markdown_"] h2{
-  border-top:1px solid var(--dut-line-1);
-  padding-top:18px;
-}
-/* Links: accent colour, no underline at rest, an underline on hover — the
-   editorial convention the stock host also uses. */
+div[data-slot="conversation.chat.node"] table td{border-bottom:1px solid var(--dut-line-1)}
+/* Links and list markers ride the accent. */
 div[data-slot="conversation.chat.node"] [class*="_markdown_"] a{
   color:var(--dut-accent);
   text-decoration:none;
-  border-bottom-color:var(--dut-accent);
+  border-bottom:1px solid var(--dut-accent);
 }
 div[data-slot="conversation.chat.node"] [class*="_markdown_"] a:hover,
-div[data-slot="conversation.chat.node"] [class*="_markdown_"] a:focus{
-  text-decoration:underline;
-  text-decoration-color:var(--dut-accent);
-}
-/* List markers: accent for the first level only, so long nested lists stay
-   readable. */
-div[data-slot="conversation.chat.node"] [class*="_markdown_"] :where(ul,ol)>li::marker{
-  color:var(--dut-accent);
-}
-/* Blockquote: a plain rule with an accent tick, no fill. */
-div[data-slot="conversation.chat.node"] [class*="_markdown_"] blockquote{
-  border-left:1px solid var(--dut-line-2);
-  color:var(--dut-text-2);
-}
-/* Horizontal rule: the spec sheet's full-width hairline. */
-div[data-slot="conversation.chat.node"] [class*="_markdown_"] hr{
-  background:var(--dut-line-2);
-}
-/* Sidebar new-session button: squared ink button with an accent hover. Matched
-   by its CSS-module class, NOT the aria-label — the brand row button shares
-   the same "新建会话" label and must stay plain. */
-button[class*="newSession"]{
-  border-radius:0 !important;
+div[data-slot="conversation.chat.node"] [class*="_markdown_"] a:focus{text-decoration:underline}
+div[data-slot="conversation.chat.node"] [class*="_markdown_"] :where(ul,ol)>li::marker{color:var(--dut-accent)}
+/* Composer: soft framed card with an accent-tinted halo. */
+div[data-composer-card]{
   border:1px solid var(--dut-line-2) !important;
+  border-radius:16px !important;
   background:var(--dut-paper) !important;
-  color:var(--dut-text-1) !important;
-  font-weight:600;
-  letter-spacing:.02em;
+  box-shadow:0 10px 30px color-mix(in srgb, var(--dut-accent) 10%, transparent) !important;
 }
-button[class*="newSession"]:hover{
-  border-color:var(--dut-accent) !important;
-  color:var(--dut-accent) !important;
-  background:var(--dut-paper-2) !important;
+/* Context-occupancy ring: quiet track, accent arc. */
+div[data-composer-card] svg [class*="track"]{stroke:var(--dut-scroll-1)}
+div[data-composer-card] svg [class*="fill"]{stroke:var(--dut-accent)}
+
+/* ---- ambient glow: static, no-animation background behind the messages ----
+   Painted on the conversation scroll viewport ([data-conversation-scroll], a
+   stable host attribute) so it sits behind the messages, not over them. Two
+   soft accent glows radiate toward the middle — one bleeding down from the top
+   edge, one rising from the bottom. The bottom glow is a wide ellipse (wider
+   than the composer) so its light reaches both sides of the input card. Purely
+   static: one cached paint, no per-frame work. Colours are kept light. */
+[data-conversation-scroll]{
+  background-color:var(--dut-paper);
+  background-image:
+    radial-gradient(85% 52% at 50% -10%, color-mix(in srgb, var(--dut-accent) 10%, transparent), transparent 62%),
+    radial-gradient(120% 58% at 50% 112%, color-mix(in srgb, var(--dut-accent) 12%, transparent), transparent 66%);
+  background-repeat:no-repeat;
 }
-/* Plugin's own panels and controls: square, hairline framed. */
-.dut-panel{border-radius:0 !important;border-color:var(--dut-line-2) !important}
-.dut-seg{border-radius:0 !important;border-color:var(--dut-line-2) !important}
-.dut-seg button{border-radius:0 !important}
-.dut-seg button.dut-seg-active{
-  background:var(--dut-text-1) !important;
-  color:var(--dut-btn-fg) !important;
-  font-weight:600;
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-conversation-scroll]{
+  background-image:
+    radial-gradient(85% 52% at 50% -10%, color-mix(in srgb, var(--dut-accent) 15%, transparent), transparent 62%),
+    radial-gradient(120% 58% at 50% 112%, color-mix(in srgb, var(--dut-accent) 18%, transparent), transparent 66%);
 }
-.dut-btn{border-radius:0 !important}
-/* The reset button ("默认") reads as an ink slug once its value is the stock
-   one, exactly like the segmented control's selected chip: this panel has one
-   ink "engaged" state, and leaving this one on the host's blue made it the only
-   coloured control in an otherwise ink-and-paper page. */
-.dut-btn.dut-btn-active,
-.dut-btn.dut-btn-active:hover{
-  background:var(--dut-text-1) !important;
-  color:var(--dut-btn-fg) !important;
-  border-color:var(--dut-text-1) !important;
-}
-.dut-stepper{border-radius:0 !important}
-.dut-text-input{border-radius:0 !important}
-/* The selected theme chip in this panel's segmented control reads as an ink
-   slug; the hover state stays quiet. */
-.dut-seg button:hover:not(:disabled){color:var(--dut-accent)}
 `
 
+/** Light/dark accent pair per particle colour. */
+const PARTICLE_ACCENTS: Record<ParticleColorValue, { light: string; dark: string }> = {
+  mint: { light: '#0e9e90', dark: '#2dd4bf' },
+  electric: { light: '#2f6be0', dark: '#5b9dff' },
+  violet: { light: '#7a4fe0', dark: '#a97bff' },
+  sky: { light: '#0e8fc9', dark: '#38bdf8' },
+  amber: { light: '#c07a2e', dark: '#e0a458' },
+  coral: { light: '#d0603a', dark: '#f0835a' },
+  rose: { light: '#c05f76', dark: '#e08a9b' },
+  silver: { light: '#7e8ca0', dark: '#c7d2e0' },
+}
+
 /**
- * Minimal skin: keep DSH's stock look and change exactly two things — markdown
- * inline code is tinted with the Anthropic red instead of inheriting the body
- * ink, and the composer's thinking-effort labels take the shared band colours
- * (EFFORT_TINT_CSS, emitted alongside this sheet). The hexes mirror the poster
- * skin's own `--dut-accent` pair
- * (deep #c15f3c on light paper, #d97757 on its dark twin), so both skins share
- * one accent; the deeper light-mode value also keeps small code legible on
- * white (4.2:1 against paper, where a bright teal sat at 2.2:1).
- *
- * The host renders both markdown bodies and their compact twins (reasoning
- * rows, tool payloads) with the CSS-modules class `_markdown_<hash>_<line>` —
- * currently `_markdown_uddqf_5` — the same anchor the code-font rule above
- * already matches on. The host's inline-code rule
- * `._markdown_* :not(pre)>code` (0,1,2) declares no colour, so code inherits
- * the markdown root's ink; the attribute selectors here (0,2,3 light, 0,3,4
- * dark) therefore win without `!important` and without depending on sheet
- * order (the host's only `color !important` for code is scoped to `pre`).
- *
- * Only markdown inline code inside the conversation is touched — including
- * markdown the host renders inside tool and search cards, which is intended —
- * while `<pre>` blocks and non-markdown `<code>` (terminal output, code-block
- * card chrome, context / turn-error rows) keep their own palette, as do tables,
- * buttons, popovers and every colour token. The dark rule hangs off
- * `body[data-ds-dark-theme]`, which is where the host puts the scheme marker.
+ * Emit the two `--dut-accent` overrides (light / dark) that recolour the whole
+ * Soft glow skin, accent glow included. Appended after PARTICLES_CSS so it
+ * wins on the same sentinel scope; every derived `--dut-accent-*` variable is
+ * computed from this value at use time.
  */
-const MINIMAL_CSS = `
-div[data-slot="conversation.chat.node"] [class*="_markdown_"] :not(pre)>code{color:#c15f3c}
-body[data-ds-dark-theme] div[data-slot="conversation.chat.node"] [class*="_markdown_"] :not(pre)>code{color:#d97757}
-`
+function buildParticleColorCss(color: ParticleColorValue): string {
+  const pair = PARTICLE_ACCENTS[color] ?? PARTICLE_ACCENTS.mint
+  return `body:not(#dsh-ui-tweaks-theme-scope){--dut-accent:${pair.light}}\nbody:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme]{--dut-accent:${pair.dark}}`
+}
 
 function buildRuntimeCss(value: ResolvedTweaks): string {
   const rules: string[] = []
@@ -1623,18 +1122,11 @@ function buildRuntimeCss(value: ResolvedTweaks): string {
   if (value.timelineStyle === 'web') {
     rules.push('nav[style*="--turn-natural-height"],nav:has(> [class*="_scroller"]),nav:has([class*="_marks"]){display:none !important}')
   }
-  if (value.themeStyle === 'neon-lime') {
-    rules.push(NEON_LIME_CSS)
-  }
-  if (value.themeStyle === 'spec-sheet') {
-    rules.push(SPEC_SHEET_CSS)
-  }
-  if (value.themeStyle === 'minimal') {
-    // The minimal skin takes the shared effort tint as well: picking it
-    // recolours markdown inline code *and* the composer's thinking-effort
-    // labels, so the level is readable at a glance without a second setting.
-    rules.push(MINIMAL_CSS)
-    rules.push(EFFORT_TINT_CSS)
+  if (value.themeStyle === 'particles') {
+    // Base palette + component accents, then the chosen particle colour's
+    // light/dark accent override (appended last so it wins on the same scope).
+    rules.push(PARTICLES_CSS)
+    rules.push(buildParticleColorCss(value.particleColor))
   }
   return rules.join('\n')
 }
@@ -1696,6 +1188,12 @@ const BASE_CSS = `
 .dut-seg button.dut-seg-active{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);color:var(--dsw-alias-state-business-primary);font-weight:600;box-shadow:none}
 .dut-seg button.dut-seg-active:hover:not(:disabled){color:var(--dsw-alias-state-business-primary)}
 .dut-seg button:disabled{opacity:.45;cursor:default}
+.dut-swatches{display:inline-flex;gap:8px;flex-wrap:wrap;align-items:center}
+.dut-sw{width:26px;height:26px;box-sizing:border-box;border-radius:50%;border:1px solid var(--dsw-alias-border-l2);padding:3px;background:transparent;cursor:pointer;display:grid;place-items:center;transition:box-shadow .15s ease,border-color .15s ease}
+.dut-sw>span{display:block;width:100%;height:100%;border-radius:50%}
+.dut-sw:hover:not(:disabled){border-color:var(--dsw-alias-label-tertiary)}
+.dut-sw.active{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary);border-color:transparent}
+.dut-sw:disabled{opacity:.45;cursor:default}
 .dut-text-input{height:28px;width:110px;padding:0 10px;border:1px solid var(--dsw-alias-border-l1);border-radius:9px;background:var(--dsw-alias-bg-layer-2);color:inherit;font:inherit;font-size:12.5px}
 .dut-text-input:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}
 .dut-text-input:disabled{opacity:.45}
@@ -2000,6 +1498,10 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     void controller.set('themeStyle', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
+  const setParticleColor = (value: ParticleColorValue): void => {
+    void controller.set('particleColor', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
+  }
+
   /** Master switch; enabling also asks for notification permission inside this click gesture (a no-op in the desktop shell, which auto-grants it). */
   const setNotifications = (value: boolean): void => {
     if (value) requestNotifyPermission()
@@ -2102,13 +1604,34 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
             <div className="dut-controls">
               <div className="dut-seg">
                 <button type="button" className={resolved.themeStyle === 'default' ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setTheme('default') }}>{t('themeDefault')}</button>
-                <button type="button" className={resolved.themeStyle === 'minimal' ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setTheme('minimal') }}>{t('themeMinimal')}</button>
-                <button type="button" className={resolved.themeStyle === 'neon-lime' ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setTheme('neon-lime') }}>{t('themeNeonLime')}</button>
-                <button type="button" className={resolved.themeStyle === 'spec-sheet' ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setTheme('spec-sheet') }}>{t('themeSpecSheet')}</button>
+                <button type="button" className={resolved.themeStyle === 'particles' ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setTheme('particles') }}>{t('themeParticles')}</button>
               </div>
             </div>
           </div>
         </div>
+        {resolved.themeStyle === 'particles' ? (
+          <div className="dut-field">
+            <div className="dut-field-top">
+              <span className="dut-label">{t('particleColor')}<Hint text={t('particleColorHint')} /></span>
+              <div className="dut-controls">
+                <div className="dut-swatches">
+                  {PARTICLE_COLORS.map(color => (
+                    <button
+                      key={color}
+                      type="button"
+                      className={'dut-sw' + (resolved.particleColor === color ? ' active' : '')}
+                      disabled={!writable}
+                      title={t(PARTICLE_LABEL[color])}
+                      aria-label={t(PARTICLE_LABEL[color])}
+                      aria-pressed={resolved.particleColor === color}
+                      onClick={() => { setParticleColor(color) }}
+                    ><span style={{ background: PARTICLE_SWATCH[color] }} /></button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
         <div className="dut-field">
           <div className="dut-field-top">
             <span className="dut-label">{t('preciseCacheHit')}<Hint text={t('preciseCacheHitHint')} /></span>
@@ -2673,33 +2196,6 @@ export function apply(ctx: ClientContext): void {
       disposeEntry = undefined
     }
   }, 'dsh-ui-tweaks: precise cache hit')
-
-  // Thinking-effort tint: tags thinking-effort labels — the composer
-  // trigger, the menu root Effort cell and the menu effort options — so the
-  // skins can paint solid band colors plus a hover background wash. Mounted
-  // while either skin that renders band colours is active ('neon-lime' and
-  // 'minimal' both emit EFFORT_TINT_CSS); every other theme keeps the stock
-  // caption, and leaving those themes removes every tag.
-  ctx.effect(() => {
-    let disposeTag: (() => void) | undefined
-    const sync = (): void => {
-      const theme = controller.getSnapshot().value?.themeStyle
-      const tinted = theme === 'neon-lime' || theme === 'minimal'
-      if (tinted && disposeTag === undefined) {
-        disposeTag = installEffortTag()
-      } else if (!tinted && disposeTag !== undefined) {
-        disposeTag()
-        disposeTag = undefined
-      }
-    }
-    sync()
-    const unsubscribe = controller.subscribe(sync)
-    return () => {
-      unsubscribe()
-      disposeTag?.()
-      disposeTag = undefined
-    }
-  }, 'dsh-ui-tweaks: effort tint')
 
   // Task notifications: watch every session on the list feed and raise
   // tab-title / system-notification / chime alerts when one finishes its turn
