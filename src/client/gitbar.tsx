@@ -4,8 +4,8 @@
  * Git integration for the conversation UI, all riding DSH-native surfaces:
  *
  * - **branch chip** (`conversation.session.header.actions`, beside the
- *   title): folder + current branch; opens a popup with local/remote
- *   branches, a new-branch field, and the commit graph.
+ *   title): current branch; opens a popup with local/remote branches, a
+ *   new-branch field, and the commit graph.
  * - **diff** (right-sidebar tab): the changed-file list and per-file
  *   diff (changed hunks by default, whole file on toggle) in the same
  *   sidebar, keeping its commit band at the foot so committing works from
@@ -23,7 +23,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import { createRoot } from 'react-dom/client'
-import type { ISessions, SessionSnapshot } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionSnapshot } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SettingsClient } from './index.tsx'
 import { GRAPH_LANE_W, GRAPH_ROW_H, layoutCommitGraph } from './graphlayout.ts'
@@ -35,6 +35,10 @@ const GIT_ROUTE = '/_dsh/ui-tweaks/git'
 
 /** Poll interval for the status snapshot, in ms. */
 const POLL_MS = 10000
+
+/** Width and trigger gap of the header branch popup (kept in sync with CSS). */
+const BRANCH_POP_WIDTH = 300
+const BRANCH_POP_GAP = 8
 
 /** Default cap of the file list while its height is still automatic, in px. */
 const FILES_AUTO_MAX = 150
@@ -227,14 +231,6 @@ function targetQuery(t: GitTarget): string {
   return ''
 }
 
-/** Basename of a cwd path ('' / undefined → '—'), for the chip's folder label. */
-function basenameOf(path: string | undefined): string {
-  if (path === undefined || path === '') return '—'
-  const norm = path.replace(/[\\/]+$/, '')
-  const idx = Math.max(norm.lastIndexOf('\\'), norm.lastIndexOf('/'))
-  return idx >= 0 ? norm.slice(idx + 1) : norm
-}
-
 // ---------------------------------------------------------------------------
 // GitBar styles — DSH theme tokens only (light + dark).
 // ---------------------------------------------------------------------------
@@ -242,7 +238,7 @@ function basenameOf(path: string | undefined): string {
 export const GITBAR_CSS = `
 /* DSH does not force border-box globally; normalize it for the whole GitBar
    subtree (including the body-portaled panels/modal), or widths overflow. */
-.gbar,.gbar *,.gbar-view,.gbar-view *,.gbar-modal-wrap,.gbar-modal-wrap *,.gbar-notice,.gbar-notice *{box-sizing:border-box}
+.gbar,.gbar *,.gbar-pop,.gbar-pop *,.gbar-view,.gbar-view *,.gbar-modal-wrap,.gbar-modal-wrap *,.gbar-notice,.gbar-notice *{box-sizing:border-box}
 /* Anchor around each pill inside the composer tool row
    (conversation.input.left / .right): the branch pill's containing block, so
    its popup opens from the pill itself. flex:0 1 auto + min-width:0 let the
@@ -309,9 +305,10 @@ export const GITBAR_CSS = `
   display:flex;flex-direction:column;overflow:hidden;
   animation:gpop-down .16s cubic-bezier(.32,.72,0,1);
 }
-.gbar-pop::before{content:"";position:absolute;top:-5px;left:22px;width:9px;height:9px;
-  background:var(--dsw-alias-bg-layer-1);border-left:1px solid var(--dsw-alias-border-l2);
-  border-top:1px solid var(--dsw-alias-border-l2);transform:rotate(45deg)}
+/* Header popup is portalled to <body>: the host's titleCluster clips its own
+   children (overflow:clip, hit testing included), so anchoring an absolute
+   popup inside the header capsule would paint it outside the clip forever. */
+.gbar-pop.gbar-pop-fixed{position:fixed;left:auto;top:auto}
 @keyframes gpop-down{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
 .gbar-pop-head{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-module-platform)}
 .gbar-pop-head .gbar-bicon{width:14px;height:14px;flex:none}
@@ -687,20 +684,7 @@ export const GITBAR_CSS = `
 .gbar-chip-dot{width:6px;height:6px;border-radius:50%;flex:none;pointer-events:none;
   background:var(--dsw-alias-state-warn-primary)}
 .gbar-chip .gbar-bname{max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* folder label — plain context beside the capsule: NO background (not a
-   capsule), not clickable and no hover, so only the branch carries the pill.
-   Same 22px / 12px type as the agent-preset badge beside it, and like that
-   label the folder name stays selectable so it can be copied with the mouse;
-   cursor:auto lets the browser show the text caret over the selectable name,
-   exactly like that label. */
-.gbar-fchip{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 2px;
-  color:var(--dsw-alias-label-secondary);
-  font:inherit;font-size:12px;font-weight:400;line-height:22px;white-space:nowrap;
-  -webkit-user-select:text;user-select:text;cursor:auto}
-.gbar-fchip svg{width:14px;height:14px;flex:none;opacity:.9}
-.gbar-fchip .gbar-folder{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* wraps the interactive branch capsule so its popup anchors to the capsule,
-   not to the whole folder + branch row */
+/* wraps the interactive branch capsule so its popup anchors to the capsule */
 .gbar-bwrap{position:relative;display:inline-flex;align-items:center}
 
 /* icon buttons in side-panel heads (half-screen toggle, diff refresh) */
@@ -788,7 +772,7 @@ const warmInflight = new Map<string, Promise<void>>()
  * finishes loading — seconds on large inactive sessions — so their own fetch
  * would start just as late. This warmup runs from the input dock, which mounts
  * immediately on session switch: by the time the header chip appears it reads
- * a warm cache and paints folder+branch instantly.
+ * a warm cache and paints the branch instantly.
  */
 export function warmGitStatus(target: GitTarget): void {
   const key = target.session ?? target.ws ?? ''
@@ -912,39 +896,33 @@ function useGitStatus(enabled: boolean, target: GitTarget): [GitSnapshot | null,
 // ---------------------------------------------------------------------------
 // Branch chip — `conversation.session.header.actions` (beside the title,
 // before the mode badge). Native header-seat styling; the menu opens DOWNWARD
-// from the chip. The folder label comes from the snapshot's cwd.
+// from the chip.
 // ---------------------------------------------------------------------------
+
+/** Viewport coordinates for the portalled header branch popup. */
+interface BranchPopBox {
+  left: number
+  top: number
+}
 
 export interface BranchChipProps {
   /** Framework session kit: the definite current session id. */
   sessionId: SessionId
-  /** Injected: the client sessions service (list feed carrying each row's cwd). */
-  sessionsService: ISessions
   /** Injected: the ui-tweaks settings store (reads `gitBarEnabled`). */
   controller: SettingsClient
   /** Locale-bound translator for the GitBar labels. */
   t: Translate
 }
 
-export function BranchChipEntry({ sessionId, sessionsService, controller, t }: BranchChipProps) {
+export function BranchChipEntry({ sessionId, controller, t }: BranchChipProps) {
   const settingsState = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
   const enabled = settingsState.value?.gitBarEnabled ?? true
   const sessionStr = String(sessionId)
   const target: GitTarget = { session: sessionStr }
 
-  // Folder straight off the live sessions list feed (the same rows the left
-  // sidebar shows) — zero network, correct from the very first paint even
-  // before /status answers.
-  const list = sessionsService.list
-  const subscribeList = useMemo(() => list.subscribe.bind(list), [list])
-  const feedCwd = useSyncExternalStore(
-    subscribeList,
-    () => list.getSnapshot().byId[sessionId]?.cwd,
-    () => undefined,
-  )
-
   const [snapshot, refresh] = useGitStatus(enabled, target)
   const [branchOpen, setBranchOpen] = useState(false)
+  const [branchPopBox, setBranchPopBox] = useState<BranchPopBox | null>(null)
   const [branches, setBranches] = useState<GitBranches | null>(null)
   const [newBranchName, setNewBranchName] = useState('')
   const [pushToRemote, setPushToRemote] = useState(false)
@@ -1018,8 +996,24 @@ export function BranchChipEntry({ sessionId, sessionsService, controller, t }: B
       .catch(cause => { showNotice('err', cause instanceof Error ? cause.message : String(cause)) })
   }
 
+  /** Anchor the portalled popup under the branch chip, clamped to the viewport. */
+  const placeBranchPop = useCallback((): void => {
+    const chip = branchRef.current
+    if (chip === null) return
+    const rect = chip.getBoundingClientRect()
+    const left = Math.min(
+      Math.max(8, rect.left),
+      Math.max(8, window.innerWidth - BRANCH_POP_WIDTH - 8),
+    )
+    setBranchPopBox({
+      left,
+      top: rect.bottom + BRANCH_POP_GAP,
+    })
+  }, [])
+
   const toggleBranch = (): void => {
     const next = !branchOpen
+    if (next) placeBranchPop()
     setBranchOpen(next)
     if (next) { loadBranches(); loadTags() }
   }
@@ -1238,50 +1232,29 @@ export function BranchChipEntry({ sessionId, sessionsService, controller, t }: B
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') setBranchOpen(false)
     }
+    const reposition = (): void => { placeBranchPop() }
     document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey)
+    window.addEventListener('resize', reposition)
+    window.addEventListener('scroll', reposition, true)
     return () => {
       document.removeEventListener('mousedown', onDown)
       document.removeEventListener('keydown', onKey)
+      window.removeEventListener('resize', reposition)
+      window.removeEventListener('scroll', reposition, true)
     }
-  }, [branchOpen])
+  }, [branchOpen, placeBranchPop])
 
   if (!enabled || sessionStr === undefined) return null
-  // A genuine non-repo directory hides the chip entirely. An UNRESOLVED target
-  // (host still materializing sessions right after a restart) is transient:
-  // fall through to the folder-only paint below instead of going blank.
-  if (snapshot !== null && snapshot.unresolved !== true && !snapshot.isRepo) return null
-
-  // While the first /status round-trip is in flight — or while the host has
-  // not resolved this session yet — paint the folder alone straight off the
-  // sessions-list feed (the sidebar's own rows — zero network, so it appears
-  // the moment the sidebar row does); the branch capsule joins as soon as the
-  // backoff chase lands a real snapshot.
-  if (snapshot === null || snapshot.unresolved === true) {
-    if (feedCwd === undefined || feedCwd === '') return null
-    return (
-      <span className="gbar" data-slot-plugin="dsh-ui-tweaks-gitbar">
-        <span className="gbar-fchip" title={feedCwd}>
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M1.5 4A1.5 1.5 0 0 1 3 2.5h3l1.5 2H13A1.5 1.5 0 0 1 14.5 6v6A1.5 1.5 0 0 1 13 13.5H3A1.5 1.5 0 0 1 1.5 12V4Z" />
-          </svg>
-          <span className="gbar-folder">{basenameOf(feedCwd)}</span>
-        </span>
-      </span>
-    )
-  }
+  // A genuine non-repo directory hides the chip entirely. While the host has
+  // not resolved the target yet, or the first /status round-trip is still in
+  // flight, render nothing: the chip has no branch to show yet.
+  if (snapshot === null || snapshot.unresolved === true || !snapshot.isRepo) return null
 
   const dirty = !snapshot.clean
 
   return (
     <span className="gbar" data-slot-plugin="dsh-ui-tweaks-gitbar">
-      {/* Folder label — plain (no capsule), not clickable */}
-      <span className="gbar-fchip" title={feedCwd ?? snapshot.cwd}>
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <path d="M1.5 4A1.5 1.5 0 0 1 3 2.5h3l1.5 2H13A1.5 1.5 0 0 1 14.5 6v6A1.5 1.5 0 0 1 13 13.5H3A1.5 1.5 0 0 1 1.5 12V4Z" />
-        </svg>
-        <span className="gbar-folder">{basenameOf(feedCwd ?? snapshot.cwd)}</span>
-      </span>
       {/* Branch capsule — clickable, opens the branch popup */}
       <span className="gbar-bwrap">
         <button
@@ -1307,9 +1280,19 @@ export function BranchChipEntry({ sessionId, sessionsService, controller, t }: B
         </button>
 
         {/* Branch popup — pinned header (current branch + worktree state),
-            scrolling local/remote lists, pinned action entries */}
-        {branchOpen ? (
-          <div className="gbar-pop" role="menu" aria-label={snapshot.branch ?? 'git'} ref={branchPopRef}>
+            scrolling local/remote lists, pinned action entries. Portalled to
+            the body because the host titleCluster clips its descendants. */}
+        {branchOpen && branchPopBox !== null ? createPortal(
+          <div
+            className="gbar-pop gbar-pop-fixed"
+            role="menu"
+            aria-label={snapshot.branch ?? 'git'}
+            ref={branchPopRef}
+            style={{
+              left: branchPopBox.left,
+              top: branchPopBox.top,
+            }}
+          >
           <div className="gbar-pop-head">
             <span className="gbar-curname" title={dirty ? t('dirty') : t('clean')}>
               <svg className="gbar-bicon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1450,7 +1433,8 @@ export function BranchChipEntry({ sessionId, sessionsService, controller, t }: B
               {t('tagsTitle')}
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       ) : null}
       </span>
 
@@ -2262,12 +2246,6 @@ function HeroBranchChip({ t, right, top }: {
 
   return (
     <div className="gbar-hero" style={{ top, right }}>
-      <span className="gbar-fchip" title={snapshot.cwd}>
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <path d="M1.5 4A1.5 1.5 0 0 1 3 2.5h3l1.5 2H13A1.5 1.5 0 0 1 14.5 6v6A1.5 1.5 0 0 1 13 13.5H3A1.5 1.5 0 0 1 1.5 12V4Z" />
-        </svg>
-        <span className="gbar-folder">{basenameOf(snapshot.cwd)}</span>
-      </span>
       <span className="gbar-bwrap">
         <button
           type="button"

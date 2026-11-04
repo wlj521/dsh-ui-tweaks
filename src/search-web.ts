@@ -6,9 +6,11 @@
  * in the DSH credentials center file `~/.dsh/.credentials.yaml` — the same
  * place the harness LLM provider keys live — so the settings document never
  * holds secrets and both the search provider and other tooling resolve them
- * through the credentials service. Reads return only boolean presence, never
- * key material; writes are parsed with yaml's Document API (comments kept)
- * and persisted atomically, like the MCP manager's patch-file writes.
+ * through the credentials service. Reads return only boolean presence; a
+ * separate same-origin `reveal-key` action returns one key only when the user
+ * explicitly asks to show it, and key material is never included in the list
+ * snapshot. Writes are parsed with yaml's Document API (comments kept) and
+ * persisted atomically, like the MCP manager's patch-file writes.
  * @module dsh-ui-tweaks/search-web
  */
 
@@ -50,6 +52,7 @@ export interface SearchKeysSnapshot {
 type SearchRequest =
   | { action: 'save-key'; engine: EngineKey; value: string }
   | { action: 'clear-key'; engine: EngineKey }
+  | { action: 'reveal-key'; engine: EngineKey }
   | { action: 'test'; engine: string }
   | { action: 'sync-patch'; enabled: boolean }
 
@@ -267,6 +270,16 @@ export class SearchBackend {
     }
   }
 
+  /** Return one stored key for the explicit reveal action; never included in list snapshots. */
+  private async revealKey(engine: EngineKey): Promise<string> {
+    const doc = await readCredentials()
+    const value = doc.getIn([REFS_SECTION, KEY_ENV_NAMES[engine]])
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      throw new Error(`${KEY_ENV_NAMES[engine]} is not configured`)
+    }
+    return value
+  }
+
   /** Live end-to-end engine test: one real search through the provider. */
   private async testEngine(engine: string): Promise<void> {
     const row = this.ctx.settings.describe().find(candidate => candidate.ns === 'ui-tweaks')
@@ -324,6 +337,10 @@ export class SearchBackend {
       return
     }
     try {
+      if (request.action === 'reveal-key') {
+        json(res, 200, { ok: true, value: { key: await this.revealKey(request.engine) } })
+        return
+      }
       if (request.action === 'save-key') await this.saveKey(request.engine, request.value)
       else if (request.action === 'clear-key') await this.clearKey(request.engine)
       // The toggle passes its target state explicitly: the settings write and
@@ -352,6 +369,9 @@ function parseRequest(value: unknown): SearchRequest {
   }
   if (value.action === 'clear-key') {
     return { action: 'clear-key', engine: engine as EngineKey }
+  }
+  if (value.action === 'reveal-key') {
+    return { action: 'reveal-key', engine: engine as EngineKey }
   }
   if (value.action === 'test') {
     return { action: 'test', engine }

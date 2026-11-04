@@ -29,18 +29,41 @@ function push(chunk) {
   outputLine += chunk.split('\n').length - 1
 }
 
+/**
+ * Minify CSS template literals while preserving each file's line count, so the
+ * sectioned source maps keep the offsets tsc reported. CSS is a runtime
+ * stylesheet string; esbuild's JS minifier cannot shrink it itself and the
+ * shipped bundle must stay under the 256 KB review limit.
+ */
+async function minifyCssConstants(source) {
+  const pattern = /((?:exports\.|const |var )[A-Za-z0-9_$]+_CSS = `)([\s\S]*?)(`)/gu
+  const chunks = []
+  let last = 0
+  for (const match of source.matchAll(pattern)) {
+    const css = match[2]
+    const newlineCount = (css.match(/\n/gu) ?? []).length
+    const minified = (await transform(css, { loader: 'css', minify: true })).code.trim()
+    chunks.push(source.slice(last, match.index), match[1], minified, '\n'.repeat(newlineCount), match[3])
+    last = match.index + match[0].length
+  }
+  chunks.push(source.slice(last))
+  return chunks.join('')
+}
+
 push('window.__ModuleLoader__.load({ id: "dsh-ui-tweaks", factory: (require) => {')
 push('var __modules = Object.create(null); var __cache = Object.create(null);')
 const sections = []
 for (const filename of compiledFiles) {
   const moduleId = `./${filename}`
   const compiledPath = join(compiledRoot, filename)
-  const source = (await readFile(compiledPath, 'utf8'))
-    .replace(/\n?\/\/# sourceMappingURL=.*$/u, '')
-    // Keep host package imports on `require`, but route compiler-emitted local
-    // CommonJS imports through the private module table. `__load_` has the
-    // same width as `require`, so the sectioned source maps remain aligned.
-    .replace(/\brequire(?=\(["']\.\.?\/)/gu, '__load_')
+  const source = await minifyCssConstants(
+    (await readFile(compiledPath, 'utf8'))
+      .replace(/\n?\/\/# sourceMappingURL=.*$/u, '')
+      // Keep host package imports on `require`, but route compiler-emitted local
+      // CommonJS imports through the private module table. `__load_` has the
+      // same width as `require`, so the sectioned source maps remain aligned.
+      .replace(/\brequire(?=\(["']\.\.?\/)/gu, '__load_'),
+  )
   push(`__modules[${JSON.stringify(moduleId)}] = function(module, exports, require, __load_) {`)
   sections.push({
     offset: { line: outputLine + 1, column: 0 },

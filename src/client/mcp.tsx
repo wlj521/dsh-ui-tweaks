@@ -4,13 +4,14 @@
  * Renders the "MCP 管理" settings section (usable when the mcpManagerEnabled
  * toggle in 界面调整 is on — otherwise it shows an invite card). The section
  * lists every configured MCP server with its status (active / failed / loading
- * / stopped / stopping / disabled), command / url, env names, registered
- * tools, and offers per-server actions: **启用/停用**, **编辑**, and **删除**
+ * / stopped / stopping / disabled), transport, command / URL and tool count,
+ * and offers per-server actions: **启用/停用**, **编辑**, and **删除**
  * (two-click confirm). An **添加服务器** button opens the editor, which
  * supports BOTH a structured **表单** and a raw **YAML** mode (the config is
  * validated on the server before the profile's `cordis.patch.yml` is
  * rewritten; DSH's patch watcher then hot-reloads the loader so the server
- * starts/stops live).
+ * starts/stops live). Environment variables and HTTP headers use a scrollable
+ * key/value row editor so long configs stay readable.
  *
  * Every mutation rewrites the profile patch, which kicks off an asynchronous
  * chain (patch watcher → loader reload → MCP process spawn/teardown). The UI
@@ -20,7 +21,7 @@
  * @module dsh-ui-tweaks/client/mcp
  */
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import type { SettingsClient } from './index.tsx'
 
@@ -30,7 +31,7 @@ const MCP_ROUTE = '/_dsh/ui-tweaks/mcp'
 /** Locale keys the MCP manager reads off the `ui-tweaks` dictionary. */
 type McpLabelKey =
   | 'mcpTitle' | 'mcpEmpty' | 'mcpStatusActive' | 'mcpStatusFailed' | 'mcpStatusLoading'
-  | 'mcpStatusStopped' | 'mcpStatusStopping' | 'mcpStatusDisabled' | 'mcpTools' | 'mcpEnv' | 'mcpUnavailable'
+  | 'mcpStatusStopped' | 'mcpStatusStopping' | 'mcpStatusDisabled' | 'mcpTools' | 'mcpUnavailable'
   | 'mcpDisabledHint' | 'mcpEnable' | 'mcpServerDetail' | 'mcpAdd' | 'mcpAddTitle' | 'mcpEditTitle'
   | 'mcpEdit' | 'mcpDelete' | 'mcpEnabledAction' | 'mcpDisabledAction' | 'mcpSaved' | 'mcpRemoved'
   | 'mcpFormTab' | 'mcpYamlTab' | 'mcpYamlHint' | 'mcpYamlPlaceholder' | 'mcpFieldId'
@@ -38,6 +39,10 @@ type McpLabelKey =
   | 'mcpFieldCommand' | 'mcpFieldCommandPlaceholder' | 'mcpFieldArgs' | 'mcpFieldEnv'
   | 'mcpFieldUrl' | 'mcpFieldHeaders' | 'mcpFieldEnabled' | 'mcpSave' | 'mcpCancel'
   | 'mcpInvalidId' | 'mcpInvalidName' | 'mcpInvalidTimeout' | 'mcpInvalidUrl' | 'mcpInvalidCommand'
+  | 'mcpBasicSection' | 'mcpConnectionSection' | 'mcpEnvHint' | 'mcpHeadersHint'
+  | 'mcpAddEnv' | 'mcpAddHeader' | 'mcpEnvEmpty' | 'mcpHeadersEmpty'
+  | 'mcpKeyPlaceholder' | 'mcpValuePlaceholder' | 'mcpHeaderKeyPlaceholder'
+  | 'mcpRemoveRow' | 'mcpDuplicateKey' | 'mcpEmptyKey' | 'mcpEditorHint'
   | 'unavailable' | 'loading'
 
 type Translate = (key: McpLabelKey) => string
@@ -120,84 +125,195 @@ function linesToArray(text: string): string[] {
   return text.split(/\r?\n/u).map(line => line.trim()).filter(line => line.length > 0)
 }
 
-/** Parse `KEY=value` (or `Key: value`) lines into a record; throws on malformed lines. */
-function linesToRecord(text: string, separator: '=' | ':'): Record<string, string> {
+/** One editable key/value pair in the environment-variable or header editor. */
+interface KeyValueRow {
+  /** Stable React key; the key/value strings themselves may be empty. */
+  uid: number
+  key: string
+  value: string
+}
+
+let nextKeyValueUid = 1
+
+function newKeyValueRow(): KeyValueRow {
+  return { uid: nextKeyValueUid++, key: '', value: '' }
+}
+
+/** Turn a persisted record into editable rows, preserving its insertion order. */
+function recordToRows(record: Record<string, string>): KeyValueRow[] {
+  return Object.entries(record).map(([key, value]) => ({ uid: nextKeyValueUid++, key, value }))
+}
+
+/** Build the saved record; blank rows are ignored, blank keys and duplicates are rejected. */
+function rowsToRecord(rows: KeyValueRow[], t: Translate): Record<string, string> {
   const out: Record<string, string> = {}
-  for (const line of text.split(/\r?\n/u)) {
-    const trimmed = line.trim()
-    if (trimmed.length === 0) continue
-    const at = trimmed.indexOf(separator)
-    if (at <= 0) throw new Error(`格式不正确：${trimmed}`)
-    const key = trimmed.slice(0, at).trim()
-    const value = trimmed.slice(at + 1).trim()
-    if (key.length === 0) throw new Error(`格式不正确：${trimmed}`)
+  for (const row of rows) {
+    const key = row.key.trim()
+    const value = row.value.trim()
+    if (key === '') {
+      if (value !== '') throw new Error(t('mcpEmptyKey'))
+      continue
+    }
+    if (Object.prototype.hasOwnProperty.call(out, key)) {
+      throw new Error(`${t('mcpDuplicateKey')}: ${key}`)
+    }
     out[key] = value
   }
   return out
 }
 
-function recordToLines(record: Record<string, string>, separator: '=' | ':'): string {
-  return Object.entries(record).map(([key, value]) => `${key}${separator}${value}`).join('\n')
+/** Scrollable key/value row editor shared by env vars and HTTP headers. */
+function KeyValueEditor(props: {
+  rows: KeyValueRow[]
+  onChange: (rows: KeyValueRow[]) => void
+  keyTitle: string
+  valueTitle: string
+  keyPlaceholder: string
+  valuePlaceholder: string
+  emptyText: string
+  addText: string
+  removeText: string
+}) {
+  const update = (uid: number, patch: Partial<Pick<KeyValueRow, 'key' | 'value'>>): void => {
+    props.onChange(props.rows.map(row => (row.uid === uid ? { ...row, ...patch } : row)))
+  }
+  const listRef = useRef<HTMLDivElement>(null)
+  const previousCount = useRef(props.rows.length)
+  useEffect(() => {
+    if (props.rows.length > previousCount.current) {
+      const list = listRef.current
+      if (list !== null) list.scrollTop = list.scrollHeight
+    }
+    previousCount.current = props.rows.length
+  }, [props.rows.length])
+  return (
+    <div className="dut-mcp-kv">
+      <div className="dut-mcp-kv-head" aria-hidden>
+        <span>{props.keyTitle}</span>
+        <span>{props.valueTitle}</span>
+        <span />
+      </div>
+      <div className="dut-mcp-kv-list" ref={listRef}>
+        {props.rows.length === 0 ? (
+          <div className="dut-mcp-kv-empty">{props.emptyText}</div>
+        ) : props.rows.map(row => (
+          <div className="dut-mcp-kv-row" key={row.uid}>
+            <input
+              className="dut-mcp-input"
+              value={row.key}
+              placeholder={props.keyPlaceholder}
+              spellCheck={false}
+              autoComplete="off"
+              onChange={event => { update(row.uid, { key: event.target.value }) }}
+            />
+            <input
+              className="dut-mcp-input"
+              value={row.value}
+              placeholder={props.valuePlaceholder}
+              spellCheck={false}
+              autoComplete="off"
+              onChange={event => { update(row.uid, { value: event.target.value }) }}
+            />
+            <button
+              type="button"
+              className="dut-mcp-kv-del"
+              title={props.removeText}
+              aria-label={props.removeText}
+              onClick={() => { props.onChange(props.rows.filter(item => item.uid !== row.uid)) }}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
+      <button type="button" className="dut-mcp-addrow" onClick={() => { props.onChange([...props.rows, newKeyValueRow()]) }}>
+        + {props.addText}
+      </button>
+    </div>
+  )
 }
 
-export const MCP_CSS = `
-.dut-mcp{display:grid;gap:12px;max-width:680px;padding:6px 2px 36px}
-.dut-mcp-head{display:flex;align-items:center;gap:10px;padding:14px 16px 0}
-.dut-mcp-head h2{margin:0;font-size:15px;font-weight:600;letter-spacing:-.01em;color:var(--dsw-alias-label-primary)}
-.dut-mcp-count{font-size:11.5px;color:var(--dsw-alias-label-secondary);padding:2px 8px;border-radius:999px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1)}
-.dut-mcp-spacer{flex:1}
-.dut-mcp-btn{display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:999px;border:1px solid var(--dsw-alias-border-l1);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease}
-.dut-mcp-btn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.dut-mcp-btn:disabled{opacity:.5;cursor:default}
+export const MCP_CSS = `.dut-mcp{display:grid;gap:14px;width:100%;max-width:820px;padding:4px 2px 36px}
+.dut-mcp-shell{overflow:hidden}
+.dut-mcp-head{display:flex;align-items:flex-start;gap:16px;padding:20px 20px 16px;border-bottom:1px solid var(--dsw-alias-border-l1)}
+.dut-mcp-heading{display:grid;gap:6px;flex:1;min-width:0}
+.dut-mcp-titleline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.dut-mcp-head h2{margin:0;font-size:17px;line-height:1.3;font-weight:650;letter-spacing:-.015em;color:var(--dsw-alias-label-primary)}
+.dut-mcp-desc{margin:0;font-size:12px;line-height:1.55;color:var(--dsw-alias-label-tertiary)}
+.dut-mcp-count{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:999px;font-size:11px;white-space:nowrap;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1)}
+.dut-mcp-count.dut-mcp-count-ok{color:var(--dsw-alias-state-success-primary);background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 11%,transparent);border-color:transparent}
+.dut-mcp-add{display:inline-flex;align-items:center;gap:6px;flex:none;height:32px;padding:0 14px;border-radius:9px;border:1px solid color-mix(in srgb,var(--dsw-alias-state-business-primary) 45%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);color:var(--dsw-alias-state-business-primary);font:inherit;font-size:12px;font-weight:600;cursor:pointer;transition:background .15s ease,border-color .15s ease}
+.dut-mcp-add:hover{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 19%,transparent);border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 60%,transparent)}
+.dut-mcp-btn{display:inline-flex;align-items:center;justify-content:center;height:26px;padding:0 10px;border-radius:7px;border:1px solid transparent;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11.5px;cursor:pointer;white-space:nowrap;transition:background .15s ease,color .15s ease,border-color .15s ease}
+.dut-mcp-btn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l1)}
+.dut-mcp-btn:disabled{opacity:.45;cursor:default}
 .dut-mcp-btn.dut-mcp-del:hover{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 55%,transparent);color:var(--dsw-alias-state-error-primary);background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent)}
-.dut-mcp-btn.dut-mcp-confirm{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 55%,transparent);color:var(--dsw-alias-state-error-primary);font-weight:600}
-.dut-mcp-body{display:grid;gap:2px;margin-top:4px}
-.dut-mcp-row{display:grid;gap:6px;padding:10px 16px;border-radius:12px}
-.dut-mcp-row:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.dut-mcp-row-main{display:flex;align-items:center;gap:8px;min-width:0}
-.dut-mcp-name{font-size:13.5px;font-weight:600;color:var(--dsw-alias-label-primary);white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
-.dut-mcp-badge{flex:none;font-size:11px;line-height:1;padding:4px 9px;border-radius:999px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary)}
+.dut-mcp-btn.dut-mcp-confirm{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 55%,transparent)!important;color:var(--dsw-alias-state-error-primary)!important;font-weight:600;background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 9%,transparent)!important}
+.dut-mcp-body{display:grid;gap:8px;padding:14px 16px 18px}
+.dut-mcp-card{display:grid;gap:8px;padding:12px 14px;border:1px solid var(--dsw-alias-border-l1);border-radius:14px;background:var(--dsw-alias-bg-layer-1);transition:border-color .15s ease,box-shadow .15s ease,background .15s ease}
+.dut-mcp-card:hover{border-color:var(--dsw-alias-border-l2);box-shadow:var(--dsw-shadow-lv1);background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 82%,var(--dsw-alias-interactive-bg-hover))}
+.dut-mcp-card-top{display:flex;align-items:center;gap:12px;min-width:0}
+.dut-mcp-card-info{display:flex;align-items:center;gap:7px;min-width:0;flex:1;flex-wrap:wrap}
+.dut-mcp-name{font-size:14px;font-weight:650;color:var(--dsw-alias-label-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px}
+.dut-mcp-badge{flex:none;font-size:10.5px;line-height:1;padding:4px 8px;border-radius:999px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary)}
 .dut-mcp-badge.dut-mcp-ok{background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 12%,transparent);border-color:transparent;color:var(--dsw-alias-state-success-primary)}
 .dut-mcp-badge.dut-mcp-err{background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 12%,transparent);border-color:transparent;color:var(--dsw-alias-state-error-primary)}
 .dut-mcp-badge.dut-mcp-warn{background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 14%,transparent);border-color:transparent;color:var(--dsw-alias-state-warn-label)}
-.dut-mcp-sub{font-size:11.5px;color:var(--dsw-alias-label-secondary);white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
-.dut-mcp-toggle{flex:none;font-size:11.5px;color:var(--dsw-alias-label-tertiary);background:transparent;border:none;padding:0;cursor:pointer;text-align:left}
-.dut-mcp-toggle:hover{color:var(--dsw-alias-label-primary)}
-.dut-mcp-tools{margin-left:2px;display:flex;flex-wrap:wrap;gap:4px}
-.dut-mcp-tool{font-size:11px;line-height:1;padding:3px 8px;border-radius:999px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary)}
-.dut-mcp-note{margin:2px 16px 0;padding:8px 12px;border-radius:10px;font-size:11.5px;line-height:1.55;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1)}
-.dut-mcp-empty{padding:32px 16px;text-align:center;font-size:12.5px;color:var(--dsw-alias-label-secondary)}
-.dut-mcp-alert{margin:8px 16px 0;padding:8px 12px;border-radius:10px;font-size:12px;line-height:1.5;background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent);color:var(--dsw-alias-state-error-primary)}
-.dut-mcp-notice{margin:8px 16px 0;padding:8px 12px;border-radius:10px;font-size:12px;line-height:1.5;background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 12%,transparent);color:var(--dsw-alias-state-success-primary)}
-.dut-mcp-off{padding:20px 16px;display:grid;gap:12px}
+.dut-mcp-tools-count{font-size:11px;color:var(--dsw-alias-label-tertiary);white-space:nowrap}
+.dut-mcp-actions{display:flex;align-items:center;gap:2px;flex:none}
+.dut-mcp-card-bottom{display:flex;align-items:center;gap:8px;min-width:0}
+.dut-mcp-transport{flex:none;font-size:9.5px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-bg-module-platform);border-radius:5px;padding:2px 6px}
+.dut-mcp-cmd{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--dsw-font-markdown-code-block-font-family,Consolas,monospace);font-size:11px;color:var(--dsw-alias-label-tertiary)}
+.dut-mcp-empty{padding:38px 16px;text-align:center;font-size:12.5px;line-height:1.6;color:var(--dsw-alias-label-secondary)}
+.dut-mcp-alert{margin:12px 16px 0;padding:8px 12px;border-radius:10px;font-size:12px;line-height:1.5;background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent);color:var(--dsw-alias-state-error-primary)}
+.dut-mcp-notice{margin:12px 16px 0;padding:8px 12px;border-radius:10px;font-size:12px;line-height:1.5;background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 12%,transparent);color:var(--dsw-alias-state-success-primary)}
+.dut-mcp-off{padding:24px 20px;display:grid;gap:14px}
 .dut-mcp-off p{margin:0;font-size:12.5px;line-height:1.6;color:var(--dsw-alias-label-secondary)}
-.dut-mcp-overlay{z-index:1100;justify-content:center;align-items:center;display:flex;position:fixed;inset:0}
-.dut-mcp-mask{background:var(--dsw-alias-bg-mask-1);backdrop-filter:var(--dsw-mask-blur);position:absolute;inset:0}
-.dut-mcp-panel{z-index:1;background:var(--dsw-alias-bg-layer-2);box-sizing:border-box;width:720px;max-width:calc(100vw - 48px);height:min(700px,100vh - 48px);box-shadow:var(--dsw-shadow-lv3);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border-radius:20px;display:flex;flex-direction:column;overflow:hidden}
-.dut-mcp-panel-head{box-sizing:border-box;flex:none;display:flex;align-items:center;gap:10px;height:52px;padding:0 12px 0 20px}
-.dut-mcp-panel-head h2{margin:0;font-size:16px;font-weight:600;letter-spacing:-.01em;color:var(--dsw-alias-label-primary)}
-.dut-mcp-panel-close{cursor:pointer;width:28px;height:28px;color:var(--dsw-alias-label-primary);background:transparent;border:none;border-radius:28px;display:inline-flex;justify-content:center;align-items:center;padding:0;font-size:13px}
-.dut-mcp-panel-close:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.dut-mcp-tabs{flex:none;display:inline-flex;padding:3px;gap:3px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-2);margin:0 20px 10px;align-self:flex-start}
+.dut-mcp-overlay{z-index:1100;display:flex;position:fixed;inset:0;align-items:center;justify-content:center;padding:24px}
+.dut-mcp-mask{position:absolute;inset:0;background:var(--dsw-alias-bg-mask-1);backdrop-filter:var(--dsw-mask-blur)}
+.dut-mcp-panel{z-index:1;box-sizing:border-box;display:flex;flex-direction:column;width:800px;max-width:calc(100vw - 48px);height:min(840px,calc(100vh - 48px));overflow:hidden;border-radius:18px;background:var(--dsw-alias-bg-layer-2);box-shadow:var(--dsw-shadow-lv3);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}
+.dut-mcp-panel-head{box-sizing:border-box;flex:none;display:flex;align-items:flex-start;gap:12px;padding:20px 18px 10px 22px}
+.dut-mcp-panel-heading{display:grid;gap:4px;min-width:0;flex:1}
+.dut-mcp-panel-head h2{margin:0;font-size:17px;line-height:1.3;font-weight:650;letter-spacing:-.015em;color:var(--dsw-alias-label-primary)}
+.dut-mcp-panel-sub{margin:0;font-size:11.5px;line-height:1.5;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dut-mcp-panel-close{flex:none;display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;padding:0;border:none;border-radius:50%;background:transparent;color:var(--dsw-alias-label-secondary);font-size:13px;cursor:pointer}
+.dut-mcp-panel-close:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dut-mcp-tabs{flex:none;display:inline-flex;align-self:flex-start;gap:3px;margin:0 22px 10px;padding:3px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-1)}
 .dut-mcp-tabs button{border:none;border-radius:7px;padding:5px 14px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12.5px;cursor:pointer}
 .dut-mcp-tabs button.dut-mcp-tab-on{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);color:var(--dsw-alias-state-business-primary);font-weight:600}
-.dut-mcp-form{flex:1;min-height:0;overflow-y:auto;padding:0 20px 20px;display:grid;gap:12px;align-content:start}
-.dut-mcp-field{display:grid;gap:6px}
+.dut-mcp-form{flex:1;min-height:0;overflow-y:auto;display:grid;align-content:start;gap:12px;padding:2px 22px 20px}
+.dut-mcp-section{display:grid;gap:12px;padding:14px 15px 15px;border:1px solid var(--dsw-alias-border-l1);border-radius:14px;background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 62%,transparent)}
+.dut-mcp-section-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.dut-mcp-section-head h3{margin:0;font-size:12.5px;font-weight:650;letter-spacing:.01em;color:var(--dsw-alias-label-primary)}
+.dut-mcp-section-hint{flex:1;min-width:180px;font-size:11px;line-height:1.45;color:var(--dsw-alias-label-tertiary)}
+.dut-mcp-section .dut-mcp-count{height:20px;padding:0 8px;font-size:10.5px}
+.dut-mcp-grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
+.dut-mcp-grid3{display:grid;grid-template-columns:1.1fr .8fr 1fr;gap:12px;align-items:start}
+.dut-mcp-field{display:grid;gap:6px;min-width:0}
 .dut-mcp-field>span{font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary)}
 .dut-mcp-field small{font-size:11px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
-.dut-mcp-input{box-sizing:border-box;width:100%;height:34px;padding:0 10px;border-radius:9px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:13px}
-.dut-mcp-input:focus{outline:none;border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 55%,transparent)}
+.dut-mcp-input{box-sizing:border-box;width:100%;height:34px;padding:0 10px;border-radius:9px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:inherit;font-size:13px}
+.dut-mcp-input:focus{outline:none;border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 55%,transparent);box-shadow:0 0 0 2px color-mix(in srgb,var(--dsw-alias-state-business-primary) 10%,transparent)}
 .dut-mcp-input:disabled{opacity:.55;cursor:not-allowed}
-textarea.dut-mcp-input{height:auto;min-height:72px;padding:8px 10px;line-height:1.5;resize:vertical;font-family:var(--dsw-font-markdown-code-block-font-family, Consolas, monospace);font-size:12px}
-textarea.dut-mcp-input-lg{min-height:120px}
-textarea.dut-mcp-yaml{min-height:320px}
-.dut-mcp-row2{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
-.dut-mcp-field .dut-seg{width:fit-content}
-.dut-mcp-row2 .dut-seg{height:34px;box-sizing:border-box;align-items:center}
-.dut-mcp-row2 .dut-seg button{flex:none;white-space:nowrap;padding:0 16px;height:26px}
-.dut-mcp-foot{flex:none;display:flex;align-items:center;gap:8px;justify-content:flex-end;padding:12px 20px 16px;border-top:1px solid var(--dsw-alias-border-l1)}
-.dut-mcp-error{margin:0 20px 10px;padding:8px 12px;border-radius:10px;font-size:12px;line-height:1.5;background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent);color:var(--dsw-alias-state-error-primary)}
-`
+textarea.dut-mcp-input{height:auto;min-height:70px;padding:8px 10px;line-height:1.5;resize:vertical;font-family:var(--dsw-font-markdown-code-block-font-family,Consolas,monospace);font-size:12px}
+textarea.dut-mcp-yaml{min-height:360px}
+.dut-mcp-field .dut-seg{width:fit-content;height:34px;box-sizing:border-box;align-items:center}
+.dut-mcp-field .dut-seg button{flex:none;height:26px;padding:0 14px;white-space:nowrap}
+.dut-mcp-kv{display:grid;gap:6px}
+.dut-mcp-kv-head{display:grid;grid-template-columns:minmax(150px,.9fr) minmax(0,1.5fr) 30px;gap:8px;padding:0 2px;font-size:10px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;color:var(--dsw-alias-label-tertiary)}
+.dut-mcp-kv-list{display:grid;gap:6px;max-height:238px;overflow-y:auto;padding:2px;scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--dsw-alias-label-tertiary) 35%,transparent) transparent}
+.dut-mcp-kv-list::-webkit-scrollbar{width:5px}
+.dut-mcp-kv-list::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--dsw-alias-label-tertiary) 35%,transparent);border-radius:4px}
+.dut-mcp-kv-row{display:grid;grid-template-columns:minmax(150px,.9fr) minmax(0,1.5fr) 30px;gap:8px;align-items:center}
+.dut-mcp-kv-row .dut-mcp-input{height:32px;font-family:var(--dsw-font-markdown-code-block-font-family,Consolas,monospace);font-size:12px}
+.dut-mcp-kv-del{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;padding:0;border:none;border-radius:7px;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:11px;cursor:pointer;transition:background .15s ease,color .15s ease}
+.dut-mcp-kv-del:hover{color:var(--dsw-alias-state-error-primary);background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent)}
+.dut-mcp-kv-empty{grid-column:1 / -1;padding:18px 12px;text-align:center;font-size:11.5px;color:var(--dsw-alias-label-tertiary);border:1px dashed var(--dsw-alias-border-l2);border-radius:10px}
+.dut-mcp-addrow{display:inline-flex;align-items:center;width:fit-content;height:26px;padding:0 9px;border:1px dashed var(--dsw-alias-border-l2);border-radius:7px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11.5px;cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease}
+.dut-mcp-addrow:hover{border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 55%,transparent);color:var(--dsw-alias-state-business-primary);background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 7%,transparent)}
+.dut-mcp-foot{flex:none;display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:12px 22px 16px;border-top:1px solid var(--dsw-alias-border-l1)}
+.dut-mcp-foot .dut-btn{height:30px;padding:0 15px;font-size:12px}
+.dut-mcp-error{margin:0 22px 10px;padding:8px 12px;border-radius:10px;font-size:12px;line-height:1.5;background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent);color:var(--dsw-alias-state-error-primary)}`
 
 /** Install the MCP stylesheet once (idempotent); returns the disposer. */
 export function installMcpStyles(): () => void {
@@ -245,7 +361,6 @@ export function McpSection({ controller, t }: McpSectionProps) {
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [expanded, setExpanded] = useState<string | null>(null)
   const [editing, setEditing] = useState<McpServerView | 'new' | null>(null)
   /** Rows with an in-flight enable / disable / remove, held from the click
    * until the poll observes a terminal status. The patch write, the loader
@@ -397,16 +512,20 @@ export function McpSection({ controller, t }: McpSectionProps) {
   }
 
   const list = servers ?? []
+  const activeCount = list.filter(server => server.status === 'active').length
   return (
     <div className="dut-mcp">
-      <div className="dut-panel">
+      <div className="dut-panel dut-mcp-shell">
         <div className="dut-mcp-head">
-          <h2>{t('mcpTitle')}</h2>
-          <span className="dut-mcp-count">{list.length} · {list.filter(s => s.status === 'active').length} {t('mcpStatusActive')}</span>
-          <span className="dut-mcp-spacer" />
-          <button type="button" className="dut-mcp-btn" onClick={() => { setEditing('new') }}>{t('mcpAdd')}</button>
+          <div className="dut-mcp-heading">
+            <div className="dut-mcp-titleline">
+              <h2>{t('mcpTitle')}</h2>
+              <span className="dut-mcp-count dut-mcp-count-ok">{activeCount} {t('mcpStatusActive')}</span>
+            </div>
+            <p className="dut-mcp-desc">{t('mcpServerDetail')}</p>
+          </div>
+          <button type="button" className="dut-mcp-add" onClick={() => { setEditing('new') }}>+ {t('mcpAdd')}</button>
         </div>
-        <div className="dut-mcp-note">{t('mcpServerDetail')}</div>
         {error !== null ? <div className="dut-mcp-alert">{error}</div> : null}
         {notice !== null ? <div className="dut-mcp-notice">{notice}</div> : null}
         <div className="dut-mcp-body">
@@ -416,40 +535,38 @@ export function McpSection({ controller, t }: McpSectionProps) {
             <div className="dut-mcp-empty">{t('mcpEmpty')}</div>
           ) : list.map(server => {
             const command = server.url !== undefined ? server.url : [server.command, ...server.args].filter(Boolean).join(' ')
-            const open = expanded === server.id
             const pending = pendingIds.has(server.id)
             return (
-              <div className="dut-mcp-row" key={server.id}>
-                <div className="dut-mcp-row-main">
-                  <span className="dut-mcp-name">{server.serverName}</span>
-                  <span className={'dut-mcp-badge' + statusClass(server.status)}>{statusLabel(server.status, t)}</span>
-                  <span className="dut-mcp-sub">· {server.toolCount} {t('mcpTools')}</span>
-                  <span className="dut-mcp-spacer" />
-                  <button type="button" className="dut-mcp-btn" disabled={busy !== null || pending} onClick={() => { setEnabled(server.id, server.disabled) }}>{pending ? '…' : server.disabled ? t('mcpEnabledAction') : t('mcpDisabledAction')}</button>
-                  <button type="button" className="dut-mcp-btn" disabled={busy !== null || pending} onClick={() => { setEditing(server) }}>{t('mcpEdit')}</button>
-                  <button
-                    type="button"
-                    className={'dut-mcp-btn dut-mcp-del' + (confirmId === server.id ? ' dut-mcp-confirm' : '')}
-                    disabled={busy !== null || pending}
-                    onClick={() => { remove(server.id) }}
-                  >
-                    {confirmId === server.id ? t('mcpDelete') + '?' : t('mcpDelete')}
-                  </button>
-                </div>
-                <div className="dut-mcp-sub" title={command}>{server.id} · {server.transport} · {command}</div>
-                <button
-                  type="button"
-                  className="dut-mcp-toggle"
-                  onClick={() => { setExpanded(open ? null : server.id) }}
-                >
-                  {open ? '▾ ' : '▸ '}{server.toolCount} {t('mcpTools')}{server.env && Object.keys(server.env).length > 0 ? ` · ${t('mcpEnv')}: ${Object.keys(server.env).join(', ')}` : ''}
-                </button>
-                {open ? (
-                  <div className="dut-mcp-tools">
-                    {server.tools.length === 0 ? <span className="dut-mcp-sub">—</span> : server.tools.map(tool => <span className="dut-mcp-tool" key={tool}>{tool}</span>)}
+              <article className="dut-mcp-card" key={server.id}>
+                <div className="dut-mcp-card-top">
+                  <div className="dut-mcp-card-info">
+                    <span className="dut-mcp-name" title={server.serverName}>{server.serverName}</span>
+                    <span className={'dut-mcp-badge' + statusClass(server.status)}>{statusLabel(server.status, t)}</span>
+                    <span
+                      className="dut-mcp-tools-count"
+                      title={server.tools.length > 0 ? server.tools.join('\n') : undefined}
+                    >
+                      {server.toolCount} {t('mcpTools')}
+                    </span>
                   </div>
-                ) : null}
-              </div>
+                  <div className="dut-mcp-actions">
+                    <button type="button" className="dut-mcp-btn" disabled={busy !== null || pending} onClick={() => { setEnabled(server.id, server.disabled) }}>{pending ? '…' : server.disabled ? t('mcpEnabledAction') : t('mcpDisabledAction')}</button>
+                    <button type="button" className="dut-mcp-btn" disabled={busy !== null || pending} onClick={() => { setEditing(server) }}>{t('mcpEdit')}</button>
+                    <button
+                      type="button"
+                      className={'dut-mcp-btn dut-mcp-del' + (confirmId === server.id ? ' dut-mcp-confirm' : '')}
+                      disabled={busy !== null || pending}
+                      onClick={() => { remove(server.id) }}
+                    >
+                      {confirmId === server.id ? t('mcpDelete') + '?' : t('mcpDelete')}
+                    </button>
+                  </div>
+                </div>
+                <div className="dut-mcp-card-bottom">
+                  <span className="dut-mcp-transport">{server.transport === 'streamable-http' ? 'HTTP' : 'STDIO'}</span>
+                  <code className="dut-mcp-cmd" title={command}>{command}</code>
+                </div>
+              </article>
             )
           })}
         </div>
@@ -483,9 +600,9 @@ function McpEditor({ initial, t, onClose, onSaved }: McpEditorProps) {
   const [timeoutText, setTimeoutText] = useState(initial?.toolCallTimeoutMs !== undefined ? String(initial.toolCallTimeoutMs) : '')
   const [command, setCommand] = useState(initial?.command ?? '')
   const [argsText, setArgsText] = useState(initial ? initial.args.join('\n') : '')
-  const [envText, setEnvText] = useState(initial ? recordToLines(initial.env, '=') : '')
+  const [envRows, setEnvRows] = useState<KeyValueRow[]>(() => recordToRows(initial?.env ?? {}))
   const [url, setUrl] = useState(initial?.url ?? '')
-  const [headersText, setHeadersText] = useState(initial ? recordToLines(initial.headers, ':') : '')
+  const [headerRows, setHeaderRows] = useState<KeyValueRow[]>(() => recordToRows(initial?.headers ?? {}))
   const [disabled, setDisabled] = useState(initial?.disabled ?? false)
   const [yamlText, setYamlText] = useState(initial?.yaml ?? '')
   const [error, setError] = useState<string | null>(null)
@@ -527,8 +644,8 @@ function McpEditor({ initial, t, onClose, onSaved }: McpEditorProps) {
       let env: Record<string, string> = {}
       let headers: Record<string, string> = {}
       try {
-        env = linesToRecord(envText, '=')
-        headers = linesToRecord(headersText, ':')
+        if (transport === 'stdio') env = rowsToRecord(envRows, t)
+        else headers = rowsToRecord(headerRows, t)
       } catch (parseError) {
         setError(parseError instanceof Error ? parseError.message : String(parseError))
         setBusy(false)
@@ -564,8 +681,10 @@ function McpEditor({ initial, t, onClose, onSaved }: McpEditorProps) {
       <div className="dut-mcp-mask" aria-hidden="true" onClick={onClose} />
       <div className="dut-mcp-panel" role="dialog" aria-modal="true" aria-label={isEdit ? t('mcpEditTitle') : t('mcpAddTitle')}>
         <div className="dut-mcp-panel-head">
-          <h2>{isEdit ? t('mcpEditTitle') : t('mcpAddTitle')}</h2>
-          <span className="dut-mcp-spacer" />
+          <div className="dut-mcp-panel-heading">
+            <h2>{isEdit ? t('mcpEditTitle') : t('mcpAddTitle')}</h2>
+            <p className="dut-mcp-panel-sub">{isEdit ? `${initial.id} · ${initial.transport}` : t('mcpEditorHint')}</p>
+          </div>
           <button type="button" className="dut-mcp-panel-close" onClick={onClose} aria-label="✕">✕</button>
         </div>
         <div className="dut-mcp-tabs" role="tablist">
@@ -575,92 +694,134 @@ function McpEditor({ initial, t, onClose, onSaved }: McpEditorProps) {
         {error !== null ? <div className="dut-mcp-error">{error}</div> : null}
         {mode === 'yaml' ? (
           <div className="dut-mcp-form">
-            <div className="dut-mcp-row2">
-              <div className="dut-mcp-field">
-                <span>{t('mcpFieldId')}</span>
-                <input className="dut-mcp-input" value={id} disabled={isEdit} onChange={event => { setId(event.target.value) }} />
-                <small>{t('mcpFieldIdHint')}</small>
-              </div>
-              <div className="dut-mcp-field">
-                <span>{t('mcpFieldEnabled')}</span>
-                <div className="dut-seg">
-                  <button type="button" className={!disabled ? 'dut-seg-active' : ''} onClick={() => { setDisabled(false) }}>{t('mcpEnabledAction')}</button>
-                  <button type="button" className={disabled ? 'dut-seg-active' : ''} onClick={() => { setDisabled(true) }}>{t('mcpDisabledAction')}</button>
+            <div className="dut-mcp-section">
+              <div className="dut-mcp-grid2">
+                <div className="dut-mcp-field">
+                  <span>{t('mcpFieldId')}</span>
+                  <input className="dut-mcp-input" value={id} disabled={isEdit} onChange={event => { setId(event.target.value) }} />
+                  <small>{t('mcpFieldIdHint')}</small>
+                </div>
+                <div className="dut-mcp-field">
+                  <span>{t('mcpFieldEnabled')}</span>
+                  <div className="dut-seg">
+                    <button type="button" className={!disabled ? 'dut-seg-active' : ''} onClick={() => { setDisabled(false) }}>{t('mcpEnabledAction')}</button>
+                    <button type="button" className={disabled ? 'dut-seg-active' : ''} onClick={() => { setDisabled(true) }}>{t('mcpDisabledAction')}</button>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="dut-mcp-field">
-              <span>{t('mcpYamlTab')}</span>
-              <textarea className="dut-mcp-input dut-mcp-yaml" value={yamlText} placeholder={t('mcpYamlPlaceholder')} spellCheck={false} onChange={event => { setYamlText(event.target.value) }} />
-              <small>{t('mcpYamlHint')}</small>
+              <div className="dut-mcp-field">
+                <span>{t('mcpYamlTab')}</span>
+                <textarea className="dut-mcp-input dut-mcp-yaml" value={yamlText} placeholder={t('mcpYamlPlaceholder')} spellCheck={false} onChange={event => { setYamlText(event.target.value) }} />
+                <small>{t('mcpYamlHint')}</small>
+              </div>
             </div>
           </div>
         ) : (
           <div className="dut-mcp-form">
-            <div className="dut-mcp-row2">
-              <div className="dut-mcp-field">
-                <span>{t('mcpFieldId')}</span>
-                <input className="dut-mcp-input" value={id} disabled={isEdit} onChange={event => { setId(event.target.value) }} />
-                <small>{t('mcpFieldIdHint')}</small>
+            <section className="dut-mcp-section">
+              <div className="dut-mcp-section-head">
+                <h3>{t('mcpBasicSection')}</h3>
               </div>
-              <div className="dut-mcp-field">
-                <span>{t('mcpFieldEnabled')}</span>
-                <div className="dut-seg">
-                  <button type="button" className={!disabled ? 'dut-seg-active' : ''} onClick={() => { setDisabled(false) }}>{t('mcpEnabledAction')}</button>
-                  <button type="button" className={disabled ? 'dut-seg-active' : ''} onClick={() => { setDisabled(true) }}>{t('mcpDisabledAction')}</button>
+              <div className="dut-mcp-grid2">
+                <div className="dut-mcp-field">
+                  <span>{t('mcpFieldId')}</span>
+                  <input className="dut-mcp-input" value={id} disabled={isEdit} onChange={event => { setId(event.target.value) }} />
+                  <small>{t('mcpFieldIdHint')}</small>
+                </div>
+                <div className="dut-mcp-field">
+                  <span>{t('mcpFieldName')}</span>
+                  <input className="dut-mcp-input" value={serverName} onChange={event => { setServerName(event.target.value) }} />
+                  <small>{t('mcpFieldNameHint')}</small>
                 </div>
               </div>
-            </div>
-            <div className="dut-mcp-row2">
-              <div className="dut-mcp-field">
-                <span>{t('mcpFieldName')}</span>
-                <input className="dut-mcp-input" value={serverName} onChange={event => { setServerName(event.target.value) }} />
-                <small>{t('mcpFieldNameHint')}</small>
-              </div>
-              <div className="dut-mcp-field">
-                <span>{t('mcpFieldType')}</span>
-                <div className="dut-seg">
-                  <button type="button" className={transport === 'stdio' ? 'dut-seg-active' : ''} onClick={() => { setTransport('stdio') }}>stdio</button>
-                  <button type="button" className={transport === 'streamable-http' ? 'dut-seg-active' : ''} onClick={() => { setTransport('streamable-http') }}>HTTP</button>
+              <div className="dut-mcp-grid3">
+                <div className="dut-mcp-field">
+                  <span>{t('mcpFieldType')}</span>
+                  <div className="dut-seg">
+                    <button type="button" className={transport === 'stdio' ? 'dut-seg-active' : ''} onClick={() => { setTransport('stdio') }}>stdio</button>
+                    <button type="button" className={transport === 'streamable-http' ? 'dut-seg-active' : ''} onClick={() => { setTransport('streamable-http') }}>HTTP</button>
+                  </div>
+                </div>
+                <div className="dut-mcp-field">
+                  <span>{t('mcpFieldTimeout')}</span>
+                  <input className="dut-mcp-input" inputMode="numeric" value={timeoutText} placeholder="60000" onChange={event => { setTimeoutText(event.target.value) }} />
+                </div>
+                <div className="dut-mcp-field">
+                  <span>{t('mcpFieldEnabled')}</span>
+                  <div className="dut-seg">
+                    <button type="button" className={!disabled ? 'dut-seg-active' : ''} onClick={() => { setDisabled(false) }}>{t('mcpEnabledAction')}</button>
+                    <button type="button" className={disabled ? 'dut-seg-active' : ''} onClick={() => { setDisabled(true) }}>{t('mcpDisabledAction')}</button>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="dut-mcp-field">
-              <span>{t('mcpFieldTimeout')}</span>
-              <input className="dut-mcp-input" inputMode="numeric" value={timeoutText} placeholder="60000" onChange={event => { setTimeoutText(event.target.value) }} />
-            </div>
+            </section>
+            <section className="dut-mcp-section">
+              <div className="dut-mcp-section-head">
+                <h3>{t('mcpConnectionSection')}</h3>
+              </div>
+              {transport === 'stdio' ? (
+                <>
+                  <div className="dut-mcp-field">
+                    <span>{t('mcpFieldCommand')}</span>
+                    <input className="dut-mcp-input" value={command} placeholder={t('mcpFieldCommandPlaceholder')} onChange={event => { setCommand(event.target.value) }} />
+                  </div>
+                  <div className="dut-mcp-field">
+                    <span>{t('mcpFieldArgs')}</span>
+                    <textarea className="dut-mcp-input" value={argsText} placeholder={'-y\n@some/mcp-server'} spellCheck={false} onChange={event => { setArgsText(event.target.value) }} />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="dut-mcp-field">
+                    <span>{t('mcpFieldUrl')}</span>
+                    <input className="dut-mcp-input" value={url} placeholder="https://mcp.example.com/sse" onChange={event => { setUrl(event.target.value) }} />
+                  </div>
+                  <div className="dut-mcp-field">
+                    <div className="dut-mcp-section-head">
+                      <span>{t('mcpFieldHeaders')}</span>
+                      <span className="dut-mcp-count">{headerRows.length}</span>
+                      <span className="dut-mcp-section-hint">{t('mcpHeadersHint')}</span>
+                    </div>
+                    <KeyValueEditor
+                      rows={headerRows}
+                      onChange={setHeaderRows}
+                      keyTitle="HEADER"
+                      valueTitle="VALUE"
+                      keyPlaceholder={t('mcpHeaderKeyPlaceholder')}
+                      valuePlaceholder={t('mcpValuePlaceholder')}
+                      emptyText={t('mcpHeadersEmpty')}
+                      addText={t('mcpAddHeader')}
+                      removeText={t('mcpRemoveRow')}
+                    />
+                  </div>
+                </>
+              )}
+            </section>
             {transport === 'stdio' ? (
-              <>
-                <div className="dut-mcp-field">
-                  <span>{t('mcpFieldCommand')}</span>
-                  <input className="dut-mcp-input" value={command} placeholder={t('mcpFieldCommandPlaceholder')} onChange={event => { setCommand(event.target.value) }} />
+              <section className="dut-mcp-section">
+                <div className="dut-mcp-section-head">
+                  <h3>{t('mcpFieldEnv')}</h3>
+                  <span className="dut-mcp-count">{envRows.length}</span>
+                  <span className="dut-mcp-section-hint">{t('mcpEnvHint')}</span>
                 </div>
-                <div className="dut-mcp-field">
-                  <span>{t('mcpFieldArgs')}</span>
-                  <textarea className="dut-mcp-input" value={argsText} placeholder={'-y\n@some/mcp-server'} spellCheck={false} onChange={event => { setArgsText(event.target.value) }} />
-                </div>
-                <div className="dut-mcp-field">
-                  <span>{t('mcpFieldEnv')}</span>
-                  <textarea className="dut-mcp-input dut-mcp-input-lg" value={envText} placeholder={'KEY=value'} spellCheck={false} onChange={event => { setEnvText(event.target.value) }} />
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="dut-mcp-field">
-                  <span>{t('mcpFieldUrl')}</span>
-                  <input className="dut-mcp-input" value={url} placeholder="https://mcp.example.com/sse" onChange={event => { setUrl(event.target.value) }} />
-                </div>
-                <div className="dut-mcp-field">
-                  <span>{t('mcpFieldHeaders')}</span>
-                  <textarea className="dut-mcp-input dut-mcp-input-lg" value={headersText} placeholder={'Authorization: Bearer …'} spellCheck={false} onChange={event => { setHeadersText(event.target.value) }} />
-                </div>
-              </>
-            )}
+                <KeyValueEditor
+                  rows={envRows}
+                  onChange={setEnvRows}
+                  keyTitle="KEY"
+                  valueTitle="VALUE"
+                  keyPlaceholder={t('mcpKeyPlaceholder')}
+                  valuePlaceholder={t('mcpValuePlaceholder')}
+                  emptyText={t('mcpEnvEmpty')}
+                  addText={t('mcpAddEnv')}
+                  removeText={t('mcpRemoveRow')}
+                />
+              </section>
+            ) : null}
           </div>
         )}
         <div className="dut-mcp-foot">
           <button type="button" className="dut-mcp-btn" disabled={busy} onClick={onClose}>{t('mcpCancel')}</button>
-          <button type="button" className="dut-btn dut-btn-active" disabled={busy} onClick={save}>{t('mcpSave')}</button>
+          <button type="button" className="dut-btn dut-btn-active" disabled={busy} onClick={save}>{busy ? '…' : t('mcpSave')}</button>
         </div>
       </div>
     </div>,
