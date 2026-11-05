@@ -18,6 +18,12 @@
  * that stops rendering our rows simply drops the tag again, and any row this
  * plugin does not own is left exactly as the host drew it.
  *
+ * The stock glyph moved in DSH 0.2.2: the shell now wraps it in an
+ * `aria-hidden` `<span>` (it became the `settings.section.icon` seat) instead
+ * of rendering the `<svg>` directly. Hiding only `>svg` therefore stopped
+ * matching and left the fallback gear visible beside our mask — two icons per
+ * row — so {@link NAV_ICON_CSS} hides whichever shape the host paints.
+ *
  * The sliders / archive / globe artwork is copied verbatim from
  * `@deepseek-ai/dsh-client-ui-primitives`' own 16px artworks (that package is
  * outside this plugin's `dsh.client.inject` whitelist), and the plug follows
@@ -79,9 +85,15 @@ const GLYPH_RULES = (Object.keys(GLYPH_MARKUP) as NavIconKey[])
  * matching mask in the row's own ink colour — the same 16px box the host's
  * `navIcon` occupied, so nav geometry does not move. `::before` is the first
  * flex item of the cell's own `gap`, exactly where the svg sat.
+ *
+ * Two host shapes are covered: pre-0.2.2 rendered the glyph `<svg>` as a direct
+ * child, 0.2.2+ wraps it in an `aria-hidden` `<span>` (the
+ * `settings.section.icon` seat). Both are hidden above the mask so exactly one
+ * glyph survives — the wrapper is hidden too, else its empty flex slot would
+ * add a second 8px gap in front of the label.
  */
 export const NAV_ICON_CSS = `
-[${NAV_ICON_ATTR}]>svg{display:none}
+[${NAV_ICON_ATTR}]>svg,[${NAV_ICON_ATTR}]>span[aria-hidden="true"]{display:none}
 [${NAV_ICON_ATTR}]::before{content:'';flex:none;width:16px;height:16px;background-color:currentColor;-webkit-mask:var(--dut-nav-glyph) center/16px 16px no-repeat;mask:var(--dut-nav-glyph) center/16px 16px no-repeat}
 ${GLYPH_RULES}
 `
