@@ -2,7 +2,7 @@
  * dsh-ui-tweaks — browser half.
  *
  * Reads and writes the `ui-tweaks` settings namespace through the same-origin
- * route served by the server half, applies the chosen theme / timeline live
+ * route served by the server half, applies the chosen theme live
  * via a runtime `<style>` element, and renders the Settings panel section that
  * edits them.
  *
@@ -26,8 +26,8 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 // (`settings.section`) and the client-side settings scope contract.
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 // Type-only import activates the dsh-client-ui-conversation slot declarations
-// (`conversation.input.dock`) that host the git-bar warmup seat and the
-// timeline rail, and the Context declaration for
+// (`conversation.input.dock`) that host the git-bar warmup seat, and the
+// Context declaration for
 // `ctx.conversation` (the /init command's scope-addressed send / input registry).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 // Type-only import activates the Context declaration for `ctx.commandUi`
@@ -48,7 +48,6 @@ import { ArchiveSection, installArchiveStyles } from './archive.tsx'
 import { SessionDeleteMenuItem, installSessionMenuStyles, SESSION_DELETE_MENU_ID, SESSION_DELETE_MENU_ORDER } from './session-menu.tsx'
 import { McpSection, installMcpStyles } from './mcp.tsx'
 import { SearchSection } from './search.tsx'
-import { TimelineRail, installTimelineStyles } from './timeline.tsx'
 import { PreciseCacheHitEntry } from './cachehit.tsx'
 import { installTaskNotifier, previewAlerts, requestNotifyPermission } from './notifier.ts'
 import { installSettingsNavIcons } from './nav-icons.ts'
@@ -103,8 +102,6 @@ const PARTICLE_LABEL: Record<ParticleColorValue, LocaleKey> = {
 }
 
 interface TweaksValue {
-  /** Which timeline to show: 'native' (DSH built-in rail) or 'web' (plugin classic rail). Keep in sync with src/config.ts. */
-  timelineStyle?: 'native' | 'web'
   /** Conversation theme: 'default' keeps the stock look, 'particles' applies the Particle skin. Keep in sync with src/config.ts. */
   themeStyle?: ThemeStyleValue
   /** Glow colour of the Soft glow skin. Keep in sync with src/config.ts. */
@@ -142,7 +139,6 @@ interface TweaksValue {
 }
 
 interface ResolvedTweaks {
-  timelineStyle: 'native' | 'web'
   themeStyle: ThemeStyleValue
   particleColor: ParticleColorValue
   searchEngine: string
@@ -174,13 +170,9 @@ interface ApiFailure { ok: false; error: { code: string; message: string } }
 const en = {
   nav: 'UI Tweaks',
   settingsTitle: 'UI Tweaks',
-  settingsIntro: 'Tune the conversation UI — theme, timeline and layout, plus optional features: git bar, archive & MCP managers and the /init command. Changes apply live. Code font size lives in DSH\u2019s own Appearance settings.',
+  settingsIntro: 'Tune the conversation UI — theme and layout, plus optional features: git bar, archive & MCP managers and the /init command. Changes apply live. Code font size lives in DSH\u2019s own Appearance settings.',
   sectionLayout: 'Layout',
   sectionFeatures: 'Features',
-  timeline: 'Timeline',
-  timelineHint: 'Native: DSH\u2019s built-in turn rail at the right edge (stock). Web (classic): the v0.11 right-side navigation rail — hover to preview, click to jump; auto-hidden in short conversations.',
-  timelineNative: 'Native',
-  timelineWeb: 'Web (classic)',
   theme: 'Theme',
   themeHint: 'Conversation skin. Default keeps DSH\u2019s stock look and can always be restored. Soft glow is a static skin: a tinted palette with soft accent glows radiating from the top and bottom edges toward the middle, selectable among mint, electric blue, violet, sky, amber, coral, rose or silver. No animation, so it costs nothing at runtime. Applied live.',
   themeDefault: 'Default',
@@ -364,9 +356,6 @@ const en = {
   menuDeleting: 'Deleting…',
   menuDeleteRunning: 'This session is running — cannot delete.',
   menuDeleteFailed: 'Delete failed.',
-  railLabel: 'Chat timeline',
-  roleUser: 'User',
-  noText: '(no text)',
   applied: 'Applied',
   unavailable: 'Settings unavailable.',
   loading: 'Loading…',
@@ -436,13 +425,9 @@ type LocaleKey = keyof typeof en
 const zh: Record<LocaleKey, string> = {
   nav: '界面调整',
   settingsTitle: '界面调整',
-  settingsIntro: '调整对话界面——主题、时间线与布局，以及 Git 状态栏、归档 / MCP 管理、/init 命令等功能开关，修改即时生效。代码字号请到 DSH 自带的「外观」设置里调整。',
+  settingsIntro: '调整对话界面——主题与布局，以及 Git 状态栏、归档 / MCP 管理、/init 命令等功能开关，修改即时生效。代码字号请到 DSH 自带的「外观」设置里调整。',
   sectionLayout: '布局',
   sectionFeatures: '功能',
-  timeline: '时间线',
-  timelineHint: '原生：DSH 自带的回合导航轨（消息右侧小圆点，默认）。网页（经典）：找回 v0.11 的右侧导航轨——悬停预览、点击跳转；会话较短时自动隐藏。',
-  timelineNative: '原生',
-  timelineWeb: '网页（经典）',
   theme: '主题',
   themeHint: '对话皮肤。默认保持 DSH 原生外观，随时可恢复。柔光是一种静态皮肤：一套主题色 + 从顶部、底部向中间辐射的柔和光晕，发光色可选（薄荷青、电光蓝、紫罗兰、天空青、琥珀、珊瑚橙、玫瑰、月光银）。无动画，运行时几乎零开销。切换即时生效。',
   themeDefault: '默认',
@@ -626,9 +611,6 @@ const zh: Record<LocaleKey, string> = {
   menuDeleting: '删除中…',
   menuDeleteRunning: '会话运行中，无法删除。',
   menuDeleteFailed: '删除失败。',
-  railLabel: '对话时间线',
-  roleUser: '用户',
-  noText: '（无文本内容）',
   applied: '已应用',
   unavailable: '设置暂不可用。',
   loading: '加载中…',
@@ -704,7 +686,6 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
 function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
   return {
-    timelineStyle: value?.timelineStyle === 'web' ? 'web' : 'native',
     // Only the two known skins are whitelisted: an unknown value falls back to
     // the stock look rather than half-applying a skin.
     themeStyle: value?.themeStyle === 'particles' ? 'particles' : 'default',
@@ -1009,24 +990,6 @@ function buildParticleColorCss(color: ParticleColorValue): string {
 
 function buildRuntimeCss(value: ResolvedTweaks): string {
   const rules: string[] = []
-  // Hide the DSH built-in turn-navigation rail while the timeline switch is
-  // on 'web'. DSH 0.2.0-rc.2 dropped the `--turn-natural-height` inline
-  // variable the rail's `<nav>` used to carry (its geometry moved to the
-  // ancestor's `--dsh-conversation-viewport-height` and the module's
-  // `--turn-rail-band`), so the attribute selector alone stopped matching
-  // and both rails showed at once. The rail is now anchored structurally on
-  // its CSS-modules shape, which survives hash rebuilds: the frame `<nav>`
-  // owns a fade scroller (`nav > div.{hash}_scroller`) wrapping the marks
-  // container (`div.{hash}_marks`). Either structural clause alone still
-  // matches if the host renames the other, and the legacy inline-variable
-  // selector is kept for hosts that still carry it. `_marks` (plural) is
-  // deliberate — the singular `_mark` would also match the markdown
-  // renderer's `_markdown_*` classes. Other host `<nav>`s (session crumbs,
-  // settings sections, sidebar panels) hold plain text or buttons only, so
-  // none of the clauses can reach them.
-  if (value.timelineStyle === 'web') {
-    rules.push('nav[style*="--turn-natural-height"],nav:has(> [class*="_scroller"]),nav:has([class*="_marks"]){display:none !important}')
-  }
   if (value.themeStyle === 'particles') {
     // Base palette + component accents, then the chosen particle colour's
     // light/dark accent override (appended last so it wins on the same scope).
@@ -1367,10 +1330,6 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     void controller.set('initCommandEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
-  const setTimeline = (value: 'native' | 'web'): void => {
-    void controller.set('timelineStyle', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
-  }
-
   const setPreciseCacheHit = (value: boolean): void => {
     void controller.set('preciseCacheHitEnabled', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
@@ -1503,17 +1462,6 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
 
       <section className="dut-panel dut-grid">
         <div className="dut-section-label">{t('sectionFeatures')}</div>
-        <div className="dut-field">
-          <div className="dut-field-top">
-            <span className="dut-label">{t('timeline')}<Hint text={t('timelineHint')} /></span>
-            <div className="dut-controls">
-              <div className="dut-seg">
-                <button type="button" className={resolved.timelineStyle === 'native' ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setTimeline('native') }}>{t('timelineNative')}</button>
-                <button type="button" className={resolved.timelineStyle === 'web' ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setTimeline('web') }}>{t('timelineWeb')}</button>
-              </div>
-            </div>
-          </div>
-        </div>
         <div className="dut-field">
           <div className="dut-field-top">
             <span className="dut-label">{t('gitBar')}<Hint text={t('gitBarHint')} /></span>
@@ -1971,42 +1919,6 @@ export function apply(ctx: ClientContext): void {
       dispose = undefined
     }
   }, 'dsh-ui-tweaks: /init command')
-
-  // Conversation timeline rail (classic web rail): mounted per session,
-  // registered only while the timeline switch is on 'web', so flipping the
-  // choice applies live (the native DSH rail is hidden through the runtime
-  // CSS in buildRuntimeCss on the same switch, never both or neither).
-  ctx.effect(() => {
-    let disposeEntry: (() => void) | undefined
-    let disposeStyles: (() => void) | undefined
-    const sync = (): void => {
-      const enabled = controller.getSnapshot().value?.timelineStyle === 'web'
-      if (enabled && disposeEntry === undefined) {
-        disposeStyles = installTimelineStyles()
-        disposeEntry = ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
-          name: 'conversation.input.dock',
-          id: 'timeline',
-          order: 40,
-          locale: NS,
-          inject: () => ({ controller, sessionsService: ctx.sessions }),
-        }, TimelineRail))
-      } else if (!enabled && disposeEntry !== undefined) {
-        disposeEntry()
-        disposeEntry = undefined
-        disposeStyles?.()
-        disposeStyles = undefined
-      }
-    }
-    sync()
-    const unsubscribe = controller.subscribe(sync)
-    return () => {
-      unsubscribe()
-      disposeEntry?.()
-      disposeEntry = undefined
-      disposeStyles?.()
-      disposeStyles = undefined
-    }
-  }, 'dsh-ui-tweaks: timeline rail')
 
   // Precise cache hit: rewrites the stats line's cache-hit figure to two
   // decimals from the raw tokenUsage projection. The composer-dock entry

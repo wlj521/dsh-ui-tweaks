@@ -1,5 +1,5 @@
 /**
- * dsh-ui-tweaks configuration: theme, timeline and feature toggles. Every
+ * dsh-ui-tweaks configuration: theme and feature toggles. Every
  * field defaults at the schema boundary, so a hand-edited settings document
  * and the Settings panel stay consistent.
  *
@@ -16,13 +16,6 @@ export const UI_TWEAKS_SETTINGS_NAMESPACE = 'ui-tweaks'
 
 /** Raw user-facing configuration (partial inputs receive schema defaults). */
 export interface UITweaksConfig {
-  /**
-   * Which conversation timeline to show: `'native'` keeps DSH's built-in
-   * turn-navigation rail (the stock behavior); `'web'` shows the plugin's
-   * classic right-side user-message rail (hover to preview, click to jump)
-   * and hides the native one. Defaults to `'native'`.
-   */
-  timelineStyle?: 'native' | 'web'
   /**
    * Conversation theme: `'default'` keeps DSH's stock look (no overrides);
    * `'particles'` applies the "Soft glow" skin — a tinted palette plus soft
@@ -119,9 +112,6 @@ export const BING_MARKET_OPTIONS = ['zh-CN', 'zh-HK', 'zh-TW', 'ja-JP', 'en-US',
 /** Bing market code. */
 export type BingMarket = (typeof BING_MARKET_OPTIONS)[number]
 
-/** The timeline defaults to DSH's native turn rail — the stock behavior. */
-export const DEFAULT_TIMELINE_STYLE: 'native' | 'web' = 'native'
-
 /** The theme defaults to DSH's stock look — no overrides emitted. */
 export const DEFAULT_THEME_STYLE: ThemeStyle = 'default'
 
@@ -177,7 +167,6 @@ export const DEFAULT_NOTIFY_SOUND = false
  * volatile fields appear in the form (and stay editable without a remount).
  */
 export const Config = z.object({
-  timelineStyle: z.union(['native', 'web'] as const).default(DEFAULT_TIMELINE_STYLE).volatile(),
   themeStyle: z.union(['default', 'particles'] as const).default(DEFAULT_THEME_STYLE).volatile(),
   particleColor: z.union(PARTICLE_COLOR_OPTIONS).default(DEFAULT_PARTICLE_COLOR).volatile(),
   searchEnabled: z.boolean().default(DEFAULT_SEARCH_ENABLED).volatile(),
@@ -199,8 +188,6 @@ export const Config = z.object({
 
 /** Configuration after static validation, with every default materialized. */
 export interface ResolvedUITweaksConfig {
-  /** Which conversation timeline is shown: DSH's native rail or the plugin web rail. */
-  timelineStyle: 'native' | 'web'
   /** Conversation theme: stock look or the Soft glow skin. */
   themeStyle: ThemeStyle
   /** Glow colour of the Soft glow skin's accent halos. */
@@ -239,7 +226,6 @@ export interface ResolvedUITweaksConfig {
 
 /** Resolve a partial config into a fully defaulted value. */
 export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConfig {
-  const timelineStyle = config.timelineStyle ?? DEFAULT_TIMELINE_STYLE
   const themeStyle = config.themeStyle ?? DEFAULT_THEME_STYLE
   const particleColor = config.particleColor ?? DEFAULT_PARTICLE_COLOR
   const searchEnabled = config.searchEnabled ?? DEFAULT_SEARCH_ENABLED
@@ -257,6 +243,6 @@ export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConf
   const notifyTitleFlash = config.notifyTitleFlash ?? DEFAULT_NOTIFY_TITLE_FLASH
   const notifySystemNotification = config.notifySystemNotification ?? DEFAULT_NOTIFY_SYSTEM_NOTIFICATION
   const notifySound = config.notifySound ?? DEFAULT_NOTIFY_SOUND
-  const resolved: ResolvedUITweaksConfig = { timelineStyle, themeStyle, particleColor, searchEnabled, searchEngine, bingMarket, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled, preciseCacheHitEnabled, notificationsEnabled, notifyOnlyWhenHidden, notifyOnComplete, notifyOnInteraction, notifyTitleFlash, notifySystemNotification, notifySound }
+  const resolved: ResolvedUITweaksConfig = { themeStyle, particleColor, searchEnabled, searchEngine, bingMarket, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled, preciseCacheHitEnabled, notificationsEnabled, notifyOnlyWhenHidden, notifyOnComplete, notifyOnInteraction, notifyTitleFlash, notifySystemNotification, notifySound }
   return resolved
 }

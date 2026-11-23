@@ -4,7 +4,7 @@
 
 > **依赖版本**：当前依赖 **DSH v0.2.0-rc.2**。
 
-[DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/)（DSH）插件：在设置面板里实时调整对话界面——**主题皮肤**（默认 / 柔光 · 8 色可选）、**时间线切换**（原生回合导航轨 / 经典网页时间线）、**GitBar**（会话头部的分支胶囊 + 右侧边栏里的代码差异标签页）、**缓存命中率两位小数**，以及四个可开关的独立模块：**归档管理**、**MCP 管理**、**网络搜索**、**任务提醒**，外加 **`/init` 斜杠命令**。
+[DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/)（DSH）插件：在设置面板里实时调整对话界面——**主题皮肤**（默认 / 柔光 · 8 色可选）、**GitBar**（会话头部的分支胶囊 + 右侧边栏里的代码差异标签页）、**缓存命中率两位小数**，以及四个可开关的独立模块：**归档管理**、**MCP 管理**、**网络搜索**、**任务提醒**，外加 **`/init` 斜杠命令**。
 
 所有改动**即时生效**，无需刷新页面。
 
@@ -22,9 +22,6 @@
 
 ### 交互与工具
 
-- **时间线**：一个开关两档。
-  - **原生（默认）**：DSH 自带的回合导航轨（消息右侧的小圆点条），即官方默认行为。
-  - **网页（经典）**：找回 v0.11 的经典右侧导航轨——消息区右缘垂直居中，收起时是一列细线，悬停展开为 240px 面板（消息预览 + 高亮当前位），悬停单项弹出带时间戳的详情气泡，**点击跳转**到对应消息（深历史会自动连续翻页加载后落点，带落点自校验）；滚轮可在轨上直接翻阅被裁剪的条目。数据来自服务端 `dshChatTimeline` 会话投影（全量用户消息，与浏览器已加载窗口无关），少于两条用户消息的会话自动隐藏。切到网页档时，原生回合导航轨由一条主题无关的 CSS 规则按结构隐藏，两个不会同时出现。
 - **GitBar**（默认关闭）：git 仓库会话的标配两件套——会话头部的**分支胶囊**，加上右侧边栏（文件旁）的**代码差异**标签页。有未提交改动时，分支胶囊与代码差异页签上都带小黄点。
   - **分支胶囊**：位于会话标题旁，显示当前分支名。点击**向下**弹出分支面板——本地 / 远程分支列表（点击即 `git switch`），底部可**新建分支**（`git switch -c` 并自动切换），支持分支重命名与删除。**头部当前分支右侧是拉取按钮**（`git pull --ff-only`：只快进，分叉时中止并显示 git 自己的报错而不悄悄合并；无 upstream 的分支不显示该按钮）。
   - **提交图谱**：面板里的「图谱」打开对话框——最近 150 条提交（`git log --date-order --all`）按拓扑自动分 lane，渲染成彩色 SVG 分叉图：圆点是提交、曲线是 fork/merge，各分支线独立着色，合并弧线汇入目标分支并采用其颜色；行悬停高亮，右上角可刷新。旁边的 **Tag** 管理支持新建 / 推送 / 删除（删除需二次确认）。
@@ -71,7 +68,6 @@
 - id: ui-tweaks
   name: dsh-ui-tweaks
   config:
-    timelineStyle: web            # 默认 native（DSH 自带回合导航轨），web 为经典网页时间线
     themeStyle: particles         # 默认 default（DSH 原生外观，可随时恢复），particles 为柔光皮肤
     particleColor: mint           # 光晕色：mint/electric/violet/sky/amber/coral/rose/silver（默认 mint）
     preciseCacheHitEnabled: true  # 默认 false，缓存命中率两位小数
@@ -153,7 +149,7 @@ npx -y @deepseek-ai/dsh plugin --profile desktop add .    # 从本目录作为 b
 ## 工作原理
 
 - **服务端**（`src/index.ts`）：导出 `Config` 设置 schema——0.1.7 起设置表单由宿主从插件导出的 `Config` 自动派生（旧的 `settings.register()` 已移除），插件再以 `configure({ auto: false })` 抑制自动生成页、由客户端各分区接管展示；并挂载同源路由 `/_dsh/ui-tweaks/settings`——自 rc.6 起，Web 设置 RPC 只暴露固定白名单命名空间，因此自定义路由是插件拥有配置页的方式。
-- **浏览器端**（`src/client/index.tsx`）：读写该路由、渲染设置页，并通过运行时 `<style>` 元素实时应用样式，覆盖稳定的 DSH 锚点（`body` 上的主题变量、`[data-slot="conversation.chat.node"]` 内的表格 / 行内代码 / 代码块，以及原生回合导航轨的 `<nav>`）。四个页面注册进 `settings.section` 插槽（order 40 / 50 / 60 / 70）；需要开关控制的三页（归档 / MCP / 搜索）通过 `installConditionalSection` 只在对应开关打开时注册，所以导航行会随开关实时出现 / 消失。
+- **浏览器端**（`src/client/index.tsx`）：读写该路由、渲染设置页，并通过运行时 `<style>` 元素实时应用样式，覆盖稳定的 DSH 锚点（`body` 上的主题变量、`[data-slot="conversation.chat.node"]` 内的表格 / 行内代码 / 代码块）。四个页面注册进 `settings.section` 插槽（order 40 / 50 / 60 / 70）；需要开关控制的三页（归档 / MCP / 搜索）通过 `installConditionalSection` 只在对应开关打开时注册，所以导航行会随开关实时出现 / 消失。
 - **Git 后端**（`src/git.ts` + `src/git-web.ts`）：通过 `ctx.get('sessions')`（可选服务）解析会话 header 的 `cwd` 作为「当前项目」，用 `child_process.execFile('git', …)`（无 shell、cwd 固定、超时 + 中止传播）执行只读/写操作；同源路由 `/_dsh/ui-tweaks/git/*` 提供 status / branches / tags / diff（hunk 或完整文件，含绝对行号）/ graph（结构化提交行，含父哈希，供前端排布分支 lane）/ commit / push / pull（仅快进）/ checkout / create / branch-rename / branch-delete / remote-delete / tag-create / tag-delete / tag-push。
 - **GitBar**（`src/client/gitbar.tsx`）：分支胶囊挂在 `conversation.session.header.actions`（会话标题旁），代码差异则注册为右侧边栏原生标签页（`ctx.sidebarRightTabs` 注册类型与指南入口，`sidebar.right.pane.tab` 按类型 id 注册内容，代码差异另注册标题席位在页签上补未提交改动的小黄点，随 `gitBarEnabled` 开关按需挂载）。视图是全高 flex 列：文件列表 / diff / 提交区三段高度分配采用「只给被拖的那一段显式高度、diff 段 `flex:1` 吃掉余量」的方式，配合 45% 上限，拖动永远不会撑破视图。`conversation.input.dock` 里另有一个零渲染的预热座位，会话切换时就把 git status 预取好，胶囊一出现即读到热缓存。提交图谱的 lane 布局与 SVG 渲染拆在 `src/client/graphlayout.ts`（纯函数模块：父哈希 → 每行 lane / 边段，经典 first-parent 路由——第一父提交沿用原 lane 让线性历史始终一条线，合并与 fork 画贝塞尔弧线；`parents` 字段可选，兼容尚未重载的旧服务端）。
 - **归档管理**（服务端 `src/archive.ts` + 浏览器端 `src/client/archive.tsx`）：列表数据直接来自框架标准 hook `useSessions` + `useWorkspaces`（`archivedSessionIds`），无需额外查询；操作走同源路由 `/_dsh/ui-tweaks/archive`。**恢复**把会话 id 从工作区存储域的 `archivedSessionIds` 全局单例中移除（DSH 只暴露单向 `archiveSession`，无公开的取消归档 API，故直接写活体存储域句柄并同步工作区注册表的内存缓存）。**彻底删除**依次：拒绝正在运行的会话（agent `status === 'running'` 才拒绝，空闲会话先 `cancel` + `whenIdle`）→ 用持久化后端自身的 `findLog` 定位并 `rm` 会话日志目录 → 调用公开的 `WorkspaceEntity.detachSession` 摘除工作区记账 → 从归档集合移除并同步注册表内存缓存与 header 索引 → 清理 `session_projcache` → 从内存 SessionStore 摘除该会话（触发 `host/session-removed` 实时消失）。侧边栏会话行「…」菜单里的**删除会话**（`src/client/session-menu.tsx`）注册进宿主的 `sidebar.workspaces.session.menu.item` 列表槽位（order 500，正好排在 pin / rename / fork / archive 之后；宿主没有会话删除 API，所以它复用同一条同源路由），点击两次删除、第一次点击后 3 秒未再点击自动撤销，运行中的会话被服务端拒绝时菜单保持打开并就地显示原因；它与「归档管理」页面共用 `archiveManagerEnabled` 开关。
