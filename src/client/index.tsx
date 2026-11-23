@@ -1272,7 +1272,7 @@ export class SettingsClient {
 }
 
 /** Required client services: slots (settings.section), locale, sessions (git bar, archive, notifier), the slash-command registry, the scope-addressed conversation face, the unified session-status source, and workspace navigation. The right-sidebar tab registry (diff tab) is resolved lazily — older hosts without it still load everything else. */
-export const inject = ['slots', 'locale', 'sessions', 'commandUi', 'conversation', 'uiSession', 'uiWorkspace']
+export const inject = ['slots', 'locale', 'sessions', 'commandUi', 'conversation', 'uiSession', 'uiSession.sessionStatus', 'uiWorkspace']
 
 /**
  * Hover/focus hint: a small ⓘ next to the field label; the hint text renders
