@@ -69,6 +69,20 @@ type ParticleColorValue = 'mint' | 'electric' | 'violet' | 'sky' | 'amber' | 'co
 /** Default glow colour of the Soft glow skin. Keep in sync with src/config.ts. */
 const DEFAULT_PARTICLE_COLOR: ParticleColorValue = 'mint'
 
+/** Ambient-wash strengths mirrored from `src/config.ts`'s `GlowStrength`. */
+type GlowStrengthValue = 'off' | 'subtle' | 'soft'
+
+/** Default ambient-wash strength. Keep in sync with src/config.ts. */
+const DEFAULT_GLOW_STRENGTH: GlowStrengthValue = 'subtle'
+
+/** Picker order. Keep in sync with src/config.ts's GLOW_STRENGTH_OPTIONS. */
+const GLOW_STRENGTHS: readonly GlowStrengthValue[] = ['off', 'subtle', 'soft']
+
+/** Narrow an unknown persisted value to a known wash strength. */
+function isGlowStrength(x: unknown): x is GlowStrengthValue {
+  return typeof x === 'string' && (GLOW_STRENGTHS as readonly string[]).includes(x)
+}
+
 /** Picker order. Keep in sync with src/config.ts's PARTICLE_COLOR_OPTIONS. */
 const PARTICLE_COLORS: readonly ParticleColorValue[] = ['mint', 'electric', 'violet', 'sky', 'amber', 'coral', 'rose', 'silver']
 
@@ -89,6 +103,13 @@ const PARTICLE_SWATCH: Record<ParticleColorValue, string> = {
   silver: '#c7d2e0',
 }
 
+/** Localized label key per wash strength. */
+const GLOW_STRENGTH_LABEL: Record<GlowStrengthValue, LocaleKey> = {
+  off: 'glowOff',
+  subtle: 'glowSubtle',
+  soft: 'glowSoft',
+}
+
 /** Localized label key per colour. */
 const PARTICLE_LABEL: Record<ParticleColorValue, LocaleKey> = {
   mint: 'colorMint',
@@ -106,6 +127,8 @@ interface TweaksValue {
   themeStyle?: ThemeStyleValue
   /** Glow colour of the Soft glow skin. Keep in sync with src/config.ts. */
   particleColor?: ParticleColorValue
+  /** Strength of the Soft glow skin's ambient wash. Keep in sync with src/config.ts. */
+  glowStrength?: GlowStrengthValue
   /** Preferred web-search engine (bing | ddg | exa | tavily | keenable | perplexity | deepseek). */
   searchEngine?: string
   /** Bing market code (e.g. zh-CN). */
@@ -141,6 +164,7 @@ interface TweaksValue {
 interface ResolvedTweaks {
   themeStyle: ThemeStyleValue
   particleColor: ParticleColorValue
+  glowStrength: GlowStrengthValue
   searchEngine: string
   bingMarket: string
   gitBarEnabled: boolean
@@ -174,7 +198,7 @@ const en = {
   sectionLayout: 'Layout',
   sectionFeatures: 'Features',
   theme: 'Theme',
-  themeHint: 'Conversation skin. Default keeps DSH\u2019s stock look and can always be restored. Soft glow is a static skin: a tinted palette with soft accent glows radiating from the top and bottom edges toward the middle, selectable among mint, electric blue, violet, sky, amber, coral, rose or silver. No animation, so it costs nothing at runtime. Applied live.',
+  themeHint: 'Conversation skin. Default keeps DSH\u2019s stock look and can always be restored. Soft glow is a static skin: a tinted palette under a single soft accent wash that radiates down from the top of the transcript, selectable among mint, electric blue, violet, sky, amber, coral, rose or silver. No animation, so it costs nothing at runtime. Applied live.',
   themeDefault: 'Default',
   themeParticles: 'Soft glow',
   particleColor: 'Glow colour',
@@ -187,6 +211,11 @@ const en = {
   colorCoral: 'Coral',
   colorRose: 'Rose',
   colorSilver: 'Silver',
+  glowStrength: 'Glow strength',
+  glowStrengthHint: 'How strong the ambient tint behind the messages is. Subtle keeps it barely visible; Off leaves plain paper (the accent still colours links, code, tables and list markers). Only applies to the Soft glow skin.',
+  glowOff: 'Off',
+  glowSubtle: 'Subtle',
+  glowSoft: 'Soft',
   sectionSearch: 'Web search',
   searchOn: 'On',
   searchOff: 'Off',
@@ -429,7 +458,7 @@ const zh: Record<LocaleKey, string> = {
   sectionLayout: '布局',
   sectionFeatures: '功能',
   theme: '主题',
-  themeHint: '对话皮肤。默认保持 DSH 原生外观，随时可恢复。柔光是一种静态皮肤：一套主题色 + 从顶部、底部向中间辐射的柔和光晕，发光色可选（薄荷青、电光蓝、紫罗兰、天空青、琥珀、珊瑚橙、玫瑰、月光银）。无动画，运行时几乎零开销。切换即时生效。',
+  themeHint: '对话皮肤。默认保持 DSH 原生外观，随时可恢复。柔光是一种静态皮肤：一套主题色 + 从消息区顶部向下辐射的柔和光晕，发光色可选（薄荷青、电光蓝、紫罗兰、天空青、琥珀、珊瑚橙、玫瑰、月光银）。无动画，运行时几乎零开销。切换即时生效。',
   themeDefault: '默认',
   themeParticles: '柔光',
   particleColor: '光晕颜色',
@@ -442,6 +471,11 @@ const zh: Record<LocaleKey, string> = {
   colorCoral: '珊瑚橙',
   colorRose: '玫瑰',
   colorSilver: '月光银',
+  glowStrength: '光晕强度',
+  glowStrengthHint: '消息区背景那层薄雾的强度。「极淡」几乎看不出来；选「关」只留纯纸色背景，强调色仍会用在链接、代码、表格和列表标记上。仅对「柔光」生效。',
+  glowOff: '关',
+  glowSubtle: '极淡',
+  glowSoft: '柔和',
   sectionSearch: '网络搜索',
   searchOn: '开',
   searchOff: '关',
@@ -690,6 +724,7 @@ function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
     // the stock look rather than half-applying a skin.
     themeStyle: value?.themeStyle === 'particles' ? 'particles' : 'default',
     particleColor: isParticleColor(value?.particleColor) ? value.particleColor : DEFAULT_PARTICLE_COLOR,
+    glowStrength: isGlowStrength(value?.glowStrength) ? value.glowStrength : DEFAULT_GLOW_STRENGTH,
     searchEngine: value?.searchEngine ?? 'bing',
     bingMarket: value?.bingMarket ?? 'zh-CN',
     gitBarEnabled: value?.gitBarEnabled ?? false,
@@ -944,24 +979,21 @@ div[data-composer-card]{
 div[data-composer-card] svg [class*="track"]{stroke:var(--dut-scroll-1)}
 div[data-composer-card] svg [class*="fill"]{stroke:var(--dut-accent)}
 
-/* ---- ambient glow: static, no-animation background behind the messages ----
+/* ---- work-area base: one flat paper colour, no wash of its own ----
    Painted on the conversation scroll viewport ([data-conversation-scroll], a
-   stable host attribute) so it sits behind the messages, not over them. Two
-   soft accent glows radiate toward the middle — one bleeding down from the top
-   edge, one rising from the bottom. The bottom glow is a wide ellipse (wider
-   than the composer) so its light reaches both sides of the input card. Purely
-   static: one cached paint, no per-frame work. Colours are kept light. */
+   stable host attribute) so it sits behind the messages, not over them. The
+   accent wash itself is strength-dependent and emitted by buildGlowWashCss
+   below, appended after this rule.
+
+   A flat base is what keeps the skin seamless in the current host: the host
+   paints its own surfaces over this area with opaque --dsw-alias-bg-base
+   fills (the composer seat's linear-gradient(transparent, bg-base 36px), dock
+   panes, sidebars), and this skin maps bg-base to the same flat paper. Any
+   tint that ran under one of those surfaces would be cut off at its edge and
+   read as a hard-edged tinted-or-white rectangle instead of a continuous
+   base. */
 [data-conversation-scroll]{
   background-color:var(--dut-paper);
-  background-image:
-    radial-gradient(85% 52% at 50% -10%, color-mix(in srgb, var(--dut-accent) 10%, transparent), transparent 62%),
-    radial-gradient(120% 58% at 50% 112%, color-mix(in srgb, var(--dut-accent) 12%, transparent), transparent 66%);
-  background-repeat:no-repeat;
-}
-body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-conversation-scroll]{
-  background-image:
-    radial-gradient(85% 52% at 50% -10%, color-mix(in srgb, var(--dut-accent) 15%, transparent), transparent 62%),
-    radial-gradient(120% 58% at 50% 112%, color-mix(in srgb, var(--dut-accent) 18%, transparent), transparent 66%);
 }
 `
 
@@ -988,13 +1020,45 @@ function buildParticleColorCss(color: ParticleColorValue): string {
   return `body:not(#dsh-ui-tweaks-theme-scope){--dut-accent:${pair.light}}\nbody:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme]{--dut-accent:${pair.dark}}`
 }
 
+/**
+ * Emit the accent wash that `glowStrength` selects, appended after
+ * PARTICLES_CSS. `off` emits nothing at all, leaving the flat paper base.
+ *
+ * One wash only: it radiates down from the top edge and is spent before the
+ * message area ends, which is the skin's signature. The ellipse is sized in
+ * plain percentages — gradient sizes reject calc()/min(), so the composer band
+ * is kept clear by keeping the reach short (62% of the vertical radius: a
+ * third of the scrollport at most) rather than by arithmetic against
+ * --dsh-composer-height. The band therefore always keeps its own opaque
+ * --dsw-alias-bg-base surface, and the host's surfaces never cut an edge into
+ * the tint. Dark mode scales the accent up so it still reads on dark paper.
+ */
+function buildGlowWashCss(strength: GlowStrengthValue): string {
+  if (strength === 'off') return ''
+  // [light alpha %, dark alpha %, vertical radius %]
+  const [alpha, darkAlpha, span] = strength === 'soft' ? [9, 12, 60] : [5, 7, 46]
+  /** The same ellipse for both schemes, so the two rules cannot drift apart. */
+  const wash = (percent: number): string =>
+    `radial-gradient(78% ${span}% at 50% -8%, color-mix(in srgb, var(--dut-accent) ${percent}%, transparent), transparent 78%)`
+  return `[data-conversation-scroll]{
+  background-image:${wash(alpha)};
+  background-repeat:no-repeat;
+}
+body:not(#dsh-ui-tweaks-theme-scope)[data-ds-dark-theme] [data-conversation-scroll]{
+  background-image:${wash(darkAlpha)};
+  background-repeat:no-repeat;
+}`
+}
+
 function buildRuntimeCss(value: ResolvedTweaks): string {
   const rules: string[] = []
   if (value.themeStyle === 'particles') {
     // Base palette + component accents, then the chosen particle colour's
-    // light/dark accent override (appended last so it wins on the same scope).
+    // light/dark accent override (appended last so it wins on the same scope),
+    // then the strength-selected ambient wash.
     rules.push(PARTICLES_CSS)
     rules.push(buildParticleColorCss(value.particleColor))
+    rules.push(buildGlowWashCss(value.glowStrength))
   }
   return rules.join('\n')
 }
@@ -1342,6 +1406,10 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     void controller.set('particleColor', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
+  const setGlowStrength = (value: GlowStrengthValue): void => {
+    void controller.set('glowStrength', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
+  }
+
   /** Master switch; enabling also asks for notification permission inside this click gesture (a no-op in the desktop shell, which auto-grants it). */
   const setNotifications = (value: boolean): void => {
     if (value) requestNotifyPermission()
@@ -1410,27 +1478,47 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
           </div>
         </div>
         {resolved.themeStyle === 'particles' ? (
-          <div className="dut-field">
-            <div className="dut-field-top">
-              <span className="dut-label">{t('particleColor')}<Hint text={t('particleColorHint')} /></span>
-              <div className="dut-controls">
-                <div className="dut-swatches">
-                  {PARTICLE_COLORS.map(color => (
-                    <button
-                      key={color}
-                      type="button"
-                      className={'dut-sw' + (resolved.particleColor === color ? ' active' : '')}
-                      disabled={!writable}
-                      title={t(PARTICLE_LABEL[color])}
-                      aria-label={t(PARTICLE_LABEL[color])}
-                      aria-pressed={resolved.particleColor === color}
-                      onClick={() => { setParticleColor(color) }}
-                    ><span style={{ background: PARTICLE_SWATCH[color] }} /></button>
-                  ))}
+          <>
+            <div className="dut-field">
+              <div className="dut-field-top">
+                <span className="dut-label">{t('particleColor')}<Hint text={t('particleColorHint')} /></span>
+                <div className="dut-controls">
+                  <div className="dut-swatches">
+                    {PARTICLE_COLORS.map(color => (
+                      <button
+                        key={color}
+                        type="button"
+                        className={'dut-sw' + (resolved.particleColor === color ? ' active' : '')}
+                        disabled={!writable}
+                        title={t(PARTICLE_LABEL[color])}
+                        aria-label={t(PARTICLE_LABEL[color])}
+                        aria-pressed={resolved.particleColor === color}
+                        onClick={() => { setParticleColor(color) }}
+                      ><span style={{ background: PARTICLE_SWATCH[color] }} /></button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+            <div className="dut-field">
+              <div className="dut-field-top">
+                <span className="dut-label">{t('glowStrength')}<Hint text={t('glowStrengthHint')} /></span>
+                <div className="dut-controls">
+                  <div className="dut-seg">
+                    {GLOW_STRENGTHS.map(strength => (
+                      <button
+                        key={strength}
+                        type="button"
+                        className={resolved.glowStrength === strength ? 'dut-seg-active' : ''}
+                        disabled={!writable}
+                        onClick={() => { setGlowStrength(strength) }}
+                      >{t(GLOW_STRENGTH_LABEL[strength])}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
         ) : null}
         <div className="dut-field">
           <div className="dut-field-top">

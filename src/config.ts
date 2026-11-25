@@ -18,8 +18,8 @@ export const UI_TWEAKS_SETTINGS_NAMESPACE = 'ui-tweaks'
 export interface UITweaksConfig {
   /**
    * Conversation theme: `'default'` keeps DSH's stock look (no overrides);
-   * `'particles'` applies the "Soft glow" skin — a tinted palette plus soft
-   * accent glows radiating from the top and bottom edges toward the middle (no
+   * `'particles'` applies the "Soft glow" skin — a tinted palette under a single
+   * soft accent wash that radiates down from the top of the transcript (no
    * animation), whose glow colour is chosen by `particleColor`. Skins are
    * applied live through the runtime stylesheet. Defaults to `'default'`, which
    * users can always return to.
@@ -31,6 +31,13 @@ export interface UITweaksConfig {
    * meaningful while `themeStyle` is `'particles'`. Defaults to `'mint'`.
    */
   particleColor?: ParticleColor
+  /**
+   * Strength of the "Soft glow" skin's ambient background wash: `off` paints the
+   * flat paper only, `subtle` keeps a barely visible tint, `soft` is the fuller
+   * wash. Only meaningful while `themeStyle` is `'particles'`. Defaults to
+   * `'subtle'`.
+   */
+  glowStrength?: GlowStrength
   /**
    * Master switch for the web-search feature: when on, a dedicated "搜索"
    * Settings page appears (engine picker + per-engine API keys, stored in
@@ -117,9 +124,9 @@ export const DEFAULT_THEME_STYLE: ThemeStyle = 'default'
 
 /**
  * Conversation skin ids. `default` keeps DSH's stock look and can always be
- * restored; `particles` is the "Soft glow" skin (tinted palette + soft top/bottom
- * glow). Every id is a persisted value, so a new skin adds a member rather than
- * renaming one.
+ * restored; `particles` is the "Soft glow" skin (tinted palette + one soft wash
+ * radiating down from the top of the transcript). Every id is a persisted
+ * value, so a new skin adds a member rather than renaming one.
  */
 export type ThemeStyle = 'default' | 'particles'
 
@@ -131,6 +138,21 @@ export const PARTICLE_COLOR_OPTIONS = ['mint', 'electric', 'violet', 'sky', 'amb
 
 /** The Soft glow skin defaults to a neutral, clean mint glow. */
 export const DEFAULT_PARTICLE_COLOR: ParticleColor = 'mint'
+
+/**
+ * Ambient wash strengths offered by the Soft glow skin. The wash is painted on
+ * the conversation scrollport, so a stronger field is the first thing that
+ * reads as a colour mismatch wherever the host layers its own opaque
+ * `--dsw-alias-bg-base` surfaces on top (composer band, dock panes, sidebars).
+ * `subtle` is the default for that reason; `soft` restores the fuller look.
+ */
+export type GlowStrength = 'off' | 'subtle' | 'soft'
+
+/** Ordered wash-strength options (also the Settings picker order). */
+export const GLOW_STRENGTH_OPTIONS = ['off', 'subtle', 'soft'] as const
+
+/** The Soft glow skin keeps its ambient wash barely visible by default. */
+export const DEFAULT_GLOW_STRENGTH: GlowStrength = 'subtle'
 
 /** GitBar defaults to off; users turn it on in Settings. */
 export const DEFAULT_GITBAR_ENABLED = false
@@ -169,6 +191,7 @@ export const DEFAULT_NOTIFY_SOUND = false
 export const Config = z.object({
   themeStyle: z.union(['default', 'particles'] as const).default(DEFAULT_THEME_STYLE).volatile(),
   particleColor: z.union(PARTICLE_COLOR_OPTIONS).default(DEFAULT_PARTICLE_COLOR).volatile(),
+  glowStrength: z.union(GLOW_STRENGTH_OPTIONS).default(DEFAULT_GLOW_STRENGTH).volatile(),
   searchEnabled: z.boolean().default(DEFAULT_SEARCH_ENABLED).volatile(),
   searchEngine: z.union(['bing', 'ddg', 'exa', 'tavily', 'keenable', 'perplexity', 'deepseek'] as const).default(DEFAULT_SEARCH_ENGINE).volatile(),
   bingMarket: z.union(BING_MARKET_OPTIONS).default(DEFAULT_BING_MARKET).volatile(),
@@ -192,6 +215,8 @@ export interface ResolvedUITweaksConfig {
   themeStyle: ThemeStyle
   /** Glow colour of the Soft glow skin's accent halos. */
   particleColor: ParticleColor
+  /** Strength of the Soft glow skin's ambient background wash. */
+  glowStrength: GlowStrength
   /** Whether the web-search feature (Settings page + provider takeover) is on. */
   searchEnabled: boolean
   /** Preferred web-search engine id. */
@@ -228,6 +253,7 @@ export interface ResolvedUITweaksConfig {
 export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConfig {
   const themeStyle = config.themeStyle ?? DEFAULT_THEME_STYLE
   const particleColor = config.particleColor ?? DEFAULT_PARTICLE_COLOR
+  const glowStrength = config.glowStrength ?? DEFAULT_GLOW_STRENGTH
   const searchEnabled = config.searchEnabled ?? DEFAULT_SEARCH_ENABLED
   const searchEngine = config.searchEngine ?? DEFAULT_SEARCH_ENGINE
   const bingMarket = config.bingMarket ?? DEFAULT_BING_MARKET
@@ -243,6 +269,6 @@ export function resolveConfig(config: UITweaksConfig = {}): ResolvedUITweaksConf
   const notifyTitleFlash = config.notifyTitleFlash ?? DEFAULT_NOTIFY_TITLE_FLASH
   const notifySystemNotification = config.notifySystemNotification ?? DEFAULT_NOTIFY_SYSTEM_NOTIFICATION
   const notifySound = config.notifySound ?? DEFAULT_NOTIFY_SOUND
-  const resolved: ResolvedUITweaksConfig = { themeStyle, particleColor, searchEnabled, searchEngine, bingMarket, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled, preciseCacheHitEnabled, notificationsEnabled, notifyOnlyWhenHidden, notifyOnComplete, notifyOnInteraction, notifyTitleFlash, notifySystemNotification, notifySound }
+  const resolved: ResolvedUITweaksConfig = { themeStyle, particleColor, glowStrength, searchEnabled, searchEngine, bingMarket, gitBarEnabled, archiveManagerEnabled, mcpManagerEnabled, initCommandEnabled, preciseCacheHitEnabled, notificationsEnabled, notifyOnlyWhenHidden, notifyOnComplete, notifyOnInteraction, notifyTitleFlash, notifySystemNotification, notifySound }
   return resolved
 }
